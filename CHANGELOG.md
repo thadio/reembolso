@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-03-04 — Etapa 7.1 iniciada (Backup/restore operacional)
+- Adicionados scripts:
+  - `scripts/backup.sh` para backup de banco (`mysqldump`) e `storage/uploads`
+  - `scripts/restore.sh` para restore controlado de banco e uploads
+- Recursos implementados nos scripts:
+  - suporte a `--dry-run`
+  - retencao automatica de backups via `BACKUP_RETENTION_DAYS`
+  - diretorio de backup configuravel via `BACKUP_ROOT`
+  - snapshot opcional de `.env` (`--with-env` / `BACKUP_INCLUDE_ENV=1`)
+  - manifesto por backup com hash SHA-256 e tamanho dos artefatos
+- Documentacao operacional atualizada com runbooks de backup, restore e contingencia:
+  - `docs/03-environment.md`
+  - `docs/04-deploy.md`
+  - `docs/05-operations.md`
+  - `README.md`
+- Checklist reproduzivel adicionado em `tests/checklist-etapa-7.1.md`
+
+## 2026-03-04 — Fase 3.1 concluída (CDO completo)
+- Criada migration `009_phase3_cdos.sql` com:
+  - `cdos` (numero, UG, acao, periodo, valor total, status e soft delete)
+  - `cdo_people` (vinculo CDO x pessoa com valor alocado)
+  - permissões `cdo.view` e `cdo.manage` com concessao para perfis `sist_admin` e `admin`
+- Implementado `CdoRepository` com:
+  - listagem paginada de CDOs com totalizador (`total`, `alocado`, `saldo`)
+  - consulta de detalhe com agregados
+  - vinculo/desvinculo de pessoa ao CDO
+  - consulta de pessoas disponiveis para vinculo
+- Implementado `CdoService` com:
+  - validacoes de cadastro/edicao (numero, periodo, valor, status)
+  - bloqueio de vinculo quando valor excede saldo disponivel
+  - status automatico por alocacao (`aberto`, `parcial`, `alocado`)
+  - auditoria e eventos para create/update/delete, alteracao de valor/status e vinculos
+- Implementado modulo CDO completo:
+  - `CdosController`
+  - rotas protegidas (`/cdos`, CRUD e vinculo de pessoas)
+  - views de lista, criacao, edicao e detalhe com formulario de vinculo
+- Dashboard atualizado com KPI de cobertura CDO:
+  - total de CDOs
+  - CDOs em aberto
+  - valor total, valor alocado e saldo disponivel
+- Menu lateral atualizado para exibir acesso a CDO conforme permissao `cdo.view`
+- Checklist da etapa adicionado em `tests/checklist-etapa-3.1.md`
+
 ## 2026-03-04 — Fase 2.5 concluída (Conciliação previsto x real)
 - Implementado `ReconciliationRepository` para consulta de:
   - versão ativa de custos por pessoa

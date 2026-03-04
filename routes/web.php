@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Controllers\AuthController;
+use App\Controllers\CdosController;
 use App\Controllers\DashboardController;
 use App\Controllers\HealthController;
 use App\Controllers\OrgansController;
@@ -19,6 +20,15 @@ $router->post('/logout', [AuthController::class, 'logout'], ['auth', 'csrf']);
 
 $router->get('/', [DashboardController::class, 'index'], ['auth', 'permission:dashboard.view']);
 $router->get('/dashboard', [DashboardController::class, 'index'], ['auth', 'permission:dashboard.view']);
+$router->get('/cdos', [CdosController::class, 'index'], ['auth', 'permission:cdo.view']);
+$router->get('/cdos/create', [CdosController::class, 'create'], ['auth', 'permission:cdo.manage']);
+$router->post('/cdos/store', [CdosController::class, 'store'], ['auth', 'permission:cdo.manage', 'csrf']);
+$router->get('/cdos/show', [CdosController::class, 'show'], ['auth', 'permission:cdo.view']);
+$router->get('/cdos/edit', [CdosController::class, 'edit'], ['auth', 'permission:cdo.manage']);
+$router->post('/cdos/update', [CdosController::class, 'update'], ['auth', 'permission:cdo.manage', 'csrf']);
+$router->post('/cdos/delete', [CdosController::class, 'destroy'], ['auth', 'permission:cdo.manage', 'csrf']);
+$router->post('/cdos/people/link', [CdosController::class, 'linkPerson'], ['auth', 'permission:cdo.manage', 'csrf']);
+$router->post('/cdos/people/unlink', [CdosController::class, 'unlinkPerson'], ['auth', 'permission:cdo.manage', 'csrf']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 $isAuthenticated = isset($authUser) && is_array($authUser);
 $path = (string) ($currentPath ?? '');
+$authPermissions = is_array($authUser['permissions'] ?? null) ? $authUser['permissions'] : [];
+$canViewCdos = in_array('cdo.view', $authPermissions, true);
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -23,6 +25,9 @@ $path = (string) ($currentPath ?? '');
       </div>
       <nav class="menu">
         <a class="menu-item <?= $path === '/dashboard' || $path === '/' ? 'is-active' : '' ?>" href="<?= e(url('/dashboard')) ?>">Dashboard</a>
+        <?php if ($canViewCdos): ?>
+          <a class="menu-item <?= str_starts_with($path, '/cdos') ? 'is-active' : '' ?>" href="<?= e(url('/cdos')) ?>">CDOs</a>
+        <?php endif; ?>
         <a class="menu-item <?= str_starts_with($path, '/people') ? 'is-active' : '' ?>" href="<?= e(url('/people')) ?>">Pessoas</a>
         <a class="menu-item <?= str_starts_with($path, '/organs') ? 'is-active' : '' ?>" href="<?= e(url('/organs')) ?>">Órgãos</a>
       </nav>

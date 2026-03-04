@@ -26,6 +26,7 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `CostPlanService`: custos previstos por pessoa com versionamento e comparacao entre versoes
 - `ReimbursementService`: controle de reembolso real (boletos/pagamentos) com baixa financeira
 - `ReconciliationService`: conciliacao previsto x real por pessoa e por competencia
+- `CdoService`: cadastro de CDO, vinculo de pessoas, totalizador/alocacao e bloqueio por saldo
 - `PersonAuditService`: trilha auditavel por pessoa com filtros e exportacao CSV
 
 ## Modelo de dados (resumo)
@@ -34,6 +35,7 @@ Tabelas principais:
 - `organs`, `people`, `assignments`, `assignment_statuses`
 - `timeline_events`, `timeline_event_attachments`, `documents`
 - `cost_plans`, `cost_plan_items`, `reimbursement_entries`
+- `cdos`, `cdo_people`
 - `audit_log`, `system_events`, `migrations`
 
 ## Compatibilidade operacional

@@ -315,6 +315,10 @@ textarea:focus {
   margin: 14px 0;
 }
 
+.filters-cdo {
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto auto;
+}
+
 .filters-people {
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }

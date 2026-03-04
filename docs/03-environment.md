@@ -34,6 +34,11 @@ Arquivo de exemplo: `.env.example`
 - `DEPLOY_RESTART_COMMAND` (ex.: restart de PHP-FPM/Apache quando aplicavel)
 - `DEPLOY_HEALTH_PATH` (default: `/health`)
 
+### Opcionais para backup/restore
+- `BACKUP_ROOT` (default: `storage/backups`)
+- `BACKUP_RETENTION_DAYS` (default: `14`)
+- `BACKUP_INCLUDE_ENV` (`0` ou `1`, default: `0`)
+
 ### Opcionais para upload FTP
 - `FTP_HOST`
 - `FTP_PORT`

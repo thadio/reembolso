@@ -15,3 +15,5 @@
 - Atualizacao arquitetural para incluir fase 2.3 (dashboard operacional com metricas reais)
 - Atualizacao arquitetural para incluir fase 2.4 (financeiro real de reembolsos no Perfil 360)
 - Atualizacao arquitetural para incluir fase 2.5 (conciliacao previsto x real por pessoa e competencia)
+- Atualizacao arquitetural para incluir fase 3.1 (CDO completo com vinculo de pessoas e saldo)
+- Atualizacao operacional para incluir etapa 7.1 (backup/restore com scripts e runbook de contingencia)

@@ -86,7 +86,21 @@ final class DashboardRepository
                  ), 0)
                  FROM reimbursement_entries r
                  INNER JOIN people p ON p.id = r.person_id AND p.deleted_at IS NULL
-                 WHERE r.deleted_at IS NULL) AS actual_reimbursement_paid_current_month'
+                 WHERE r.deleted_at IS NULL) AS actual_reimbursement_paid_current_month,
+                (SELECT COUNT(*)
+                 FROM cdos c
+                 WHERE c.deleted_at IS NULL) AS total_cdos,
+                (SELECT COUNT(*)
+                 FROM cdos c
+                 WHERE c.deleted_at IS NULL
+                   AND c.status IN ("aberto", "parcial", "alocado")) AS open_cdos,
+                (SELECT IFNULL(SUM(c.total_amount), 0)
+                 FROM cdos c
+                 WHERE c.deleted_at IS NULL) AS cdo_total_amount,
+                (SELECT IFNULL(SUM(cp.allocated_amount), 0)
+                 FROM cdo_people cp
+                 INNER JOIN cdos c ON c.id = cp.cdo_id AND c.deleted_at IS NULL
+                 WHERE cp.deleted_at IS NULL) AS cdo_allocated_amount'
         );
 
         $row = $stmt->fetch();

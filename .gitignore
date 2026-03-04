@@ -5,6 +5,8 @@
 .env.*
 *.env
 *.secret
+.env.pre_restore_*
+*.env.snapshot
 secrets/
 secret/
 !.env.example
@@ -21,6 +23,7 @@ build/
 # Runtime files
 /storage/logs/*
 /storage/uploads/*
+/storage/backups/
 !/storage/uploads/.gitkeep
 !/storage/uploads/.htaccess
 bootstrap/cache/

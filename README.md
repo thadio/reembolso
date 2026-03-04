@@ -3,10 +3,10 @@
 Aplicacao web em PHP para gestao de movimentacao de forca de trabalho, pipeline de pessoas, timeline e reembolsos.
 
 ## Estado atual
-- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4 e 2.5
+- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5 e 3.1
 - Stack: PHP 8.1+, MySQL/Percona 5.7+, Apache (shared hosting compativel)
 - Deploy alvo: execucao via bash no servidor
-- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos), conciliacao previsto x real por pessoa/competencia e auditoria filtravel no Perfil 360
+- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos), conciliacao previsto x real por pessoa/competencia, CDO com vinculo 1..N de pessoas e auditoria filtravel no Perfil 360
 
 ## Inicio rapido (local)
 1. Copie `.env.example` para `.env`.
@@ -38,6 +38,17 @@ php -S localhost:8000 -t public
 - `POST /people/reimbursements/mark-paid`
 - `GET /people/audit/export?person_id={personId}&audit_*={filtros}`
 
+## Rotas de CDO (resumo)
+- `GET /cdos`
+- `GET /cdos/create`
+- `POST /cdos/store`
+- `GET /cdos/show?id={id}`
+- `GET /cdos/edit?id={id}`
+- `POST /cdos/update`
+- `POST /cdos/delete`
+- `POST /cdos/people/link`
+- `POST /cdos/people/unlink`
+
 ## Portal de documentacao
 A documentacao oficial esta centralizada em `/docs`:
 - `docs/00-audit-report.md`
@@ -55,6 +66,7 @@ A documentacao oficial esta centralizada em `/docs`:
 Fluxo recomendado no servidor:
 ```bash
 # na raiz do projeto
+./scripts/backup.sh --label pre_deploy
 ./scripts/deploy.sh --preflight
 ./scripts/deploy.sh --apply
 ```
@@ -73,6 +85,12 @@ Upload FTP (ex.: via task do VS Code):
 ```bash
 ./scripts/ftp-upload.sh --dry-run
 ./scripts/ftp-upload.sh
+```
+
+Backup e restore operacional:
+```bash
+./scripts/backup.sh --with-env --label manual
+./scripts/restore.sh --from <backup_dir> --yes
 ```
 
 ## Regras de seguranca

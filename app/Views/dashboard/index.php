@@ -21,6 +21,11 @@ $dashboard = $dashboard ?? [
         'actual_reimbursement_paid_current_month' => 0,
         'reconciliation_deviation_posted_current' => 0,
         'reconciliation_deviation_paid_current' => 0,
+        'total_cdos' => 0,
+        'open_cdos' => 0,
+        'cdo_total_amount' => 0,
+        'cdo_allocated_amount' => 0,
+        'cdo_available_amount' => 0,
     ],
     'status_distribution' => [],
     'recent_timeline' => [],
@@ -145,6 +150,16 @@ $eventTypeLabel = static function (string $value): string {
       Previsto: <?= e($formatMoney((float) ($summary['expected_reimbursement_current_month'] ?? 0))) ?> |
       Real lançado: <?= e($formatMoney((float) ($summary['actual_reimbursement_posted_current_month'] ?? 0))) ?> |
       Real pago: <?= e($formatMoney((float) ($summary['actual_reimbursement_paid_current_month'] ?? 0))) ?>
+    </p>
+  </article>
+
+  <article class="card kpi-card">
+    <p class="kpi-label">Cobertura CDO</p>
+    <p class="kpi-value"><?= e((string) (int) ($summary['total_cdos'] ?? 0)) ?></p>
+    <p class="dashboard-kpi-note">
+      Em aberto: <?= e((string) (int) ($summary['open_cdos'] ?? 0)) ?> |
+      Total: <?= e($formatMoney((float) ($summary['cdo_total_amount'] ?? 0))) ?> |
+      Saldo: <?= e($formatMoney((float) ($summary['cdo_available_amount'] ?? 0))) ?>
     </p>
   </article>
 

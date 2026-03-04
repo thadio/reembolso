@@ -24,9 +24,11 @@ reembolso/
     changelog-docs.md
 
   scripts/
+    backup.sh
     deploy.sh
     ftp-upload.sh
     healthcheck.sh
+    restore.sh
     rollback.sh
 
   app/
@@ -44,6 +46,8 @@ reembolso/
 - Bootstrap: `bootstrap.php`
 - Deploy: `scripts/deploy.sh`
 - Health-check: `scripts/healthcheck.sh`
+- Backup: `scripts/backup.sh`
+- Restore: `scripts/restore.sh`
 
 ## Documentacao oficial
 - Setup: `docs/01-getting-started.md`

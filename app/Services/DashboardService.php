@@ -57,6 +57,11 @@ final class DashboardService
         $expectedReimbursement = max(0.0, (float) ($raw['expected_reimbursement_current_month'] ?? 0));
         $actualPostedReimbursement = max(0.0, (float) ($raw['actual_reimbursement_posted_current_month'] ?? 0));
         $actualPaidReimbursement = max(0.0, (float) ($raw['actual_reimbursement_paid_current_month'] ?? 0));
+        $totalCdos = max(0, (int) ($raw['total_cdos'] ?? 0));
+        $openCdos = max(0, min($totalCdos, (int) ($raw['open_cdos'] ?? 0)));
+        $cdoTotalAmount = max(0.0, (float) ($raw['cdo_total_amount'] ?? 0));
+        $cdoAllocatedAmount = max(0.0, (float) ($raw['cdo_allocated_amount'] ?? 0));
+        $cdoAvailableAmount = max(0.0, $cdoTotalAmount - $cdoAllocatedAmount);
 
         return [
             'total_people' => $totalPeople,
@@ -76,6 +81,11 @@ final class DashboardService
             'actual_reimbursement_paid_current_month' => round($actualPaidReimbursement, 2),
             'reconciliation_deviation_posted_current' => round($actualPostedReimbursement - $expectedReimbursement, 2),
             'reconciliation_deviation_paid_current' => round($actualPaidReimbursement - $expectedReimbursement, 2),
+            'total_cdos' => $totalCdos,
+            'open_cdos' => $openCdos,
+            'cdo_total_amount' => round($cdoTotalAmount, 2),
+            'cdo_allocated_amount' => round($cdoAllocatedAmount, 2),
+            'cdo_available_amount' => round($cdoAvailableAmount, 2),
         ];
     }
 
@@ -112,6 +122,9 @@ final class DashboardService
         $withoutCostPlan = (int) ($summary['people_without_cost_plan'] ?? 0);
         $inProgress = (int) ($summary['in_progress_people'] ?? 0);
         $deviationPosted = (float) ($summary['reconciliation_deviation_posted_current'] ?? 0.0);
+        $totalCdos = (int) ($summary['total_cdos'] ?? 0);
+        $openCdos = (int) ($summary['open_cdos'] ?? 0);
+        $cdoAvailable = (float) ($summary['cdo_available_amount'] ?? 0.0);
 
         if ($totalPeople === 0) {
             return [
@@ -132,6 +145,24 @@ final class DashboardService
                     : sprintf('Desvio negativo de %s entre previsto e real lançado no mês atual. Valide lançamentos pendentes e janela de competência.', $this->money(abs($deviationPosted))),
                 'label' => 'Revisar pessoas',
                 'path' => '/people',
+            ];
+        }
+
+        if ($totalCdos === 0) {
+            return [
+                'title' => 'Cadastrar primeiro CDO',
+                'description' => 'Ainda nao ha CDO ativo na base. Cadastre o primeiro credito para iniciar o controle de vinculo e saldo.',
+                'label' => 'Novo CDO',
+                'path' => '/cdos/create',
+            ];
+        }
+
+        if ($openCdos > 0 && $cdoAvailable >= 0.01) {
+            return [
+                'title' => 'Alocar saldo de CDO',
+                'description' => sprintf('Ha %d CDO(s) com saldo disponivel de %s. Vincule pessoas para reduzir risco de execucao sem cobertura.', $openCdos, $this->money($cdoAvailable)),
+                'label' => 'Abrir CDOs',
+                'path' => '/cdos',
             ];
         }
 

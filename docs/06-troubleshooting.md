@@ -45,3 +45,21 @@ Checklist:
   - `FTP_SSL_ALLOW`
   - `FTP_SSL_FORCE`
   - `FTP_SSL_VERIFY`
+
+## 7) Backup falha ao gerar dump
+Checklist:
+- Confirmar binario `mysqldump` no servidor
+- Validar `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`
+- Executar simulacao para validar parametros:
+```bash
+./scripts/backup.sh --dry-run
+```
+
+## 8) Restore falha por artefato ausente
+Checklist:
+- Confirmar diretorio informado em `--from`
+- Validar se `db.sql.gz` e/ou `uploads.tar.gz` existem no backup
+- Rodar simulacao antes da execucao real:
+```bash
+./scripts/restore.sh --from <backup_dir> --dry-run --yes
+```

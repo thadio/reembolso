@@ -26,7 +26,7 @@ Este documento foi revisado para:
 ### 0.2 Evidencias tecnicas consideradas
 
 - Rotas e controle de acesso (`routes/web.php`)
-- Migrations existentes (`db/migrations/001` a `008`)
+- Migrations existentes (`db/migrations/001` a `009`)
 - Servicos e repositorios de dominio (`app/Services`, `app/Repositories`)
 - Changelog do projeto (`CHANGELOG.md`)
 - Estado atual documentado (`README.md`, `docs/02-architecture.md`)
@@ -65,6 +65,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Dashboard operacional com metricas reais
 - `[x]` Reembolsos reais por pessoa (registro e baixa)
 - `[x]` Conciliacao previsto x real por pessoa e competencia
+- `[x]` Modulo de CDO com vinculo 1..N de pessoas e controle de saldo
 
 ## 2.2 Itens parcialmente atendidos
 
@@ -77,7 +78,6 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 ## 2.3 Lacunas criticas ainda pendentes
 
-- `[ ]` Modulo de CDO real (`cdos`, `cdo_people`, CRUD, vinculos, totalizadores)
 - `[ ]` Modulo de boletos estruturado por orgao e por lote (atualmente ha lancamento por pessoa)
 - `[ ]` Modulo de espelho de custo item-a-item por competencia
 - `[ ]` Conciliacao por item com justificativa formal e workflow de aprovacao
@@ -108,8 +108,8 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-20 | Dossie documental por pessoa/processo | `[x]` | Upload/download seguro e metadados por documento |
 | RF-21 | Classificacao por tipo/tags + busca | `[~]` | Tipo/tags existem; busca dedicada no dossie ainda limitada |
 | RF-22 | Controle de acesso a docs sensiveis | `[~]` | Controle por permissao geral existe; falta granularidade por sensibilidade |
-| RF-30 | Cadastro de CDO | `[ ]` | Nao implementado |
-| RF-31 | Vinculo CDO x pessoas | `[ ]` | Nao implementado |
+| RF-30 | Cadastro de CDO | `[x]` | Implementado com `cdos`, CRUD e trilha auditavel |
+| RF-31 | Vinculo CDO x pessoas | `[x]` | Implementado com `cdo_people`, bloqueio por saldo e totalizadores |
 | RF-32 | Custo previsto por pessoa | `[x]` | Implementado com versionamento e itens |
 | RF-33 | Projecoes mensais/anuais/cenarios | `[~]` | Ha metricas de previsao no dashboard; sem modulo de cenarios completo |
 | RF-40 | Cadastro de boleto (dominio proprio) | `[~]` | Existe `reimbursement_entries` por pessoa; falta dominio formal de boleto |
@@ -166,6 +166,10 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` 2.4 Reembolsos reais (lancamento e baixa)
 - `[x]` 2.5 Conciliacao previsto x real por competencia
 
+### Fase 3 - Nucleo financeiro estruturado (parcial)
+
+- `[x]` 3.1 CDO completo
+
 ## 4.2 Fases de evolucao (prioridade alta)
 
 ### Fase 3 - Nucleo financeiro estruturado (CDO + titulos + espelhos)
@@ -174,11 +178,11 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 3.1 - CDO completo
 
-- `[ ]` Criar tabelas `cdos` e `cdo_people`
-- `[ ]` CRUD de CDO (numero, valor, periodo, status, UG/acao)
-- `[ ]` Vinculo CDO x pessoas com totalizador e saldo
-- `[ ]` Eventos e auditoria de alteracoes de valor/status
-- `[ ]` Cards de CDO no dashboard
+- `[x]` Criar tabelas `cdos` e `cdo_people`
+- `[x]` CRUD de CDO (numero, valor, periodo, status, UG/acao)
+- `[x]` Vinculo CDO x pessoas com totalizador e saldo
+- `[x]` Eventos e auditoria de alteracoes de valor/status
+- `[x]` Cards de CDO no dashboard
 
 **Criterios de aceite:**
 - CDO pode cobrir 1..N pessoas;
@@ -365,9 +369,9 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 ## 8) Proximo ciclo recomendado (execucao imediata)
 
-1. Iniciar **Fase 3.1 (CDO completo)**.
-2. Em seguida, entregar **Fase 3.2 (boletos estruturados)**.
-3. Depois, fechar **Fase 3.3 + 3.4 (espelho e conciliacao item-a-item)**.
+1. Iniciar **Fase 3.2 (boletos estruturados)**.
+2. Em seguida, entregar **Fase 3.3 + 3.4 (espelho e conciliacao item-a-item)**.
+3. Depois, fechar **Fase 3.5 (pagamentos completos)**.
 4. So entao abrir **Fase 5 (projecoes e relatorios premium)** com base financeira robusta.
 
 ---
