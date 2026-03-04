@@ -18,4 +18,5 @@
 - Atualizacao arquitetural para incluir fase 3.1 (CDO completo com vinculo de pessoas e saldo)
 - Atualizacao arquitetural para incluir fase 3.2 (boletos estruturados por orgao, PDF e rateio por pessoa)
 - Atualizacao arquitetural para incluir fase 3.3 (espelho de custo detalhado por pessoa/competencia com importacao CSV)
+- Atualizacao arquitetural para incluir fase 4.1 (templates de oficio versionados com merge de variaveis e geracao HTML)
 - Atualizacao operacional para incluir etapa 7.1 (backup/restore com scripts e runbook de contingencia)

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-03-04 — Fase 4.1 iniciada (Templates de oficio)
+- Criada migration `012_phase4_office_templates.sql` com:
+  - `office_templates` (catalogo por chave/tipo com status ativo)
+  - `office_template_versions` (versionamento de assunto/corpo HTML e variaveis)
+  - `office_documents` (documentos renderizados por template/versao/pessoa)
+  - permissoes `office_template.view` e `office_template.manage` para `sist_admin` e `admin`
+- Implementado modulo de templates:
+  - `OfficeTemplateRepository`, `OfficeTemplateService` e `OfficeTemplatesController`
+  - catalogo de templates por tipo (`orgao`, `mgi`, `cobranca`, `resposta`, `outro`)
+  - historico de versoes e publicacao de nova versao ativa
+  - merge de variaveis de pessoa/orgao/processo/custos/CDO para geracao de oficio
+  - visualizacao de documento gerado e pagina print-friendly (`/office-documents/print`)
+- Rotas adicionadas em `/office-templates/*` e `/office-documents/*`
+- Menu lateral atualizado com acesso a "Oficios" por permissao
+- Seed atualizado para incluir permissoes do modulo
+- Checklist da etapa adicionado em `tests/checklist-etapa-4.1.md`
+
 ## 2026-03-04 — Fase 3.3 concluida (Espelho de custo detalhado)
 - Criada migration `011_phase3_cost_mirrors.sql` com:
   - `cost_mirrors` (pessoa, orgao, competencia, vinculo opcional com boleto e total consolidado)

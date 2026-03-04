@@ -16,6 +16,8 @@ $canViewInvoices = in_array('invoice.view', $authPermissions, true);
 $canManageInvoices = in_array('invoice.manage', $authPermissions, true);
 $canViewCostMirrors = in_array('cost_mirror.view', $authPermissions, true);
 $canManageCostMirrors = in_array('cost_mirror.manage', $authPermissions, true);
+$canViewOfficeTemplates = in_array('office_template.view', $authPermissions, true);
+$canManageOfficeTemplates = in_array('office_template.manage', $authPermissions, true);
 
 $renderMenuIcon = static function (string $icon): string {
     switch ($icon) {
@@ -52,6 +54,12 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<path d="M7 9h10"></path>'
                 . '<path d="M7 13h6"></path>'
                 . '<circle cx="17" cy="13" r="1.5"></circle>';
+            break;
+        case 'office_template':
+            $body = '<path d="M6 2h9l5 5v15H6z"></path>'
+                . '<path d="M15 2v5h5"></path>'
+                . '<path d="M9 12h8"></path>'
+                . '<path d="M9 16h8"></path>';
             break;
         case 'plus':
             $body = '<circle cx="12" cy="12" r="9"></circle>'
@@ -115,6 +123,14 @@ if ($canViewCostMirrors) {
         'active' => str_starts_with($path, '/cost-mirrors'),
     ];
 }
+if ($canViewOfficeTemplates) {
+    $mainMenuItems[] = [
+        'label' => 'Oficios',
+        'href' => '/office-templates',
+        'icon' => 'office_template',
+        'active' => str_starts_with($path, '/office-templates') || str_starts_with($path, '/office-documents'),
+    ];
+}
 
 $quickMenuItems = [];
 if ($canManagePeople) {
@@ -155,6 +171,14 @@ if ($canManageCostMirrors) {
         'href' => '/cost-mirrors/create',
         'icon' => 'plus',
         'active' => $path === '/cost-mirrors/create',
+    ];
+}
+if ($canManageOfficeTemplates) {
+    $quickMenuItems[] = [
+        'label' => 'Novo oficio',
+        'href' => '/office-templates/create',
+        'icon' => 'plus',
+        'active' => $path === '/office-templates/create',
     ];
 }
 ?>

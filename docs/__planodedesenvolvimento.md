@@ -26,7 +26,7 @@ Esta versao reorganiza a v2.0 com foco em:
 ### 0.2 Evidencias tecnicas consideradas
 
 - Rotas e controle de acesso: `routes/web.php`
-- Migrations: `db/migrations/001` a `009`
+- Migrations: `db/migrations/001` a `012`
 - Servicos e repositorios: `app/Services`, `app/Repositories`
 - Changelog tecnico: `CHANGELOG.md`
 - Estado documentado: `README.md`, `docs/02-architecture.md`
@@ -59,7 +59,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | Fase 1 - Pipeline operacional | `[x]` | Orgaos, pessoas, pipeline, timeline, dossie |
 | Fase 2 - Financeiro base | `[x]` | custos, auditoria por pessoa, dashboard, reembolso, conciliacao |
 | Fase 3 - Nucleo financeiro estruturado | `[~]` | 3.1, 3.2 e 3.3 concluidas; 3.4 e 3.5 pendentes |
-| Fase 4 - Automacao administrativa | `[ ]` | templates/oficios, metadados formais, SLA |
+| Fase 4 - Automacao administrativa | `[~]` | 4.1 parcial concluida (catalogo/versionamento/merge/HTML); 4.2 e 4.3 pendentes |
 | Fase 5 - Inteligencia orcamentaria e relatorios | `[ ]` | projecoes, cenarios, relatorios premium, modulo orcamentario |
 | Fase 6 - Compliance e seguranca avancada | `[ ]` | admin de usuarios via UI, LGPD avancado, hardening |
 | Fase 7 - Operacao, performance e qualidade | `[~]` | base parcial (health/log), sem fechamento operacional completo |
@@ -85,6 +85,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 ### 2.3 Itens parciais relevantes
 
+- `[~]` RF-12 templates de oficio (catalogo/versionamento/merge/HTML print)
 - `[~]` RF-13 metadados completos de oficio/SEI
 - `[~]` RF-14 metadados formais de DOU/entrada oficial
 - `[~]` RF-45 painel financeiro global (abertos/vencidos/pagos/conciliados)
@@ -97,7 +98,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Espelho de custo item a item por competencia
 - `[ ]` Conciliacao item a item com justificativa e aprovacao
 - `[ ]` Pagamentos completos com comprovante e conciliacao por titulo
-- `[ ]` Geracao de oficios por templates versionados
+- `[~]` Geracao de oficios por templates versionados
 - `[ ]` Importacao CSV em massa (pessoas e orgaos)
 - `[ ]` Gestao administrativa de usuarios/papeis via UI
 - `[ ]` Relatorios executivos e financeiros completos
@@ -116,7 +117,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-04 | Importacao em massa de pessoas (CSV) | `[ ]` | Ainda nao existe rota/servico de importacao |
 | RF-10 | Pipeline de status configuravel | `[x]` | `assignment_statuses` + acao de avance |
 | RF-11 | Timeline automatica/manual | `[x]` | Eventos automaticos/manuais com anexos e retificacao |
-| RF-12 | Geracao de oficios por template | `[ ]` | Ainda nao implementado |
+| RF-12 | Geracao de oficios por template | `[~]` | Catalogo/versionamento/merge/HTML print implementados; PDF nativo pendente |
 | RF-13 | Metadados de oficio/SEI/anexos | `[~]` | Base existe; sem modulo formal de oficio |
 | RF-14 | Registro DOU + entrada oficial no MTE | `[~]` | Fluxo por status existe; faltam metadados formais |
 | RF-20 | Dossie documental por pessoa/processo | `[x]` | Upload/download seguro e metadados |
@@ -233,10 +234,10 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 4.1 - Templates de oficio
 
-- `[ ]` Catalogo de templates (orgao, MGI, cobranca, resposta)
-- `[ ]` Merge de variaveis (pessoa, orgao, processo, custo, CDO)
-- `[ ]` Versionamento e historico de template
-- `[ ]` Geracao em HTML print e PDF
+- `[x]` Catalogo de templates (orgao, MGI, cobranca, resposta)
+- `[x]` Merge de variaveis (pessoa, orgao, processo, custo, CDO)
+- `[x]` Versionamento e historico de template
+- `[~]` Geracao em HTML print e PDF (HTML print implementado; PDF nativo pendente)
 
 #### Etapa 4.2 - Metadados formais de processo
 
@@ -534,7 +535,7 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 1. Entregar **Fase 3.4 (conciliacao item a item + workflow)**.
 2. Fechar **Fase 3.5 (pagamentos completos)**.
 3. Abrir **Fase 5.4 MVP (orcamento/capacidade)** com dashboard + simulador.
-4. Iniciar **Fase 4.1 (templates de oficio)** em paralelo controlado.
+4. Avancar **Fase 4.2 (metadados formais de processo)** em paralelo controlado.
 
 ---
 

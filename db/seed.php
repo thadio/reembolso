@@ -20,6 +20,8 @@ $permissions = [
     ['name' => 'invoice.manage', 'description' => 'Gerenciar boletos estruturados'],
     ['name' => 'cost_mirror.view', 'description' => 'Visualizar espelhos de custo'],
     ['name' => 'cost_mirror.manage', 'description' => 'Gerenciar espelhos de custo'],
+    ['name' => 'office_template.view', 'description' => 'Visualizar templates e oficios gerados'],
+    ['name' => 'office_template.manage', 'description' => 'Gerenciar templates e gerar oficios'],
     ['name' => 'people.view', 'description' => 'Visualizar pessoas'],
     ['name' => 'people.manage', 'description' => 'Gerenciar cadastro de pessoas'],
     ['name' => 'people.cpf.full', 'description' => 'Visualizar CPF completo'],
@@ -30,8 +32,8 @@ $permissions = [
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
-    'admin' => ['dashboard.view', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view'],
+    'sist_admin' => ['dashboard.view', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
+    'admin' => ['dashboard.view', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view'],
     'user' => ['dashboard.view', 'people.view', 'organs.view'],
 ];
 

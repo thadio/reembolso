@@ -364,6 +364,10 @@ textarea:focus {
   grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }
 
+.filters-office-template {
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto auto;
+}
+
 .filters-people {
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }
@@ -832,6 +836,17 @@ th a {
   line-height: 1.4;
 }
 
+.card pre {
+  margin: 6px 0 0;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow: auto;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
 @media (max-width: 1024px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -855,6 +870,10 @@ th a {
   }
 
   .filters-cost-mirror {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .filters-office-template {
     grid-template-columns: 1fr 1fr 1fr;
   }
 
@@ -917,6 +936,10 @@ th a {
   }
 
   .filters-cost-mirror {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-office-template {
     grid-template-columns: 1fr;
   }
 

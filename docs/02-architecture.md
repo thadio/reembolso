@@ -29,6 +29,7 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `CdoService`: cadastro de CDO, vinculo de pessoas, totalizador/alocacao e bloqueio por saldo
 - `InvoiceService`: boletos estruturados por orgao/competencia, PDF, metadados e rateio por pessoa
 - `CostMirrorService`: espelho de custo detalhado por pessoa/competencia, cadastro manual de itens e importacao CSV
+- `OfficeTemplateService`: templates versionados de oficio com merge de variaveis e geracao de documento HTML
 - `PersonAuditService`: trilha auditavel por pessoa com filtros e exportacao CSV
 
 ## Modelo de dados (resumo)
@@ -40,6 +41,7 @@ Tabelas principais:
 - `cdos`, `cdo_people`
 - `invoices`, `invoice_people`
 - `cost_mirrors`, `cost_mirror_items`
+- `office_templates`, `office_template_versions`, `office_documents`
 - `audit_log`, `system_events`, `migrations`
 
 ## Compatibilidade operacional

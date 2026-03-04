@@ -8,6 +8,7 @@ use App\Controllers\CostMirrorsController;
 use App\Controllers\DashboardController;
 use App\Controllers\HealthController;
 use App\Controllers\InvoicesController;
+use App\Controllers\OfficeTemplatesController;
 use App\Controllers\OrgansController;
 use App\Controllers\PeopleController;
 
@@ -51,6 +52,17 @@ $router->post('/cost-mirrors/delete', [CostMirrorsController::class, 'destroy'],
 $router->post('/cost-mirrors/items/store', [CostMirrorsController::class, 'storeItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->post('/cost-mirrors/items/import-csv', [CostMirrorsController::class, 'importCsv'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->post('/cost-mirrors/items/delete', [CostMirrorsController::class, 'destroyItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->get('/office-templates', [OfficeTemplatesController::class, 'index'], ['auth', 'permission:office_template.view']);
+$router->get('/office-templates/create', [OfficeTemplatesController::class, 'create'], ['auth', 'permission:office_template.manage']);
+$router->post('/office-templates/store', [OfficeTemplatesController::class, 'store'], ['auth', 'permission:office_template.manage', 'csrf']);
+$router->get('/office-templates/show', [OfficeTemplatesController::class, 'show'], ['auth', 'permission:office_template.view']);
+$router->get('/office-templates/edit', [OfficeTemplatesController::class, 'edit'], ['auth', 'permission:office_template.manage']);
+$router->post('/office-templates/update', [OfficeTemplatesController::class, 'update'], ['auth', 'permission:office_template.manage', 'csrf']);
+$router->post('/office-templates/delete', [OfficeTemplatesController::class, 'destroy'], ['auth', 'permission:office_template.manage', 'csrf']);
+$router->post('/office-templates/version/create', [OfficeTemplatesController::class, 'createVersion'], ['auth', 'permission:office_template.manage', 'csrf']);
+$router->post('/office-templates/generate', [OfficeTemplatesController::class, 'generate'], ['auth', 'permission:office_template.manage', 'csrf']);
+$router->get('/office-documents/show', [OfficeTemplatesController::class, 'showDocument'], ['auth', 'permission:office_template.view']);
+$router->get('/office-documents/print', [OfficeTemplatesController::class, 'printDocument'], ['auth', 'permission:office_template.view']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);
