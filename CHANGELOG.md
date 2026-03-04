@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-04 — Fase 2.1 concluída (Custos previstos + versionamento)
+- Criada migration `007_phase2_cost_plans.sql` com:
+  - `cost_plans` (versionamento por pessoa, indicador de versão ativa)
+  - `cost_plan_items` (itens de custo por versão)
+- Implementado `CostPlanRepository` para:
+  - consulta da versão ativa e da última versão
+  - histórico de versões com totais agregados (mensal e anualizado)
+  - criação de versão, desativação da versão ativa e clonagem de itens
+  - inclusão de itens por versão
+- Implementado `CostPlanService` com:
+  - `profileData` para alimentar o Perfil 360
+  - criação de nova versão com clonagem opcional
+  - inclusão de item com criação automática de versão inicial quando necessário
+  - validações de tipo/valor/vigência
+  - execução transacional para manter consistência entre plano, itens, auditoria e eventos
+- `PeopleController` e rotas atualizados com:
+  - `POST /people/costs/version/create`
+  - `POST /people/costs/item/store`
+- Perfil 360 atualizado na seção de custos com:
+  - KPIs de total mensal equivalente e anualizado
+  - comparação entre versão ativa e anterior
+  - formulário para criar nova versão
+  - formulário para adicionar item
+  - tabela de itens da versão ativa
+  - histórico de versões
+- Checklist da etapa adicionado em `tests/checklist-etapa-2.1.md`
+
 ## 2026-03-04 — Fase 1.5 concluída (Dossiê documental)
 - Criada migration `006_phase1_documents_dossier.sql` com tabela `documents`
 - Implementado `DocumentRepository` e `DocumentService` para:
@@ -27,6 +54,7 @@
 - `docs/04-deploy.md` reescrito para deploy via bash no servidor
 - `scripts/deploy.sh` reescrito para fluxo idempotente no servidor atual
 - Adicionados `scripts/healthcheck.sh` e `scripts/rollback.sh`
+- Adicionados `scripts/ftp-upload.sh` e `.vscode/tasks.json` para upload FTP via Visual Studio Code
 - `serverconfig.md` da raiz convertido para arquivo deprecado com ponteiro
 - Conteudos legados em `_ignore/docs` removidos para evitar duplicidade e riscos
 - `.env.example` simplificado e padronizado com placeholders seguros

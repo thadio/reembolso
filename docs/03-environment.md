@@ -34,6 +34,19 @@ Arquivo de exemplo: `.env.example`
 - `DEPLOY_RESTART_COMMAND` (ex.: restart de PHP-FPM/Apache quando aplicavel)
 - `DEPLOY_HEALTH_PATH` (default: `/health`)
 
+### Opcionais para upload FTP
+- `FTP_HOST`
+- `FTP_PORT`
+- `FTP_USER`
+- `FTP_PASS`
+- `FTP_REMOTE_ROOT`
+- `FTP_IGNORE_FILE` (default `.ftpignore`)
+- `FTP_DELETE` (`0` ou `1`)
+- `FTP_SSL_ALLOW` (`0` ou `1`)
+- `FTP_SSL_FORCE` (`0` ou `1`)
+- `FTP_SSL_VERIFY` (`0` ou `1`)
+- `FTP_PARALLEL` (default `2`)
+
 ## Requisitos do servidor
 - Apache 2.4+
 - PHP 8.1+

@@ -32,3 +32,16 @@ chmod 775 storage storage/logs storage/uploads
 ## 5) Deploy sobe, mas rota principal falha
 - Confirmar DocumentRoot para `public/`
 - Se DocumentRoot estiver na raiz do projeto, garantir `.htaccess` com roteamento para `public/`
+
+## 6) Upload FTP falha no VS Code
+Checklist:
+- Validar `FTP_HOST`, `FTP_PORT`, `FTP_USER`, `FTP_PASS`
+- Validar `FTP_REMOTE_ROOT` com caminho remoto correto
+- Executar primeiro em modo simulacao:
+```bash
+./scripts/ftp-upload.sh --dry-run
+```
+- Se houver erro de certificado FTPS, ajustar:
+  - `FTP_SSL_ALLOW`
+  - `FTP_SSL_FORCE`
+  - `FTP_SSL_VERIFY`

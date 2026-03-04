@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "FTP Upload: Dry Run",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/ftp-upload.sh",
+      "args": [
+        "--dry-run"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "FTP Upload: Push",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/ftp-upload.sh",
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "FTP Upload: Push + Delete",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/ftp-upload.sh",
+      "args": [
+        "--delete"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -6,9 +6,11 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\CostPlanRepository;
 use App\Repositories\DocumentRepository;
 use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
+use App\Services\CostPlanService;
 use App\Services\DocumentService;
 use App\Services\PipelineService;
 use App\Services\PeopleService;
@@ -131,12 +133,14 @@ final class PeopleController extends Controller
         $person = $this->service()->find($id) ?? $person;
         $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
         $documents = $this->documentService()->profileData($id, $documentsPage, 8);
+        $costs = $this->costService()->profileData($id);
 
         $this->view('people/show', [
             'title' => 'Perfil 360',
             'person' => $person,
             'pipeline' => $pipeline,
             'documents' => $documents,
+            'costs' => $costs,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $this->app->auth()->hasPermission('people.cpf.full'),
         ]);
@@ -450,6 +454,76 @@ final class PeopleController extends Controller
         exit;
     }
 
+    public function createCostVersion(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa inválida para versionamento de custos.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->costService()->createVersion(
+            personId: $personId,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function storeCostItem(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa inválida para custos.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->costService()->addItem(
+            personId: $personId,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
     /** @return array<string, mixed> */
     private function emptyPerson(): array
     {
@@ -495,6 +569,15 @@ final class PeopleController extends Controller
             $this->app->audit(),
             $this->app->events(),
             $this->app->config()
+        );
+    }
+
+    private function costService(): CostPlanService
+    {
+        return new CostPlanService(
+            new CostPlanRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
         );
     }
 }

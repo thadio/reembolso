@@ -1,0 +1,40 @@
+# Segredos e arquivos locais de ambiente
+.env
+.env.*
+
+# Controle de versao/metadados locais
+.git/
+.git/*
+.gitignore
+.ftpignore
+
+# Arquivos de sistema/editor/temporarios
+.DS_Store
+*/.DS_Store
+*.swp
+*.swo
+*.tmp
+*.temp
+*.log
+*~
+
+# Pastas locais que nao devem subir
+_ignore/
+_ignore/*
+docs/
+docs/*
+storage/logs/
+storage/logs/*
+uploads/
+uploads/*
+
+# Arquivos de apoio/documentacao
+*.md
+BUSCA_ID.md
+db_image_fields.md
+inventory_fs_before.md
+inventory_fs_after.md
+
+# Scripts operacionais locais (nao precisam no servidor web)
+scripts/run_full_ftp_migration.sh
+scripts/deploy_ssh_sync.sh

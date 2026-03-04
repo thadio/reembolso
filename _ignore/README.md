@@ -1,4 +1,4 @@
 # _ignore
 
-Conteudos legados de documentacao foram removidos deste diretorio.
-Use apenas a documentacao canonica em `/docs`.
+Diretorio reservado para itens nao canonicos.
+A documentacao oficial esta em `/docs`.

@@ -1,0 +1,223 @@
+# =============================================================================
+# .htaccess — app.thadio.com
+# Hostgator cPanel / Apache compartilhado
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. ENGINE E OPÇÕES BÁSICAS
+# -----------------------------------------------------------------------------
+Options -Indexes -MultiViews
+FileETag None
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+</IfModule>
+
+
+# -----------------------------------------------------------------------------
+# 2. FORÇAR HTTPS
+# -----------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+    RewriteCond %{HTTPS} off
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+
+# -----------------------------------------------------------------------------
+# 3. FORÇAR DOMÍNIO CANÔNICO (sem www)
+# -----------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+    RewriteCond %{HTTP_HOST} ^www\.app\.thadio\.com$ [NC]
+    RewriteRule ^ https://app.thadio.com%{REQUEST_URI} [R=301,L]
+</IfModule>
+
+
+# -----------------------------------------------------------------------------
+# 4. BLOQUEAR ACESSO DIRETO A ARQUIVOS SENSÍVEIS
+# -----------------------------------------------------------------------------
+
+# .env — nunca expor ao público
+<Files ".env">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# bootstrap.php, nav.php — inclusões internas, não ponto de entrada
+<FilesMatch "^(bootstrap|nav)\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear qualquer arquivo .log, .sql, .json, .jsonl, .csv, .sh, .py
+<FilesMatch "\.(log|sql|json|jsonl|csv|sh|py|bak|swp|orig)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear arquivos ocultos (começam com ponto), exceto .htaccess
+<FilesMatch "^\.(?!htaccess)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear acesso direto à pasta app/ (Controllers, Models, etc.)
+<IfModule mod_rewrite.c>
+    RewriteRule ^app/ - [F,L]
+</IfModule>
+
+# Bloquear acesso direto à pasta vendor/
+<IfModule mod_rewrite.c>
+    RewriteRule ^vendor/ - [F,L]
+</IfModule>
+
+
+# -----------------------------------------------------------------------------
+# 5. PROTEÇÃO DA PASTA UPLOADS (somente imagens e PDFs)
+# -----------------------------------------------------------------------------
+<IfModule mod_rewrite.c>
+    # Bloqueia qualquer arquivo que não seja imagem ou PDF dentro de uploads/
+    RewriteCond %{REQUEST_URI} ^/uploads/
+    RewriteRule !\.(jpg|jpeg|png|gif|webp|pdf|ico)$ - [F,L]
+</IfModule>
+
+# Garante que nenhum PHP seja executado dentro de uploads/
+<IfModule mod_php.c>
+    <Directory "uploads">
+        php_flag engine off
+    </Directory>
+</IfModule>
+<FilesMatch "\.php$">
+    <If "%{REQUEST_URI} =~ m|^/uploads/|">
+        Order allow,deny
+        Deny from all
+    </If>
+</FilesMatch>
+
+
+# -----------------------------------------------------------------------------
+# 6. CABEÇALHOS DE SEGURANÇA HTTP
+# -----------------------------------------------------------------------------
+<IfModule mod_headers.c>
+    # Evita clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # Evita sniffing de MIME type
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Força HTTPS por 1 ano (HSTS)
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Proteção XSS básica para browsers antigos
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Remove assinatura do servidor
+    Header unset Server
+    Header unset X-Powered-By
+</IfModule>
+
+
+# -----------------------------------------------------------------------------
+# 7. CACHE DE ASSETS ESTÁTICOS
+# -----------------------------------------------------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+
+    # CSS e JS — 1 mês (versionados com ?v= no código)
+    ExpiresByType text/css                  "access plus 1 month"
+    ExpiresByType application/javascript    "access plus 1 month"
+    ExpiresByType text/javascript           "access plus 1 month"
+
+    # Imagens — 6 meses
+    ExpiresByType image/jpeg                "access plus 6 months"
+    ExpiresByType image/png                 "access plus 6 months"
+    ExpiresByType image/gif                 "access plus 6 months"
+    ExpiresByType image/webp                "access plus 6 months"
+    ExpiresByType image/svg+xml             "access plus 6 months"
+    ExpiresByType image/x-icon              "access plus 1 year"
+
+    # Fontes
+    ExpiresByType font/woff                 "access plus 1 year"
+    ExpiresByType font/woff2                "access plus 1 year"
+    ExpiresByType application/font-woff     "access plus 1 year"
+    ExpiresByType application/font-woff2    "access plus 1 year"
+</IfModule>
+
+<IfModule mod_headers.c>
+    # Remove ETag (já desabilitado acima, dupla garantia)
+    Header unset ETag
+
+    # Cache-Control para assets estáticos
+    <FilesMatch "\.(css|js|jpg|jpeg|png|gif|webp|svg|ico|woff|woff2)$">
+        Header set Cache-Control "public, max-age=2592000, immutable"
+    </FilesMatch>
+
+    # PHP nunca deve ser cacheado
+    <FilesMatch "\.php$">
+        Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header set Pragma "no-cache"
+    </FilesMatch>
+</IfModule>
+
+
+# -----------------------------------------------------------------------------
+# 8. COMPRESSÃO GZIP
+# -----------------------------------------------------------------------------
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+    AddOutputFilterByType DEFLATE application/font-woff
+    AddOutputFilterByType DEFLATE application/font-woff2
+
+    # Não comprime o que já está comprimido
+    SetEnvIfNoCase Request_URI \.(gif|jpe?g|png|webp|ico|woff2?)$ no-gzip
+</IfModule>
+
+
+# -----------------------------------------------------------------------------
+# 9. PÁGINAS DE ERRO CUSTOMIZADAS
+# -----------------------------------------------------------------------------
+ErrorDocument 403 /index.php
+ErrorDocument 404 /index.php
+ErrorDocument 500 /index.php
+
+
+# -----------------------------------------------------------------------------
+# 10. CONFIGURAÇÕES PHP (via php.ini via .htaccess no cPanel/suPHP)
+# -----------------------------------------------------------------------------
+<IfModule mod_php.c>
+    # Esconde versão do PHP nos headers
+    php_flag expose_php Off
+
+    # Sessão segura
+    php_flag session.cookie_httponly On
+    php_flag session.cookie_secure On
+    php_value session.cookie_samesite "Strict"
+    php_flag session.use_strict_mode On
+
+    # Desabilita funções perigosas
+    php_value disable_functions "exec,passthru,shell_exec,system,proc_open,popen,curl_multi_exec,parse_ini_file,show_source"
+
+    # Tamanho máximo de upload (ajuste conforme necessidade)
+    php_value upload_max_filesize 20M
+    php_value post_max_size 22M
+    php_value memory_limit 256M
+    php_value max_execution_time 60
+
+    # Timezone
+    php_value date.timezone "America/Sao_Paulo"
+
+    # Desativa display de erros em produção
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag log_errors On
+</IfModule>

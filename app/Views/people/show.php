@@ -35,6 +35,27 @@ $documents = $documents ?? [
 $documentItems = $documents['items'] ?? [];
 $documentsPagination = $documents['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $documentTypes = $documents['document_types'] ?? [];
+$costs = $costs ?? [
+    'active_plan' => null,
+    'items' => [],
+    'summary' => [
+        'monthly_total' => 0,
+        'annualized_total' => 0,
+        'items_count' => 0,
+    ],
+    'versions' => [],
+    'previous_plan' => null,
+    'comparison' => [
+        'monthly_delta' => null,
+        'annualized_delta' => null,
+        'previous_version_number' => null,
+    ],
+];
+$activeCostPlan = $costs['active_plan'] ?? null;
+$costItems = $costs['items'] ?? [];
+$costSummary = $costs['summary'] ?? ['monthly_total' => 0, 'annualized_total' => 0, 'items_count' => 0];
+$costVersions = $costs['versions'] ?? [];
+$costComparison = $costs['comparison'] ?? ['monthly_delta' => null, 'annualized_delta' => null, 'previous_version_number' => null];
 $personId = (int) ($person['id'] ?? 0);
 
 $statusLabel = static function (string $value): string {
@@ -114,6 +135,21 @@ $formatBytes = static function (int $size): string {
     }
 
     return (string) $size . ' B';
+};
+
+$formatMoney = static function (float|int|string|null $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+
+    return 'R$ ' . number_format($numeric, 2, ',', '.');
+};
+
+$costTypeLabel = static function (string $type): string {
+    return match ($type) {
+        'mensal' => 'Mensal',
+        'anual' => 'Anual',
+        'unico' => 'Único',
+        default => ucfirst($type),
+    };
 };
 
 $buildTimelinePageUrl = static function (int $targetPage) use ($personId, $documentsPagination): string {
@@ -470,7 +506,181 @@ $buildDocumentsPageUrl = static function (int $targetPage) use ($personId, $time
   <?php endif; ?>
 </div>
 
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Custos previstos</h3>
+      <p class="muted">Planejamento financeiro por versão com histórico e comparação.</p>
+    </div>
+    <div class="actions-inline">
+      <?php if ($activeCostPlan !== null): ?>
+        <span class="badge badge-info">Versão ativa: V<?= e((string) ((int) ($activeCostPlan['version_number'] ?? 0))) ?></span>
+      <?php else: ?>
+        <span class="badge badge-neutral">Sem versão ativa</span>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <div class="grid-kpi costs-kpi">
+    <article class="card kpi-card">
+      <p class="kpi-label">Total mensal equivalente</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($costSummary['monthly_total'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Total anualizado</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($costSummary['annualized_total'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Itens na versão ativa</p>
+      <p class="kpi-value"><?= e((string) ((int) ($costSummary['items_count'] ?? 0))) ?></p>
+    </article>
+  </div>
+
+  <?php if (($costComparison['previous_version_number'] ?? null) !== null): ?>
+    <p class="muted">
+      Comparação com V<?= e((string) ((int) $costComparison['previous_version_number'])) ?>:
+      mensal <?= e($formatMoney((float) ($costComparison['monthly_delta'] ?? 0))) ?> |
+      anualizado <?= e($formatMoney((float) ($costComparison['annualized_delta'] ?? 0))) ?>
+    </p>
+  <?php endif; ?>
+
+  <?php if (($canManage ?? false) === true): ?>
+    <form method="post" action="<?= e(url('/people/costs/version/create')) ?>" class="cost-version-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+      <div class="form-grid">
+        <div class="field">
+          <label for="cost_version_label">Rótulo da nova versão</label>
+          <input id="cost_version_label" name="label" type="text" maxlength="190" placeholder="Ex.: Revisão abril/2026">
+        </div>
+        <div class="field">
+          <label for="cost_clone_current">Clonar itens atuais</label>
+          <select id="cost_clone_current" name="clone_current">
+            <option value="1">Sim</option>
+            <option value="0">Não</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-outline">Criar nova versão</button>
+      </div>
+    </form>
+
+    <form method="post" action="<?= e(url('/people/costs/item/store')) ?>" class="cost-item-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+      <div class="form-grid">
+        <div class="field">
+          <label for="cost_item_name">Item de custo</label>
+          <input id="cost_item_name" name="item_name" type="text" minlength="3" maxlength="190" required placeholder="Ex.: Auxílio transporte">
+        </div>
+        <div class="field">
+          <label for="cost_type">Tipo</label>
+          <select id="cost_type" name="cost_type">
+            <option value="mensal">Mensal</option>
+            <option value="anual">Anual</option>
+            <option value="unico">Único</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cost_amount">Valor</label>
+          <input id="cost_amount" name="amount" type="number" min="0" step="0.01" required>
+        </div>
+        <div class="field">
+          <label for="cost_start_date">Início da vigência</label>
+          <input id="cost_start_date" name="start_date" type="date">
+        </div>
+        <div class="field">
+          <label for="cost_end_date">Fim da vigência</label>
+          <input id="cost_end_date" name="end_date" type="date">
+        </div>
+        <div class="field field-wide">
+          <label for="cost_notes">Observações</label>
+          <textarea id="cost_notes" name="notes" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Adicionar item</button>
+      </div>
+    </form>
+  <?php endif; ?>
+
+  <?php if ($costItems === []): ?>
+    <p class="muted">Nenhum item de custo registrado na versão ativa.</p>
+  <?php else: ?>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Tipo</th>
+            <th>Valor informado</th>
+            <th>Início</th>
+            <th>Fim</th>
+            <th>Responsável</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($costItems as $item): ?>
+            <tr>
+              <td>
+                <strong><?= e((string) ($item['item_name'] ?? '-')) ?></strong>
+                <?php if (trim((string) ($item['notes'] ?? '')) !== ''): ?>
+                  <div class="muted"><?= e((string) $item['notes']) ?></div>
+                <?php endif; ?>
+              </td>
+              <td><?= e($costTypeLabel((string) ($item['cost_type'] ?? ''))) ?></td>
+              <td><?= e($formatMoney((float) ($item['amount'] ?? 0))) ?></td>
+              <td><?= e($formatDate((string) ($item['start_date'] ?? ''))) ?></td>
+              <td><?= e($formatDate((string) ($item['end_date'] ?? ''))) ?></td>
+              <td><?= e((string) ($item['created_by_name'] ?? 'Sistema')) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($costVersions !== []): ?>
+    <div class="cost-versions">
+      <h4>Histórico de versões</h4>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Versão</th>
+              <th>Rótulo</th>
+              <th>Itens</th>
+              <th>Total mensal</th>
+              <th>Total anualizado</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($costVersions as $version): ?>
+              <tr>
+                <td>V<?= e((string) ((int) ($version['version_number'] ?? 0))) ?></td>
+                <td><?= e((string) ($version['label'] ?? '-')) ?></td>
+                <td><?= e((string) ((int) ($version['items_count'] ?? 0))) ?></td>
+                <td><?= e($formatMoney((float) ($version['monthly_total'] ?? 0))) ?></td>
+                <td><?= e($formatMoney((float) ($version['annualized_total'] ?? 0))) ?></td>
+                <td>
+                  <?php if ((int) ($version['is_active'] ?? 0) === 1): ?>
+                    <span class="badge badge-info">Ativa</span>
+                  <?php else: ?>
+                    <span class="badge badge-neutral">Histórica</span>
+                  <?php endif; ?>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  <?php endif; ?>
+</div>
+
 <div class="card card-placeholder">
-  <h3>Custos e Auditoria</h3>
+  <h3>Auditoria</h3>
   <p class="muted">Aba será expandida nas próximas fases.</p>
 </div>

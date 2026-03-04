@@ -63,9 +63,38 @@ Nota:
 - `--apply` com pull habilitado exige working tree limpa no servidor.
 - Se houver alteracoes locais intencionais no servidor, use `--skip-pull`.
 
-## 6) Flags importantes do script
+## 6) Upload FTP via Visual Studio Code
+Quando o fluxo for upload por FTP (sem `git pull` no servidor), use o script:
+
+```bash
+./scripts/ftp-upload.sh --dry-run
+./scripts/ftp-upload.sh
+```
+
+Tasks prontas no VS Code:
+- `FTP Upload: Dry Run`
+- `FTP Upload: Push`
+- `FTP Upload: Push + Delete`
+
+Arquivo de tarefas:
+- `.vscode/tasks.json`
+
+Variaveis necessarias no `.env`:
+- `FTP_HOST`
+- `FTP_PORT`
+- `FTP_USER`
+- `FTP_PASS`
+- `FTP_REMOTE_ROOT`
+
+Variaveis de TLS/SSL (opcionais):
+- `FTP_SSL_ALLOW` (default `0`)
+- `FTP_SSL_FORCE` (default `0`)
+- `FTP_SSL_VERIFY` (default `1`)
+
+## 7) Flags importantes dos scripts
 ```bash
 ./scripts/deploy.sh --help
+./scripts/ftp-upload.sh --help
 ```
 
 Mais usadas:
@@ -75,9 +104,9 @@ Mais usadas:
 - `--seed`: roda apenas seed
 - `--skip-pull`: nao executa `git pull`
 - `--skip-healthcheck`: nao executa health-check ao final
-- `--dry-run`: simula comandos
+- `--dry-run`: simula comandos (deploy e FTP)
 
-## 7) Rollback
+## 8) Rollback
 Rollback de codigo:
 ```bash
 cd /var/www/reembolso
@@ -94,9 +123,11 @@ Depois do rollback:
 ./scripts/healthcheck.sh
 ```
 
-## 8) Troubleshooting rapido
+## 9) Troubleshooting rapido
 - Erro de conexao DB: revisar `DB_*` em `.env`
 - Health degradado por storage: revisar permissoes de `storage/logs` e `storage/uploads`
 - `git pull` bloqueado: verificar branch, conflitos locais e permissao no repositorio
+- Erro FTP de autenticacao: validar `FTP_HOST`, `FTP_PORT`, `FTP_USER`, `FTP_PASS`
+- Erro FTP de caminho: validar `FTP_REMOTE_ROOT` (diretorio remoto existente)
 
 Detalhamento completo em `docs/06-troubleshooting.md`.
