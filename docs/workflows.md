@@ -1,4 +1,4 @@
-# Workflows (Fases 0, 1.1 e 1.2)
+# Workflows (Fases 0, 1.1, 1.2 e 1.3)
 
 ## Fluxo de acesso
 1. Usuário acessa `/login`.
@@ -25,6 +25,18 @@
 6. Atualiza cadastro em `/people/edit?id={id}`.
 7. Remove logicamente em `/people/delete`.
 8. Sistema registra auditoria e evento para cada alteração.
+
+## Workflow de Movimentação e Pipeline (Etapa 1.3)
+1. Ao criar pessoa, sistema inicializa assignment com status `interessado`.
+2. No Perfil 360, usuário com `people.manage` usa botão de próxima ação.
+3. Sistema avança status conforme ordem configurável em `assignment_statuses`.
+4. A cada avanço:
+   - atualiza status em `assignments`
+   - sincroniza status em `people`
+   - grava `timeline_events`
+   - grava `audit_log`
+   - grava `system_events`
+5. No status final (`ativo`), registra data efetiva de início.
 
 ## Health check
 - `GET /health` verifica:

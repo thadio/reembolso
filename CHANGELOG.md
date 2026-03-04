@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-03-04 — Fase 1.3 concluída (Movimentação + Pipeline)
+- Criada migration `004_phase1_pipeline_assignments.sql` com:
+  - `assignment_statuses`
+  - `assignments`
+  - `timeline_events`
+- Implementado `PipelineRepository` e `PipelineService`
+- Pipeline de status configurável com sequência padrão:
+  - Interessado → Triagem → Selecionado → Ofício órgão → Custos recebidos → CDO → MGI → DOU → Ativo
+- Ao criar pessoa, assignment inicial é criado automaticamente
+- Endpoint de avanço de pipeline implementado em `POST /people/pipeline/advance`
+- Ao avançar status, sistema registra automaticamente:
+  - `audit_log`
+  - `system_events`
+  - `timeline_events`
+- Perfil 360 atualizado com:
+  - trilha visual do pipeline
+  - botão de próxima ação guiada
+  - timeline cronológica
+- Checklist de testes adicionado em `tests/checklist-etapa-1.3.md`
+
 ## 2026-03-04 — Fase 1.2 concluída (Pessoas)
 - Criada migration `003_phase1_people.sql` com tabela `people` e vínculo obrigatório a `organs`
 - Implementado `PeopleRepository` com filtros (status/modalidade/órgão/tags), busca, ordenação e paginação

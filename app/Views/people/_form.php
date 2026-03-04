@@ -3,16 +3,6 @@
 declare(strict_types=1);
 
 $person = $person ?? [];
-$statusLabel = static function (string $value): string {
-    return match ($value) {
-        'interessado' => 'Interessado',
-        'em_triagem' => 'Em triagem',
-        'aprovado_selecao' => 'Aprovado para seleção',
-        'reprovado' => 'Reprovado',
-        'arquivado' => 'Arquivado',
-        default => ucfirst(str_replace('_', ' ', $value)),
-    };
-};
 ?>
 <div class="card">
   <form method="post" action="<?= e($action) ?>" class="form-grid">
@@ -44,16 +34,6 @@ $statusLabel = static function (string $value): string {
     <div class="field">
       <label for="phone">Telefone</label>
       <input id="phone" name="phone" type="text" value="<?= e(old('phone', (string) ($person['phone'] ?? ''))) ?>">
-    </div>
-
-    <div class="field">
-      <label for="status">Status *</label>
-      <?php $selectedStatus = old('status', (string) ($person['status'] ?? 'interessado')); ?>
-      <select id="status" name="status" required>
-        <?php foreach (($statuses ?? []) as $status): ?>
-          <option value="<?= e($status) ?>" <?= $selectedStatus === $status ? 'selected' : '' ?>><?= e($statusLabel($status)) ?></option>
-        <?php endforeach; ?>
-      </select>
     </div>
 
     <div class="field">

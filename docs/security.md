@@ -14,10 +14,16 @@
 - `organs.view`: acesso à lista e detalhe
 - `organs.manage`: criar, editar e excluir
 
-### Pessoas (Fase 1.2)
+### Pessoas (Fases 1.2 e 1.3)
 - `people.view`: acesso à lista e Perfil 360
-- `people.manage`: criar, editar e excluir
+- `people.manage`: criar, editar, excluir e avançar pipeline
 - `people.cpf.full`: visualizar CPF completo (sem essa permissão, CPF aparece mascarado)
+
+## Rastreabilidade
+- Mudanças de status no pipeline registram:
+  - `audit_log`
+  - `system_events`
+  - `timeline_events`
 
 ## Uploads
 - Diretório `storage/uploads/` fora de `public/`

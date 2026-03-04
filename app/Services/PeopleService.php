@@ -10,10 +10,14 @@ final class PeopleService
 {
     private const ALLOWED_STATUS = [
         'interessado',
-        'em_triagem',
-        'aprovado_selecao',
-        'reprovado',
-        'arquivado',
+        'triagem',
+        'selecionado',
+        'oficio_orgao',
+        'custos_recebidos',
+        'cdo',
+        'mgi',
+        'dou',
+        'ativo',
     ];
 
     public function __construct(
@@ -70,6 +74,8 @@ final class PeopleService
                 'data' => $validation['data'],
             ];
         }
+
+        $validation['data']['status'] = 'interessado';
 
         if ($this->people->cpfExists((string) $validation['data']['cpf'])) {
             return [
@@ -143,6 +149,8 @@ final class PeopleService
                 'data' => $validation['data'],
             ];
         }
+
+        $validation['data']['status'] = (string) ($before['status'] ?? 'interessado');
 
         $this->people->update($id, $validation['data']);
 
@@ -221,7 +229,6 @@ final class PeopleService
         $birthDate = $this->normalizeDate($this->clean($input['birth_date'] ?? null));
         $email = $this->clean($input['email'] ?? null);
         $phone = $this->clean($input['phone'] ?? null);
-        $status = $this->clean($input['status'] ?? null) ?? 'interessado';
         $sei = $this->clean($input['sei_process_number'] ?? null);
         $destination = $this->clean($input['mte_destination'] ?? null);
         $tags = $this->normalizeTags($this->clean($input['tags'] ?? null));
@@ -249,10 +256,6 @@ final class PeopleService
             $errors[] = 'E-mail inválido.';
         }
 
-        if (!in_array($status, self::ALLOWED_STATUS, true)) {
-            $errors[] = 'Status inválido.';
-        }
-
         $data = [
             'organ_id' => $organId,
             'desired_modality_id' => $modalityId > 0 ? $modalityId : null,
@@ -261,7 +264,7 @@ final class PeopleService
             'birth_date' => $birthDate,
             'email' => $email,
             'phone' => $phone,
-            'status' => $status,
+            'status' => 'interessado',
             'sei_process_number' => $sei,
             'mte_destination' => $destination,
             'tags' => $tags,

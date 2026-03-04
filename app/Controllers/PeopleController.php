@@ -6,7 +6,9 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
+use App\Services\PipelineService;
 use App\Services\PeopleService;
 
 final class PeopleController extends Controller
@@ -88,6 +90,14 @@ final class PeopleController extends Controller
             $this->redirect('/people/create');
         }
 
+        $this->pipelineService()->ensureAssignment(
+            personId: (int) $result['id'],
+            modalityId: isset($result['data']['desired_modality_id']) ? (int) $result['data']['desired_modality_id'] : null,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
         flash('success', 'Pessoa cadastrada com sucesso.');
         $this->redirect('/people/show?id=' . (int) $result['id']);
     }
@@ -106,9 +116,21 @@ final class PeopleController extends Controller
             $this->redirect('/people');
         }
 
+        $this->pipelineService()->ensureAssignment(
+            personId: $id,
+            modalityId: isset($person['desired_modality_id']) ? (int) $person['desired_modality_id'] : null,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        $person = $this->service()->find($id) ?? $person;
+        $pipeline = $this->pipelineService()->profileData($id);
+
         $this->view('people/show', [
             'title' => 'Perfil 360',
             'person' => $person,
+            'pipeline' => $pipeline,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $this->app->auth()->hasPermission('people.cpf.full'),
         ]);
@@ -161,6 +183,14 @@ final class PeopleController extends Controller
             $this->redirect('/people/edit?id=' . $id);
         }
 
+        $this->pipelineService()->ensureAssignment(
+            personId: $id,
+            modalityId: isset($result['data']['desired_modality_id']) ? (int) $result['data']['desired_modality_id'] : null,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
         flash('success', 'Pessoa atualizada com sucesso.');
         $this->redirect('/people/show?id=' . $id);
     }
@@ -189,6 +219,30 @@ final class PeopleController extends Controller
         $this->redirect('/people');
     }
 
+    public function advancePipeline(Request $request): void
+    {
+        $id = (int) $request->input('id', '0');
+        if ($id <= 0) {
+            flash('error', 'Pessoa inválida.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->pipelineService()->advance(
+            personId: $id,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', $result['message']);
+            $this->redirect('/people/show?id=' . $id);
+        }
+
+        flash('success', $result['message']);
+        $this->redirect('/people/show?id=' . $id);
+    }
+
     /** @return array<string, mixed> */
     private function emptyPerson(): array
     {
@@ -212,6 +266,15 @@ final class PeopleController extends Controller
     {
         return new PeopleService(
             new PeopleRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
+        );
+    }
+
+    private function pipelineService(): PipelineService
+    {
+        return new PipelineService(
+            new PipelineRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
         );

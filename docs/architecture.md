@@ -23,3 +23,21 @@ MVC leve em PHP sem framework, com separação por camadas:
 - PHP 8.1
 - MySQL/Percona 5.7
 - Sem dependência de workers/queues
+
+## Configuração e ambiente
+- `bootstrap.php` carrega `/.env` com `App\Core\Env`.
+- `Config::load()` centraliza leitura de variáveis de ambiente por domínio:
+  - `app`
+  - `db`
+  - `security`
+  - `rate_limit`
+  - `paths`
+  - `seed`
+- O `.env` do servidor é a fonte de verdade de runtime e deploy.
+
+## Deploy e operação
+- Deploy remoto padronizado em `scripts/deploy.sh` (preflight, sync, migrate, seed opcional e health check).
+- Endpoint `GET /health` verifica:
+  - conectividade com banco
+  - escrita em `storage/logs`
+  - escrita em `storage/uploads`

@@ -26,6 +26,7 @@ $router->get('/people/show', [PeopleController::class, 'show'], ['auth', 'permis
 $router->get('/people/edit', [PeopleController::class, 'edit'], ['auth', 'permission:people.manage']);
 $router->post('/people/update', [PeopleController::class, 'update'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/delete', [PeopleController::class, 'destroy'], ['auth', 'permission:people.manage', 'csrf']);
+$router->post('/people/pipeline/advance', [PeopleController::class, 'advancePipeline'], ['auth', 'permission:people.manage', 'csrf']);
 $router->get('/organs', [OrgansController::class, 'index'], ['auth', 'permission:organs.view']);
 $router->get('/organs/create', [OrgansController::class, 'create'], ['auth', 'permission:organs.manage']);
 $router->post('/organs/store', [OrgansController::class, 'store'], ['auth', 'permission:organs.manage', 'csrf']);

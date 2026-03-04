@@ -58,6 +58,18 @@ $modalities = [
     ['name' => 'Requisição', 'description' => 'Requisição administrativa'],
 ];
 
+$assignmentStatuses = [
+    ['code' => 'interessado', 'label' => 'Interessado', 'sort_order' => 1, 'next_action_label' => 'Iniciar triagem', 'event_type' => 'pipeline.triagem'],
+    ['code' => 'triagem', 'label' => 'Triagem', 'sort_order' => 2, 'next_action_label' => 'Registrar seleção', 'event_type' => 'pipeline.selecionado'],
+    ['code' => 'selecionado', 'label' => 'Selecionado', 'sort_order' => 3, 'next_action_label' => 'Gerar ofício ao órgão', 'event_type' => 'pipeline.oficio_orgao'],
+    ['code' => 'oficio_orgao', 'label' => 'Ofício órgão', 'sort_order' => 4, 'next_action_label' => 'Registrar resposta do órgão', 'event_type' => 'pipeline.custos_recebidos'],
+    ['code' => 'custos_recebidos', 'label' => 'Custos recebidos', 'sort_order' => 5, 'next_action_label' => 'Registrar CDO', 'event_type' => 'pipeline.cdo'],
+    ['code' => 'cdo', 'label' => 'CDO', 'sort_order' => 6, 'next_action_label' => 'Registrar envio ao MGI', 'event_type' => 'pipeline.mgi'],
+    ['code' => 'mgi', 'label' => 'MGI', 'sort_order' => 7, 'next_action_label' => 'Registrar publicação no DOU', 'event_type' => 'pipeline.dou'],
+    ['code' => 'dou', 'label' => 'DOU', 'sort_order' => 8, 'next_action_label' => 'Ativar no MTE', 'event_type' => 'pipeline.ativo'],
+    ['code' => 'ativo', 'label' => 'Ativo', 'sort_order' => 9, 'next_action_label' => null, 'event_type' => 'pipeline.ativo'],
+];
+
 $db->beginTransaction();
 
 try {
@@ -126,6 +138,22 @@ try {
     $upsertCatalog('timeline_event_types', $eventTypes);
     $upsertCatalog('modalities', $modalities);
 
+    $upsertAssignmentStatus = $db->prepare(
+        'INSERT INTO assignment_statuses (code, label, sort_order, next_action_label, event_type, is_active, created_at, updated_at)
+         VALUES (:code, :label, :sort_order, :next_action_label, :event_type, 1, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+            label = VALUES(label),
+            sort_order = VALUES(sort_order),
+            next_action_label = VALUES(next_action_label),
+            event_type = VALUES(event_type),
+            is_active = 1,
+            updated_at = NOW()'
+    );
+
+    foreach ($assignmentStatuses as $status) {
+        $upsertAssignmentStatus->execute($status);
+    }
+
     $adminEmail = mb_strtolower((string) $config->get('seed.admin_email', 'admin@reembolso.local'));
     $adminName = (string) $config->get('seed.admin_name', 'Administrador Sistema');
     $adminPassword = (string) $config->get('seed.admin_password', 'ChangeMe123!');
@@ -177,5 +205,5 @@ try {
 }
 
 echo "Seed concluído com sucesso.\n";
-echo "Admin inicial: {$adminEmail}\n";
-echo "Senha inicial (altere após o primeiro login): {$config->get('seed.admin_password', 'ChangeMe123!')}\n";
+echo "Admin inicial configurado via SEED_ADMIN_EMAIL (valor oculto).\n";
+echo "Senha inicial configurada via SEED_ADMIN_PASSWORD (valor oculto). Altere após o primeiro login.\n";

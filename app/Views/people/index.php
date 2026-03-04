@@ -52,10 +52,14 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 $statusLabel = static function (string $value): string {
     return match ($value) {
         'interessado' => 'Interessado',
-        'em_triagem' => 'Em triagem',
-        'aprovado_selecao' => 'Aprovado',
-        'reprovado' => 'Reprovado',
-        'arquivado' => 'Arquivado',
+        'triagem' => 'Triagem',
+        'selecionado' => 'Selecionado',
+        'oficio_orgao' => 'Ofício órgão',
+        'custos_recebidos' => 'Custos recebidos',
+        'cdo' => 'CDO',
+        'mgi' => 'MGI',
+        'dou' => 'DOU',
+        'ativo' => 'Ativo',
         default => ucfirst(str_replace('_', ' ', $value)),
     };
 };
