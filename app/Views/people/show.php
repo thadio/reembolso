@@ -56,6 +56,30 @@ $costItems = $costs['items'] ?? [];
 $costSummary = $costs['summary'] ?? ['monthly_total' => 0, 'annualized_total' => 0, 'items_count' => 0];
 $costVersions = $costs['versions'] ?? [];
 $costComparison = $costs['comparison'] ?? ['monthly_delta' => null, 'annualized_delta' => null, 'previous_version_number' => null];
+$audit = $audit ?? [
+    'items' => [],
+    'pagination' => [
+        'total' => 0,
+        'page' => 1,
+        'per_page' => 10,
+        'pages' => 1,
+    ],
+    'filters' => [
+        'entity' => '',
+        'action' => '',
+        'q' => '',
+        'from_date' => '',
+        'to_date' => '',
+    ],
+    'options' => [
+        'entities' => [],
+        'actions' => [],
+    ],
+];
+$auditItems = $audit['items'] ?? [];
+$auditPagination = $audit['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 10, 'pages' => 1];
+$auditFilters = $audit['filters'] ?? ['entity' => '', 'action' => '', 'q' => '', 'from_date' => '', 'to_date' => ''];
+$auditOptions = $audit['options'] ?? ['entities' => [], 'actions' => []];
 $personId = (int) ($person['id'] ?? 0);
 
 $statusLabel = static function (string $value): string {
@@ -152,17 +176,70 @@ $costTypeLabel = static function (string $type): string {
     };
 };
 
-$buildTimelinePageUrl = static function (int $targetPage) use ($personId, $documentsPagination): string {
-    $documentsPage = max(1, (int) ($documentsPagination['page'] ?? 1));
-
-    return url('/people/show?id=' . $personId . '&timeline_page=' . $targetPage . '&documents_page=' . $documentsPage);
+$auditEntityLabel = static function (string $entity): string {
+    return match ($entity) {
+        'person' => 'Pessoa',
+        'assignment' => 'Movimentação',
+        'timeline_event' => 'Timeline',
+        'document' => 'Documento',
+        'cost_plan' => 'Plano de custos',
+        'cost_plan_item' => 'Item de custo',
+        default => ucfirst(str_replace('_', ' ', $entity)),
+    };
 };
 
-$buildDocumentsPageUrl = static function (int $targetPage) use ($personId, $timelinePagination): string {
+$prettyJson = static function (mixed $value): string {
+    if (!is_string($value) || trim($value) === '') {
+        return '-';
+    }
+
+    $decoded = json_decode($value, true);
+    if (!is_array($decoded)) {
+        return $value;
+    }
+
+    $pretty = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    return is_string($pretty) && trim($pretty) !== '' ? $pretty : '-';
+};
+
+$buildProfileUrl = static function (array $overrides = [], array $remove = []) use ($personId, $timelinePagination, $documentsPagination, $auditPagination, $auditFilters): string {
     $timelinePage = max(1, (int) ($timelinePagination['page'] ?? 1));
+    $documentsPage = max(1, (int) ($documentsPagination['page'] ?? 1));
+    $auditPage = max(1, (int) ($auditPagination['page'] ?? 1));
 
-    return url('/people/show?id=' . $personId . '&timeline_page=' . $timelinePage . '&documents_page=' . $targetPage);
+    $params = [
+        'id' => $personId,
+        'timeline_page' => $timelinePage,
+        'documents_page' => $documentsPage,
+        'audit_page' => $auditPage,
+        'audit_entity' => (string) ($auditFilters['entity'] ?? ''),
+        'audit_action' => (string) ($auditFilters['action'] ?? ''),
+        'audit_q' => (string) ($auditFilters['q'] ?? ''),
+        'audit_from' => (string) ($auditFilters['from_date'] ?? ''),
+        'audit_to' => (string) ($auditFilters['to_date'] ?? ''),
+    ];
+
+    foreach ($overrides as $key => $value) {
+        $params[$key] = $value;
+    }
+
+    foreach ($remove as $key) {
+        unset($params[$key]);
+    }
+
+    foreach ($params as $key => $value) {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            unset($params[$key]);
+        }
+    }
+
+    return url('/people/show?' . http_build_query($params));
 };
+
+$buildTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['timeline_page' => $targetPage]);
+$buildDocumentsPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['documents_page' => $targetPage]);
+$buildAuditPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['audit_page' => $targetPage]);
 ?>
 <div class="card">
   <div class="header-row">
@@ -680,7 +757,139 @@ $buildDocumentsPageUrl = static function (int $targetPage) use ($personId, $time
   <?php endif; ?>
 </div>
 
-<div class="card card-placeholder">
-  <h3>Auditoria</h3>
-  <p class="muted">Aba será expandida nas próximas fases.</p>
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Auditoria</h3>
+      <p class="muted">Histórico de alterações e ações relacionadas a esta pessoa.</p>
+    </div>
+  </div>
+
+  <?php if (($canViewAudit ?? false) !== true): ?>
+    <p class="muted">Você não possui permissão para visualizar a trilha de auditoria.</p>
+  <?php else: ?>
+    <form method="get" action="<?= e(url('/people/show')) ?>" class="audit-filters">
+      <input type="hidden" name="id" value="<?= e((string) $personId) ?>">
+      <input type="hidden" name="timeline_page" value="<?= e((string) ((int) ($timelinePagination['page'] ?? 1))) ?>">
+      <input type="hidden" name="documents_page" value="<?= e((string) ((int) ($documentsPagination['page'] ?? 1))) ?>">
+      <input type="hidden" name="audit_page" value="1">
+      <div class="form-grid">
+        <div class="field">
+          <label for="audit_q">Busca</label>
+          <input id="audit_q" name="audit_q" type="text" value="<?= e((string) ($auditFilters['q'] ?? '')) ?>" placeholder="Entidade, ação ou usuário">
+        </div>
+        <div class="field">
+          <label for="audit_entity">Entidade</label>
+          <select id="audit_entity" name="audit_entity">
+            <option value="">Todas</option>
+            <?php foreach ((array) ($auditOptions['entities'] ?? []) as $entityOption): ?>
+              <?php $entityOption = (string) $entityOption; ?>
+              <option value="<?= e($entityOption) ?>" <?= $entityOption === (string) ($auditFilters['entity'] ?? '') ? 'selected' : '' ?>>
+                <?= e($auditEntityLabel($entityOption)) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="audit_action">Ação</label>
+          <select id="audit_action" name="audit_action">
+            <option value="">Todas</option>
+            <?php foreach ((array) ($auditOptions['actions'] ?? []) as $actionOption): ?>
+              <?php $actionOption = (string) $actionOption; ?>
+              <option value="<?= e($actionOption) ?>" <?= $actionOption === (string) ($auditFilters['action'] ?? '') ? 'selected' : '' ?>>
+                <?= e($actionOption) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="audit_from">De</label>
+          <input id="audit_from" name="audit_from" type="date" value="<?= e((string) ($auditFilters['from_date'] ?? '')) ?>">
+        </div>
+        <div class="field">
+          <label for="audit_to">Até</label>
+          <input id="audit_to" name="audit_to" type="date" value="<?= e((string) ($auditFilters['to_date'] ?? '')) ?>">
+        </div>
+      </div>
+      <div class="form-actions">
+        <a class="btn btn-outline" href="<?= e($buildProfileUrl(['audit_page' => 1], ['audit_entity', 'audit_action', 'audit_q', 'audit_from', 'audit_to'])) ?>">Limpar</a>
+        <button type="submit" class="btn btn-primary">Filtrar</button>
+      </div>
+    </form>
+
+    <?php if ($auditItems === []): ?>
+      <p class="muted">Nenhum registro de auditoria encontrado para os filtros informados.</p>
+    <?php else: ?>
+      <div class="audit-list">
+        <?php foreach ($auditItems as $entry): ?>
+          <?php
+            $entity = (string) ($entry['entity'] ?? '');
+            $entityId = isset($entry['entity_id']) ? (int) $entry['entity_id'] : 0;
+            $beforeData = $prettyJson($entry['before_data'] ?? null);
+            $afterData = $prettyJson($entry['after_data'] ?? null);
+            $metadataData = $prettyJson($entry['metadata'] ?? null);
+            $hasDetails = $beforeData !== '-' || $afterData !== '-' || $metadataData !== '-';
+          ?>
+          <article class="audit-item">
+            <div class="audit-item-head">
+              <div class="audit-item-title">
+                <span class="badge badge-neutral"><?= e($auditEntityLabel($entity)) ?></span>
+                <strong><?= e((string) ($entry['action'] ?? '-')) ?></strong>
+                <?php if ($entityId > 0): ?>
+                  <span class="muted">#<?= e((string) $entityId) ?></span>
+                <?php endif; ?>
+              </div>
+              <span class="muted"><?= e($formatDateTime((string) ($entry['created_at'] ?? ''))) ?></span>
+            </div>
+
+            <div class="audit-meta">
+              <span><strong>Usuário:</strong> <?= e((string) ($entry['user_name'] ?? 'Sistema')) ?></span>
+              <span><strong>IP:</strong> <?= e((string) ($entry['ip'] ?? '-')) ?></span>
+            </div>
+
+            <?php if ($hasDetails): ?>
+              <details class="audit-details">
+                <summary>Ver dados</summary>
+                <div class="audit-payload-grid">
+                  <div>
+                    <strong>Antes</strong>
+                    <pre><?= e($beforeData) ?></pre>
+                  </div>
+                  <div>
+                    <strong>Depois</strong>
+                    <pre><?= e($afterData) ?></pre>
+                  </div>
+                  <div class="audit-payload-wide">
+                    <strong>Metadata</strong>
+                    <pre><?= e($metadataData) ?></pre>
+                  </div>
+                </div>
+              </details>
+            <?php endif; ?>
+          </article>
+        <?php endforeach; ?>
+      </div>
+
+      <?php
+        $auditTotal = (int) ($auditPagination['total'] ?? 0);
+        $auditPage = (int) ($auditPagination['page'] ?? 1);
+        $auditPerPage = max(1, (int) ($auditPagination['per_page'] ?? 10));
+        $auditPages = max(1, (int) ($auditPagination['pages'] ?? 1));
+        $auditStart = $auditTotal > 0 ? (($auditPage - 1) * $auditPerPage) + 1 : 0;
+        $auditEnd = min($auditTotal, $auditPage * $auditPerPage);
+      ?>
+      <div class="pagination-row">
+        <span class="muted">Exibindo <?= e((string) $auditStart) ?>-<?= e((string) $auditEnd) ?> de <?= e((string) $auditTotal) ?> registros</span>
+        <div class="pagination-links">
+          <?php if ($auditPage > 1): ?>
+            <a class="btn btn-outline" href="<?= e($buildAuditPageUrl($auditPage - 1)) ?>">Anterior</a>
+          <?php endif; ?>
+          <span class="muted">Página <?= e((string) $auditPage) ?> de <?= e((string) $auditPages) ?></span>
+          <?php if ($auditPage < $auditPages): ?>
+            <a class="btn btn-outline" href="<?= e($buildAuditPageUrl($auditPage + 1)) ?>">Próxima</a>
+          <?php endif; ?>
+        </div>
+      </div>
+    <?php endif; ?>
+  <?php endif; ?>
 </div>

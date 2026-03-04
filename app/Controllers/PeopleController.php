@@ -8,10 +8,12 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\CostPlanRepository;
 use App\Repositories\DocumentRepository;
+use App\Repositories\PersonAuditRepository;
 use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
 use App\Services\CostPlanService;
 use App\Services\DocumentService;
+use App\Services\PersonAuditService;
 use App\Services\PipelineService;
 use App\Services\PeopleService;
 
@@ -111,6 +113,7 @@ final class PeopleController extends Controller
         $id = (int) $request->input('id', '0');
         $timelinePage = max(1, (int) $request->input('timeline_page', '1'));
         $documentsPage = max(1, (int) $request->input('documents_page', '1'));
+        $auditPage = max(1, (int) $request->input('audit_page', '1'));
         if ($id <= 0) {
             flash('error', 'Pessoa inválida.');
             $this->redirect('/people');
@@ -134,6 +137,40 @@ final class PeopleController extends Controller
         $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
         $documents = $this->documentService()->profileData($id, $documentsPage, 8);
         $costs = $this->costService()->profileData($id);
+        $canViewAudit = $this->app->auth()->hasPermission('audit.view');
+
+        $auditFilters = [
+            'entity' => (string) $request->input('audit_entity', ''),
+            'action' => (string) $request->input('audit_action', ''),
+            'q' => (string) $request->input('audit_q', ''),
+            'from_date' => (string) $request->input('audit_from', ''),
+            'to_date' => (string) $request->input('audit_to', ''),
+        ];
+
+        $audit = [
+            'items' => [],
+            'pagination' => [
+                'total' => 0,
+                'page' => 1,
+                'per_page' => 10,
+                'pages' => 1,
+            ],
+            'filters' => [
+                'entity' => '',
+                'action' => '',
+                'q' => '',
+                'from_date' => '',
+                'to_date' => '',
+            ],
+            'options' => [
+                'entities' => [],
+                'actions' => [],
+            ],
+        ];
+
+        if ($canViewAudit) {
+            $audit = $this->auditTrailService()->profileData($id, $auditFilters, $auditPage, 10);
+        }
 
         $this->view('people/show', [
             'title' => 'Perfil 360',
@@ -141,8 +178,10 @@ final class PeopleController extends Controller
             'pipeline' => $pipeline,
             'documents' => $documents,
             'costs' => $costs,
+            'audit' => $audit,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $this->app->auth()->hasPermission('people.cpf.full'),
+            'canViewAudit' => $canViewAudit,
         ]);
     }
 
@@ -578,6 +617,13 @@ final class PeopleController extends Controller
             new CostPlanRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
+        );
+    }
+
+    private function auditTrailService(): PersonAuditService
+    {
+        return new PersonAuditService(
+            new PersonAuditRepository($this->app->db())
         );
     }
 }

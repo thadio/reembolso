@@ -67,6 +67,7 @@ coverage/
 # ----------------
 docs/
 _ignore/
+_recovery/
 
 # Arquivos de backup e pacote
 *.sql
