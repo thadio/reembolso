@@ -8,6 +8,8 @@ $sourceLabel = is_callable($sourceLabel ?? null)
     ? $sourceLabel
     : static fn (string $source): string => ucfirst($source);
 $canManage = (bool) ($canManage ?? false);
+$isReconciliationLocked = (bool) ($isReconciliationLocked ?? false);
+$canEditMirror = $canManage && !$isReconciliationLocked;
 
 $formatDate = static function (?string $value): string {
     if ($value === null || trim($value) === '') {
@@ -73,8 +75,12 @@ $status = (string) ($mirror['status'] ?? '');
     </div>
     <div class="actions-inline">
       <span class="badge <?= e($statusBadgeClass($status)) ?>"><?= e($statusLabel($status)) ?></span>
+      <?php if ($isReconciliationLocked): ?>
+        <span class="badge badge-success">Conciliacao aprovada</span>
+      <?php endif; ?>
       <a class="btn btn-outline" href="<?= e(url('/cost-mirrors')) ?>">Voltar</a>
-      <?php if ($canManage): ?>
+      <a class="btn btn-outline" href="<?= e(url('/cost-mirrors/reconciliation/show?id=' . (int) ($mirror['id'] ?? 0))) ?>">Conciliacao avancada</a>
+      <?php if ($canEditMirror): ?>
         <a class="btn btn-primary" href="<?= e(url('/cost-mirrors/edit?id=' . (int) ($mirror['id'] ?? 0))) ?>">Editar</a>
       <?php endif; ?>
     </div>
@@ -122,7 +128,15 @@ $status = (string) ($mirror['status'] ?? '');
   </article>
 </div>
 
-<?php if ($canManage): ?>
+<?php if ($isReconciliationLocked): ?>
+  <div class="card">
+    <div class="empty-state">
+      <p>Edicao bloqueada porque a conciliacao avancada deste espelho foi aprovada.</p>
+    </div>
+  </div>
+<?php endif; ?>
+
+<?php if ($canEditMirror): ?>
   <div class="card">
     <div class="header-row">
       <div>
@@ -133,7 +147,7 @@ $status = (string) ($mirror['status'] ?? '');
 
     <form method="post" action="<?= e(url('/cost-mirrors/items/store')) ?>" class="form-grid">
       <?= csrf_field() ?>
-      <input type="hidden" name="cost_mirror_id" value="<?= e((string) ($mirror['id'] ?? 0)) ?>">
+      <input type="hidden" name="mirror_id" value="<?= e((string) ($mirror['id'] ?? 0)) ?>">
 
       <div class="field field-wide">
         <label for="item_name">Nome do item *</label>
@@ -181,7 +195,7 @@ $status = (string) ($mirror['status'] ?? '');
 
     <form method="post" action="<?= e(url('/cost-mirrors/items/import-csv')) ?>" enctype="multipart/form-data" class="form-grid">
       <?= csrf_field() ?>
-      <input type="hidden" name="cost_mirror_id" value="<?= e((string) ($mirror['id'] ?? 0)) ?>">
+      <input type="hidden" name="mirror_id" value="<?= e((string) ($mirror['id'] ?? 0)) ?>">
 
       <div class="field field-wide">
         <label for="csv_file">Arquivo CSV *</label>
@@ -242,10 +256,10 @@ $status = (string) ($mirror['status'] ?? '');
                 <div class="muted">por <?= e((string) ($item['created_by_name'] ?? 'N/I')) ?></div>
               </td>
               <td class="actions-cell">
-                <?php if ($canManage): ?>
+                <?php if ($canEditMirror): ?>
                   <form method="post" action="<?= e(url('/cost-mirrors/items/delete')) ?>" onsubmit="return confirm('Remover este item do espelho?');">
                     <?= csrf_field() ?>
-                    <input type="hidden" name="cost_mirror_id" value="<?= e((string) ($mirror['id'] ?? 0)) ?>">
+                    <input type="hidden" name="mirror_id" value="<?= e((string) ($mirror['id'] ?? 0)) ?>">
                     <input type="hidden" name="item_id" value="<?= e((string) ($item['id'] ?? 0)) ?>">
                     <button type="submit" class="btn btn-danger">Remover</button>
                   </form>

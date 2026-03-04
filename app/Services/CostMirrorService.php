@@ -95,6 +95,11 @@ final class CostMirrorService
         };
     }
 
+    public function isLockedForEditing(int $mirrorId): bool
+    {
+        return $this->mirrors->isLockedByReconciliation($mirrorId);
+    }
+
     /**
      * @param array<string, mixed> $input
      * @return array{ok: bool, errors: array<int, string>, data: array<string, mixed>, id?: int}
@@ -164,6 +169,14 @@ final class CostMirrorService
             ];
         }
 
+        if ($this->mirrors->isLockedByReconciliation($id)) {
+            return [
+                'ok' => false,
+                'errors' => ['Espelho bloqueado: conciliacao aprovada impede edicao.'],
+                'data' => [],
+            ];
+        }
+
         $validation = $this->validateMirrorInput($input, $id);
         if ($validation['errors'] !== []) {
             return [
@@ -216,6 +229,10 @@ final class CostMirrorService
     {
         $before = $this->mirrors->findById($id);
         if ($before === null) {
+            return false;
+        }
+
+        if ($this->mirrors->isLockedByReconciliation($id)) {
             return false;
         }
 
@@ -272,6 +289,14 @@ final class CostMirrorService
                 'ok' => false,
                 'message' => 'Espelho nao encontrado.',
                 'errors' => ['Espelho nao encontrado.'],
+            ];
+        }
+
+        if ($this->mirrors->isLockedByReconciliation($mirrorId)) {
+            return [
+                'ok' => false,
+                'message' => 'Espelho bloqueado para edicao.',
+                'errors' => ['Conciliacao aprovada impede inclusao de novos itens.'],
             ];
         }
 
@@ -357,6 +382,14 @@ final class CostMirrorService
                 'ok' => false,
                 'message' => 'Espelho nao encontrado.',
                 'errors' => ['Espelho nao encontrado.'],
+            ];
+        }
+
+        if ($this->mirrors->isLockedByReconciliation($mirrorId)) {
+            return [
+                'ok' => false,
+                'message' => 'Espelho bloqueado para edicao.',
+                'errors' => ['Conciliacao aprovada impede importacao de itens por CSV.'],
             ];
         }
 
@@ -461,6 +494,14 @@ final class CostMirrorService
                 'ok' => false,
                 'message' => 'Espelho nao encontrado.',
                 'errors' => ['Espelho nao encontrado.'],
+            ];
+        }
+
+        if ($this->mirrors->isLockedByReconciliation($mirrorId)) {
+            return [
+                'ok' => false,
+                'message' => 'Espelho bloqueado para edicao.',
+                'errors' => ['Conciliacao aprovada impede remocao de itens.'],
             ];
         }
 

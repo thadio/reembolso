@@ -638,4 +638,20 @@ final class CostMirrorRepository
 
         return $formatted;
     }
+
+    public function isLockedByReconciliation(int $mirrorId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT 1
+             FROM cost_mirror_reconciliations
+             WHERE cost_mirror_id = :cost_mirror_id
+               AND deleted_at IS NULL
+               AND status = "aprovado"
+               AND lock_editing = 1
+             LIMIT 1'
+        );
+        $stmt->execute(['cost_mirror_id' => $mirrorId]);
+
+        return $stmt->fetch() !== false;
+    }
 }

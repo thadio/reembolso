@@ -6,7 +6,9 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\CostMirrorReconciliationRepository;
 use App\Repositories\CostMirrorRepository;
+use App\Services\CostMirrorReconciliationService;
 use App\Services\CostMirrorService;
 
 final class CostMirrorsController extends Controller
@@ -109,6 +111,7 @@ final class CostMirrorsController extends Controller
             'statusOptions' => $this->service()->statusOptions(),
             'invoices' => $this->service()->activeInvoices($organId, $referenceMonth, 600),
             'canManage' => $this->app->auth()->hasPermission('cost_mirror.manage'),
+            'isReconciliationLocked' => $this->reconciliationService()->isMirrorLocked($id),
         ]);
     }
 
@@ -124,6 +127,11 @@ final class CostMirrorsController extends Controller
         if ($mirror === null) {
             flash('error', 'Espelho nao encontrado.');
             $this->redirect('/cost-mirrors');
+        }
+
+        if ($this->service()->isLockedForEditing($id)) {
+            flash('error', 'Espelho bloqueado: conciliacao aprovada impede edicao.');
+            $this->redirect('/cost-mirrors/show?id=' . $id);
         }
 
         $filterOrganId = max(
@@ -177,6 +185,11 @@ final class CostMirrorsController extends Controller
         if ($id <= 0) {
             flash('error', 'Espelho invalido.');
             $this->redirect('/cost-mirrors');
+        }
+
+        if ($this->service()->isLockedForEditing($id)) {
+            flash('error', 'Espelho bloqueado: conciliacao aprovada impede exclusao.');
+            $this->redirect('/cost-mirrors/show?id=' . $id);
         }
 
         $deleted = $this->service()->delete(
@@ -293,6 +306,15 @@ final class CostMirrorsController extends Controller
     {
         return new CostMirrorService(
             new CostMirrorRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
+        );
+    }
+
+    private function reconciliationService(): CostMirrorReconciliationService
+    {
+        return new CostMirrorReconciliationService(
+            new CostMirrorReconciliationRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
         );

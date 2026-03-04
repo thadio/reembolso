@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Controllers\AuthController;
 use App\Controllers\CdosController;
+use App\Controllers\CostMirrorReconciliationController;
 use App\Controllers\CostMirrorsController;
 use App\Controllers\DashboardController;
 use App\Controllers\HealthController;
@@ -54,6 +55,10 @@ $router->post('/cost-mirrors/delete', [CostMirrorsController::class, 'destroy'],
 $router->post('/cost-mirrors/items/store', [CostMirrorsController::class, 'storeItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->post('/cost-mirrors/items/import-csv', [CostMirrorsController::class, 'importCsv'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->post('/cost-mirrors/items/delete', [CostMirrorsController::class, 'destroyItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->get('/cost-mirrors/reconciliation/show', [CostMirrorReconciliationController::class, 'show'], ['auth', 'permission:cost_mirror.view']);
+$router->post('/cost-mirrors/reconciliation/run', [CostMirrorReconciliationController::class, 'run'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->post('/cost-mirrors/reconciliation/justify', [CostMirrorReconciliationController::class, 'justify'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->post('/cost-mirrors/reconciliation/approve', [CostMirrorReconciliationController::class, 'approve'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->get('/office-templates', [OfficeTemplatesController::class, 'index'], ['auth', 'permission:office_template.view']);
 $router->get('/office-templates/create', [OfficeTemplatesController::class, 'create'], ['auth', 'permission:office_template.manage']);
 $router->post('/office-templates/store', [OfficeTemplatesController::class, 'store'], ['auth', 'permission:office_template.manage', 'csrf']);
