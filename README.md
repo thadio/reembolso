@@ -3,10 +3,10 @@
 Aplicacao web em PHP para gestao de movimentacao de forca de trabalho, pipeline de pessoas, timeline e reembolsos.
 
 ## Estado atual
-- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5 e 4.1 (templates de oficio)
+- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1 e 5.4 (MVP de orcamento/capacidade)
 - Stack: PHP 8.1+, MySQL/Percona 5.7+, Apache (shared hosting compativel)
 - Deploy alvo: execucao via bash no servidor
-- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos), conciliacao previsto x real por pessoa/competencia, CDO com vinculo 1..N de pessoas, boletos estruturados por orgao/competencia com baixa parcial/total e comprovante, espelho de custo detalhado por pessoa/competencia (manual + CSV), conciliacao avancada item a item com workflow de aprovacao e bloqueio, templates de oficio versionados com geracao de documento e auditoria filtravel no Perfil 360
+- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos), conciliacao previsto x real por pessoa/competencia, CDO com vinculo 1..N de pessoas, boletos estruturados por orgao/competencia com baixa parcial/total e comprovante, espelho de custo detalhado por pessoa/competencia (manual + CSV), conciliacao avancada item a item com workflow de aprovacao e bloqueio, templates de oficio versionados com geracao de documento e auditoria filtravel no Perfil 360, dashboard orcamentario com simulador de contratacao e cenarios salvos
 
 ## Inicio rapido (local)
 1. Copie `.env.example` para `.env`.
@@ -62,6 +62,11 @@ php -S localhost:8000 -t public
 - `POST /invoices/payments/store`
 - `GET /invoices/payments/proof?id={paymentId}&invoice_id={invoiceId}`
 - `GET /invoices/pdf?id={id}`
+
+## Rotas de Orcamento/Capacidade (resumo)
+- `GET /budget?year={ano}`
+- `POST /budget/simulate`
+- `POST /budget/parameters/upsert`
 
 ## Rotas de Espelhos de Custo (resumo)
 - `GET /cost-mirrors`

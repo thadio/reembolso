@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Controllers\AuthController;
+use App\Controllers\BudgetController;
 use App\Controllers\CdosController;
 use App\Controllers\CostMirrorReconciliationController;
 use App\Controllers\CostMirrorsController;
@@ -26,6 +27,9 @@ $router->post('/logout', [AuthController::class, 'logout'], ['auth', 'csrf']);
 
 $router->get('/', [DashboardController::class, 'index'], ['auth', 'permission:dashboard.view']);
 $router->get('/dashboard', [DashboardController::class, 'index'], ['auth', 'permission:dashboard.view']);
+$router->get('/budget', [BudgetController::class, 'index'], ['auth', 'permission:budget.view']);
+$router->post('/budget/simulate', [BudgetController::class, 'simulate'], ['auth', 'permission:budget.simulate', 'csrf']);
+$router->post('/budget/parameters/upsert', [BudgetController::class, 'upsertParameter'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->get('/cdos', [CdosController::class, 'index'], ['auth', 'permission:cdo.view']);
 $router->get('/cdos/create', [CdosController::class, 'create'], ['auth', 'permission:cdo.manage']);
 $router->post('/cdos/store', [CdosController::class, 'store'], ['auth', 'permission:cdo.manage', 'csrf']);

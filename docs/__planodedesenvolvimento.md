@@ -60,7 +60,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | Fase 2 - Financeiro base | `[x]` | custos, auditoria por pessoa, dashboard, reembolso, conciliacao |
 | Fase 3 - Nucleo financeiro estruturado | `[x]` | 3.1 a 3.5 concluidas (CDO, boletos, espelho, conciliacao e pagamentos) |
 | Fase 4 - Automacao administrativa | `[~]` | 4.1 parcial concluida (catalogo/versionamento/merge/HTML); 4.2 e 4.3 pendentes |
-| Fase 5 - Inteligencia orcamentaria e relatorios | `[ ]` | projecoes, cenarios, relatorios premium, modulo orcamentario |
+| Fase 5 - Inteligencia orcamentaria e relatorios | `[~]` | 5.4 MVP iniciado (dashboard + simulador + cenarios); 5.1/5.2/5.3 pendentes |
 | Fase 6 - Compliance e seguranca avancada | `[ ]` | admin de usuarios via UI, LGPD avancado, hardening |
 | Fase 7 - Operacao, performance e qualidade | `[~]` | base parcial (health/log), sem fechamento operacional completo |
 
@@ -276,12 +276,12 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 5.4 - Modulo Orcamento e Capacidade de Contratacao (novo na v2.1)
 
-- `[ ]` Dashboard orcamentario (total, executado, comprometido, disponivel, projecao)
-- `[ ]` Simulador de contratacao (ano corrente e ano seguinte)
-- `[ ]` Motor de capacidade maxima por saldo e data de entrada
-- `[ ]` Parametrizacao de custo medio por orgao/cargo/setor
-- `[ ]` Planejamento por cenarios salvos (conservador/base/expansao)
-- `[ ]` Alertas de risco orcamentario e deficit projetado
+- `[x]` Dashboard orcamentario (total, executado, comprometido, disponivel, projecao)
+- `[x]` Simulador de contratacao (ano corrente e ano seguinte)
+- `[x]` Motor de capacidade maxima por saldo e data de entrada
+- `[~]` Parametrizacao de custo medio por orgao/cargo/setor (MVP por orgao implementado)
+- `[x]` Planejamento por cenarios salvos (conservador/base/expansao)
+- `[~]` Alertas de risco orcamentario e deficit projetado (indicador de risco em tela; alerta ativo pendente)
 
 ### Fase 6 - Administracao, compliance e seguranca avancada
 
@@ -532,10 +532,10 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 ## 9) Proximo ciclo recomendado (execucao imediata)
 
-1. Abrir **Fase 5.4 MVP (orcamento/capacidade)** com dashboard + simulador.
-2. Avancar **Fase 4.2 (metadados formais de processo)** em paralelo controlado.
-3. Evoluir **Fase 5.1 (projecoes e cenarios)** com base no financeiro consolidado.
-4. Consolidar **Fase 5.3 (relatorios premium)** apos fechamento do MVP orcamentario.
+1. Avancar **Fase 4.2 (metadados formais de processo)** para fechar trilha formal de oficio/DOU/entrada.
+2. Evoluir **Fase 5.1 (projecoes e cenarios)** com cenarios multiparametricos.
+3. Fechar pendencias da **Fase 5.4** (parametrizacao por cargo/setor e alertas ativos).
+4. Consolidar **Fase 5.3 (relatorios premium)** apos estabilizacao do modulo orcamentario.
 
 ---
 

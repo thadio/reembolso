@@ -6,6 +6,8 @@ $isAuthenticated = isset($authUser) && is_array($authUser);
 $path = (string) ($currentPath ?? '');
 $authPermissions = is_array($authUser['permissions'] ?? null) ? $authUser['permissions'] : [];
 $canViewDashboard = in_array('dashboard.view', $authPermissions, true);
+$canViewBudget = in_array('budget.view', $authPermissions, true);
+$canManageBudget = in_array('budget.manage', $authPermissions, true);
 $canViewPeople = in_array('people.view', $authPermissions, true);
 $canManagePeople = in_array('people.manage', $authPermissions, true);
 $canViewOrgans = in_array('organs.view', $authPermissions, true);
@@ -36,6 +38,14 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<circle cx="9" cy="7" r="4"></circle>'
                 . '<path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>'
                 . '<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>';
+            break;
+        case 'budget':
+            $body = '<path d="M3 20h18"></path>'
+                . '<path d="M6 16l4-5 4 3 4-6"></path>'
+                . '<circle cx="6" cy="16" r="1.5"></circle>'
+                . '<circle cx="10" cy="11" r="1.5"></circle>'
+                . '<circle cx="14" cy="14" r="1.5"></circle>'
+                . '<circle cx="18" cy="8" r="1.5"></circle>';
             break;
         case 'organs':
             $body = '<rect x="3" y="3" width="18" height="18" rx="2"></rect>'
@@ -97,6 +107,14 @@ if ($canViewDashboard) {
         'href' => '/dashboard',
         'icon' => 'dashboard',
         'active' => $path === '/dashboard' || $path === '/',
+    ];
+}
+if ($canViewBudget) {
+    $mainMenuItems[] = [
+        'label' => 'Orçamento',
+        'href' => '/budget',
+        'icon' => 'budget',
+        'active' => str_starts_with($path, '/budget'),
     ];
 }
 if ($canViewPeople) {
@@ -171,6 +189,14 @@ if ($canManagePeople) {
         'href' => '/people/create',
         'icon' => 'plus',
         'active' => $path === '/people/create',
+    ];
+}
+if ($canManageBudget) {
+    $quickMenuItems[] = [
+        'label' => 'Simular contratação',
+        'href' => '/budget',
+        'icon' => 'plus',
+        'active' => str_starts_with($path, '/budget'),
     ];
 }
 if ($canManageOrgans) {

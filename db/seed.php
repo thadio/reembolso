@@ -14,6 +14,10 @@ $roles = [
 
 $permissions = [
     ['name' => 'dashboard.view', 'description' => 'Visualizar dashboard'],
+    ['name' => 'budget.view', 'description' => 'Visualizar dashboard orcamentario e capacidade'],
+    ['name' => 'budget.manage', 'description' => 'Gerenciar parametros orcamentarios e ciclo'],
+    ['name' => 'budget.simulate', 'description' => 'Executar simulacoes de contratacao'],
+    ['name' => 'budget.approve', 'description' => 'Aprovar reservas e cenarios orcamentarios'],
     ['name' => 'cdo.view', 'description' => 'Visualizar CDO'],
     ['name' => 'cdo.manage', 'description' => 'Gerenciar CDO'],
     ['name' => 'invoice.view', 'description' => 'Visualizar boletos estruturados'],
@@ -36,8 +40,8 @@ $permissions = [
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
-    'admin' => ['dashboard.view', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view'],
+    'sist_admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
+    'admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view'],
     'user' => ['dashboard.view', 'people.view', 'organs.view'],
 ];
 

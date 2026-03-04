@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-03-04 — Fase 5.4 (MVP) iniciada (Orcamento e capacidade de contratacao)
+- Criada migration `018_phase5_budget_capacity_mvp.sql` com:
+  - `budget_cycles` (orcamento anual, fator anual e status do ciclo)
+  - `org_cost_parameters` (custo medio mensal parametrizado por orgao)
+  - `hiring_scenarios` e `hiring_scenario_items` (historico de simulacoes)
+  - permissoes `budget.view`, `budget.manage`, `budget.simulate` e `budget.approve`
+- Implementado modulo orcamentario:
+  - `BudgetRepository` (snapshot financeiro, parametros por orgao e persistencia de cenarios)
+  - `BudgetService` (dashboard orcamentario, simulador de contratacao e calculo de capacidade)
+  - `BudgetController` com rotas:
+    - `GET /budget`
+    - `POST /budget/simulate`
+    - `POST /budget/parameters/upsert`
+  - view `app/Views/budget/index.php` com:
+    - KPIs de total/executado/comprometido/disponivel
+    - projecao do ano seguinte e saldo projetado
+    - formulario de parametrizacao de custo medio por orgao
+    - simulador de contratacao e historico de cenarios
+- Menu lateral atualizado com acesso a \"Orcamento\" por permissao `budget.view`
+- Seed atualizado para incluir permissoes orcamentarias no papel `sist_admin` e `admin`
+- Checklist da etapa adicionado em `tests/checklist-etapa-5.4-mvp.md`
+
 ## 2026-03-04 — Fase 3.5 concluida (Pagamentos completos por boleto)
 - Criada migration `017_phase3_payments.sql` com:
   - `payments` (baixa financeira por boleto com data, valor e comprovante)
