@@ -15,6 +15,8 @@ $roles = [
 $permissions = [
     ['name' => 'dashboard.view', 'description' => 'Visualizar dashboard'],
     ['name' => 'people.view', 'description' => 'Visualizar pessoas'],
+    ['name' => 'people.manage', 'description' => 'Gerenciar cadastro de pessoas'],
+    ['name' => 'people.cpf.full', 'description' => 'Visualizar CPF completo'],
     ['name' => 'organs.view', 'description' => 'Visualizar órgãos'],
     ['name' => 'organs.manage', 'description' => 'Gerenciar cadastro de órgãos'],
     ['name' => 'audit.view', 'description' => 'Visualizar trilha de auditoria'],
@@ -22,8 +24,8 @@ $permissions = [
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'people.view', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
-    'admin' => ['dashboard.view', 'people.view', 'organs.view', 'organs.manage', 'audit.view'],
+    'sist_admin' => ['dashboard.view', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
+    'admin' => ['dashboard.view', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view'],
     'user' => ['dashboard.view', 'people.view', 'organs.view'],
 ];
 

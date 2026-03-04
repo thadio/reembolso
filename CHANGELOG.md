@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-03-04 — Fase 1.2 concluída (Pessoas)
+- Criada migration `003_phase1_people.sql` com tabela `people` e vínculo obrigatório a `organs`
+- Implementado `PeopleRepository` com filtros (status/modalidade/órgão/tags), busca, ordenação e paginação
+- Implementado `PeopleService` com validações, regras de CPF e auditoria/eventos
+- Implementado CRUD completo de Pessoas:
+  - lista filtrável com painel lateral de resumo
+  - criação
+  - edição
+  - exclusão lógica
+  - Perfil 360 com abas base (Resumo, Timeline, Documentos, Custos, Auditoria)
+- RBAC atualizado com permissões:
+  - `people.manage`
+  - `people.cpf.full`
+- CPF mascarado em listagens para perfis sem permissão de visualização completa
+- Checklist de testes adicionado em `tests/checklist-etapa-1.2.md`
+
 ## 2026-03-04 — Fase 1.1 concluída (Órgãos)
 - Criada migration `002_phase1_organs.sql` com tabela `organs` (soft delete e índices)
 - Implementado `OrganRepository` com busca, ordenação e paginação

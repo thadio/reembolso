@@ -1,4 +1,4 @@
-# Workflows (Fases 0 e 1.1)
+# Workflows (Fases 0, 1.1 e 1.2)
 
 ## Fluxo de acesso
 1. Usuário acessa `/login`.
@@ -15,6 +15,16 @@
 5. Atualiza cadastro em `/organs/edit?id={id}`.
 6. Remove logicamente em `/organs/delete` (soft delete).
 7. Sistema registra auditoria e evento para cada alteração.
+
+## Workflow de Pessoas (Etapa 1.2)
+1. Operador/Admin acessa `Pessoas`.
+2. Filtra por status, modalidade, órgão e tags.
+3. Cria nova pessoa em `/people/create` com vínculo obrigatório ao órgão.
+4. Consulta resumo lateral sem sair da lista.
+5. Abre `Perfil 360` em `/people/show?id={id}`.
+6. Atualiza cadastro em `/people/edit?id={id}`.
+7. Remove logicamente em `/people/delete`.
+8. Sistema registra auditoria e evento para cada alteração.
 
 ## Health check
 - `GET /health` verifica:

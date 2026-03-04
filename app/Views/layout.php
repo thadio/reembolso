@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 $isAuthenticated = isset($authUser) && is_array($authUser);
+$path = (string) ($currentPath ?? '');
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -21,9 +22,9 @@ $isAuthenticated = isset($authUser) && is_array($authUser);
         <strong><?= e($appName ?? 'Reembolso') ?></strong>
       </div>
       <nav class="menu">
-        <a class="menu-item <?= ($currentPath ?? '') === '/dashboard' || ($currentPath ?? '') === '/' ? 'is-active' : '' ?>" href="<?= e(url('/dashboard')) ?>">Dashboard</a>
-        <a class="menu-item <?= ($currentPath ?? '') === '/people' ? 'is-active' : '' ?>" href="<?= e(url('/people')) ?>">Pessoas</a>
-        <a class="menu-item <?= ($currentPath ?? '') === '/organs' ? 'is-active' : '' ?>" href="<?= e(url('/organs')) ?>">Órgãos</a>
+        <a class="menu-item <?= $path === '/dashboard' || $path === '/' ? 'is-active' : '' ?>" href="<?= e(url('/dashboard')) ?>">Dashboard</a>
+        <a class="menu-item <?= str_starts_with($path, '/people') ? 'is-active' : '' ?>" href="<?= e(url('/people')) ?>">Pessoas</a>
+        <a class="menu-item <?= str_starts_with($path, '/organs') ? 'is-active' : '' ?>" href="<?= e(url('/organs')) ?>">Órgãos</a>
       </nav>
       <form method="post" action="<?= e(url('/logout')) ?>" class="logout-form">
         <?= csrf_field() ?>
