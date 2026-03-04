@@ -9,6 +9,10 @@
 - RBAC por permissão (`permission:*` em rotas)
 - Auditoria de login/logout e eventos críticos
 
+## Controle de acesso aplicado na Fase 1.1
+- `organs.view`: acesso à lista e detalhe de órgãos
+- `organs.manage`: criar, editar e excluir órgãos
+
 ## Uploads
 - Diretório `storage/uploads/` fora de `public/`
 - `.htaccess` bloqueando execução de scripts

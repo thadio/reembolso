@@ -16,13 +16,14 @@ $permissions = [
     ['name' => 'dashboard.view', 'description' => 'Visualizar dashboard'],
     ['name' => 'people.view', 'description' => 'Visualizar pessoas'],
     ['name' => 'organs.view', 'description' => 'Visualizar órgãos'],
+    ['name' => 'organs.manage', 'description' => 'Gerenciar cadastro de órgãos'],
     ['name' => 'audit.view', 'description' => 'Visualizar trilha de auditoria'],
     ['name' => 'admin.manage', 'description' => 'Gerenciar usuários e parâmetros'],
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'people.view', 'organs.view', 'audit.view', 'admin.manage'],
-    'admin' => ['dashboard.view', 'people.view', 'organs.view', 'audit.view'],
+    'sist_admin' => ['dashboard.view', 'people.view', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
+    'admin' => ['dashboard.view', 'people.view', 'organs.view', 'organs.manage', 'audit.view'],
     'user' => ['dashboard.view', 'people.view', 'organs.view'],
 ];
 

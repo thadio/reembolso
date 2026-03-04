@@ -3,8 +3,8 @@
 Aplicação web em PHP para gestão de movimentação de força de trabalho, orçamento (CDO) e reembolsos.
 
 ## Status
-- Fase implementada: **Fase 0 (Etapas 0.1 a 0.3)**
-- MVP navegável: login, menu, dashboard, listas vazias de Pessoas e Órgãos
+- Fase implementada: **Fase 0 (Etapas 0.1 a 0.3) + Fase 1.1 (Órgãos)**
+- Módulos navegáveis: login, dashboard, pessoas (vazio), órgãos (CRUD)
 
 ## Requisitos
 - PHP 8.1+
@@ -38,12 +38,18 @@ php -S localhost:8000 -t public
 - `GET /dashboard`
 - `GET /people`
 - `GET /organs`
+- `GET /organs/create`
+- `POST /organs/store`
+- `GET /organs/show?id={id}`
+- `GET /organs/edit?id={id}`
+- `POST /organs/update`
+- `POST /organs/delete`
 
 ## Estrutura
 - `public/`: front controller e assets
 - `app/Controllers`: controladores
 - `app/Core`: bootstrap interno, roteador, sessão, CSRF, auth
-- `app/Services`: auditoria e eventos
+- `app/Services`: regras de negócio, auditoria e eventos
 - `app/Repositories`: acesso a dados
 - `db/migrations`: scripts SQL idempotentes
 - `db/seed.php`: seed RBAC/catálogos/admin

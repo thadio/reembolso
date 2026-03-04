@@ -1,7 +1,28 @@
 .DS_Store
+
+# Environment secrets
 .env
-/vendor
-/storage/logs/*.log
+.env.*
+
+# Dependencies
+vendor/
+node_modules/
+
+# Build artifacts
+public/build/
+dist/
+build/
+
+# Runtime files
+/storage/logs/*
 /storage/uploads/*
 !/storage/uploads/.gitkeep
 !/storage/uploads/.htaccess
+bootstrap/cache/
+cache/
+tmp/
+*.log
+
+# Test artifacts
+coverage/
+/.phpunit.result.cache

@@ -21,3 +21,9 @@ $router->get('/', [DashboardController::class, 'index'], ['auth', 'permission:da
 $router->get('/dashboard', [DashboardController::class, 'index'], ['auth', 'permission:dashboard.view']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/organs', [OrgansController::class, 'index'], ['auth', 'permission:organs.view']);
+$router->get('/organs/create', [OrgansController::class, 'create'], ['auth', 'permission:organs.manage']);
+$router->post('/organs/store', [OrgansController::class, 'store'], ['auth', 'permission:organs.manage', 'csrf']);
+$router->get('/organs/show', [OrgansController::class, 'show'], ['auth', 'permission:organs.view']);
+$router->get('/organs/edit', [OrgansController::class, 'edit'], ['auth', 'permission:organs.manage']);
+$router->post('/organs/update', [OrgansController::class, 'update'], ['auth', 'permission:organs.manage', 'csrf']);
+$router->post('/organs/delete', [OrgansController::class, 'destroy'], ['auth', 'permission:organs.manage', 'csrf']);
