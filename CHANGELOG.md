@@ -1,5 +1,64 @@
 # Changelog
 
+## 2026-03-04 — Fase 5.4 consolidada (parametrizacao por cargo/setor + alertas ativos)
+- Criada migration `022_phase5_budget_param_scope_alerts.sql` com:
+  - escopo `cargo` e `setor` em `org_cost_parameters`
+  - escopo `cargo` e `setor` em `hiring_scenarios`
+  - ajuste de chave unica de parametro para `(organ_id, cargo, setor)`
+- `BudgetRepository` ampliado com:
+  - fallback de parametro por escopo (`cargo+setor` -> `cargo` -> `setor` -> `geral`)
+  - persistencia e consulta de escopo (`cargo`, `setor`) no historico de cenarios
+- `BudgetService` ampliado com:
+  - uso de parametro de custo medio por escopo no simulador
+  - motor de alertas ativos para risco de saldo/deficit (5.4)
+- view `app/Views/budget/index.php` atualizada com:
+  - painel \"Alertas ativos (5.4)\"
+  - formularios de parametro e simulador com campos `cargo` e `setor`
+  - exibicao de escopo no resultado, ranking e historico de cenarios
+- Checklist 5.4 atualizado em `tests/checklist-etapa-5.4-mvp.md`
+
+## 2026-03-04 — Fase 5.2 iniciada (Gap orcamentario e suplementacao)
+- Criada migration `021_phase5_budget_gap_supplementation.sql` com:
+  - extensao de `hiring_scenarios` com `movement_type` (`entrada`/`saida`)
+- `BudgetService` ampliado com:
+  - matriz de risco mensal de insuficiencia (orcamento acumulado x projecao acumulada)
+  - simulacao de impacto por `entrada` e `saida` no ciclo corrente e no proximo ano
+  - consolidacao de ofensores por pior caso para apoio a decisao de suplementacao
+- `BudgetRepository` ampliado com:
+  - consulta `topDeviationOffenders` para ranking de maior deficit em pior caso
+  - persistencia/leitura de `movement_type` no historico de cenarios
+- view `app/Views/budget/index.php` atualizada com:
+  - painel de risco de insuficiencia por mes
+  - seletor de tipo de movimento no simulador
+  - ranking de maiores ofensores por desvio (pior caso)
+  - exibicao de tipo de movimento no resultado e no historico
+- Checklist da etapa adicionado em `tests/checklist-etapa-5.2.md`
+
+## 2026-03-04 — Fase 5.1 concluida (Projecoes e cenarios multiparametricos)
+- Criada migration `019_phase5_budget_projections_scenarios.sql` com:
+  - `budget_scenario_parameters` (variacoes por ciclo/orgao/modalidade para Base/Atualizado/Pior Caso)
+  - extensao de `hiring_scenarios` com coluna `modality`
+  - extensao de `hiring_scenario_items` com `scenario_code` e `variation_percent`
+- `BudgetRepository` ampliado com:
+  - leitura de modalidades ativas
+  - persistencia e consulta de parametros de cenario por orgao/modalidade
+  - serie de projecao mensal (`executado`, `comprometido`, `base projetada`)
+  - persistencia de itens multiparametricos por simulacao
+- `BudgetService` ampliado com:
+  - projecao mensal/anual do ciclo corrente
+  - envelopes do proximo ano para cenarios Base/Atualizado/Pior Caso
+  - simulacao multiparametrica (Base/Atualizado/Pior Caso) por orgao/modalidade
+  - fallback de variacoes por perfil padrao quando nao houver parametrizacao dedicada
+  - auditoria `budget_scenario_parameter:create/update` e eventos `budget.scenario_parameter_upserted`
+- `BudgetController` e rotas atualizados com:
+  - `POST /budget/scenario-parameters/upsert`
+- view `app/Views/budget/index.php` atualizada com:
+  - painel de projecoes mensais e consolidado anual
+  - formulario de variacao por orgao/modalidade
+  - resultado de simulacao com matriz Base/Atualizado/Pior Caso
+  - exibicao de modalidade no historico de cenarios
+- Checklist da etapa adicionado em `tests/checklist-etapa-5.1.md`
+
 ## 2026-03-04 — Fase 5.4 (MVP) iniciada (Orcamento e capacidade de contratacao)
 - Criada migration `018_phase5_budget_capacity_mvp.sql` com:
   - `budget_cycles` (orcamento anual, fator anual e status do ciclo)

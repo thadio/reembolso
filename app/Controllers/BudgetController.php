@@ -60,6 +60,8 @@ final class BudgetController extends Controller
         $year = $this->normalizeYear((int) $request->input('year', (string) date('Y')));
         $input = [
             'organ_id' => (string) $request->input('parameter_organ_id', '0'),
+            'cargo' => (string) $request->input('parameter_cargo', ''),
+            'setor' => (string) $request->input('parameter_setor', ''),
             'avg_monthly_cost' => (string) $request->input('parameter_avg_monthly_cost', ''),
             'notes' => (string) $request->input('parameter_notes', ''),
         ];

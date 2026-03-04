@@ -30,7 +30,7 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `InvoiceService`: boletos estruturados por orgao/competencia, PDF/metadados, rateio por pessoa e baixa financeira com comprovante
 - `CostMirrorService`: espelho de custo detalhado por pessoa/competencia, cadastro manual de itens e importacao CSV
 - `CostMirrorReconciliationService`: conciliacao item a item (previsto x espelho), divergencias e aprovacao com bloqueio
-- `BudgetService`: dashboard orcamentario anual, parametros de custo medio por orgao e simulador de contratacao com cenarios
+- `BudgetService`: dashboard orcamentario anual, projecoes mensal/anual, gap mensal por risco, ranking de ofensores, alertas ativos, parametros por orgao/cargo/setor/modalidade e simulador multiparametrico de contratacao
 - `OfficeTemplateService`: templates versionados de oficio com merge de variaveis e geracao de documento HTML
 - `PersonAuditService`: trilha auditavel por pessoa com filtros e exportacao CSV
 
@@ -43,7 +43,7 @@ Tabelas principais:
 - `cdos`, `cdo_people`
 - `invoices`, `invoice_people`, `payments`, `payment_people`
 - `cost_mirrors`, `cost_mirror_items`, `cost_mirror_reconciliations`, `cost_mirror_divergences`
-- `budget_cycles`, `org_cost_parameters`, `hiring_scenarios`, `hiring_scenario_items`
+- `budget_cycles`, `org_cost_parameters`, `budget_scenario_parameters`, `hiring_scenarios`, `hiring_scenario_items`
 - `office_templates`, `office_template_versions`, `office_documents`
 - `audit_log`, `system_events`, `migrations`
 

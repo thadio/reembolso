@@ -60,7 +60,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | Fase 2 - Financeiro base | `[x]` | custos, auditoria por pessoa, dashboard, reembolso, conciliacao |
 | Fase 3 - Nucleo financeiro estruturado | `[x]` | 3.1 a 3.5 concluidas (CDO, boletos, espelho, conciliacao e pagamentos) |
 | Fase 4 - Automacao administrativa | `[~]` | 4.1 parcial concluida (catalogo/versionamento/merge/HTML); 4.2 e 4.3 pendentes |
-| Fase 5 - Inteligencia orcamentaria e relatorios | `[~]` | 5.4 MVP iniciado (dashboard + simulador + cenarios); 5.1/5.2/5.3 pendentes |
+| Fase 5 - Inteligencia orcamentaria e relatorios | `[~]` | 5.1, 5.2 e 5.4 entregues (projecoes, gap, capacidade e alertas); 5.3 pendente |
 | Fase 6 - Compliance e seguranca avancada | `[ ]` | admin de usuarios via UI, LGPD avancado, hardening |
 | Fase 7 - Operacao, performance e qualidade | `[~]` | base parcial (health/log), sem fechamento operacional completo |
 
@@ -126,7 +126,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-30 | Cadastro de CDO | `[x]` | Implementado com `cdos`, CRUD e trilha auditavel |
 | RF-31 | Vinculo CDO x pessoas | `[x]` | Implementado com `cdo_people` e bloqueio por saldo |
 | RF-32 | Custo previsto por pessoa | `[x]` | Implementado com versionamento e itens |
-| RF-33 | Projecoes mensais/anuais/cenarios | `[~]` | Base parcial no dashboard, sem modulo dedicado |
+| RF-33 | Projecoes mensais/anuais/cenarios | `[x]` | Modulo dedicado entregue com projecao mensal/anual e cenarios multiparametricos |
 | RF-40 | Cadastro de boleto (dominio proprio) | `[x]` | Implementado com `invoices` e metadados de boleto/PDF |
 | RF-41 | Boleto agrupando multiplas pessoas | `[x]` | Implementado com `invoice_people` e vinculo 1..N |
 | RF-42 | Espelho por competencia e pessoa | `[x]` | Implementado com `cost_mirrors` + `cost_mirror_items`, cadastro manual e importacao CSV |
@@ -257,15 +257,15 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 5.1 - Projecoes e cenarios
 
-- `[ ]` Projecao mensal/anual/proximo ano
-- `[ ]` Cenarios Base, Atualizado e Pior Caso
-- `[ ]` Parametros de variacao por orgao/modalidade
+- `[x]` Projecao mensal/anual/proximo ano
+- `[x]` Cenarios Base, Atualizado e Pior Caso
+- `[x]` Parametros de variacao por orgao/modalidade
 
 #### Etapa 5.2 - Gap orcamentario e suplementacao
 
-- `[ ]` Tela de risco de insuficiencia por mes
-- `[ ]` Simulacao de impacto por entrada/saida de pessoas
-- `[ ]` Ranking de maiores ofensores de desvio
+- `[x]` Tela de risco de insuficiencia por mes
+- `[x]` Simulacao de impacto por entrada/saida de pessoas
+- `[x]` Ranking de maiores ofensores de desvio
 
 #### Etapa 5.3 - Relatorios premium
 
@@ -279,9 +279,9 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Dashboard orcamentario (total, executado, comprometido, disponivel, projecao)
 - `[x]` Simulador de contratacao (ano corrente e ano seguinte)
 - `[x]` Motor de capacidade maxima por saldo e data de entrada
-- `[~]` Parametrizacao de custo medio por orgao/cargo/setor (MVP por orgao implementado)
+- `[x]` Parametrizacao de custo medio por orgao/cargo/setor
 - `[x]` Planejamento por cenarios salvos (conservador/base/expansao)
-- `[~]` Alertas de risco orcamentario e deficit projetado (indicador de risco em tela; alerta ativo pendente)
+- `[x]` Alertas de risco orcamentario e deficit projetado (alertas ativos em painel)
 
 ### Fase 6 - Administracao, compliance e seguranca avancada
 
@@ -532,10 +532,10 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 ## 9) Proximo ciclo recomendado (execucao imediata)
 
-1. Avancar **Fase 4.2 (metadados formais de processo)** para fechar trilha formal de oficio/DOU/entrada.
-2. Evoluir **Fase 5.1 (projecoes e cenarios)** com cenarios multiparametricos.
-3. Fechar pendencias da **Fase 5.4** (parametrizacao por cargo/setor e alertas ativos).
-4. Consolidar **Fase 5.3 (relatorios premium)** apos estabilizacao do modulo orcamentario.
+1. Consolidar **Fase 5.3 (relatorios premium)** com filtros e exportacao CSV/PDF.
+2. Enderecar pendencias de automacao administrativa (metadados formais completos + PDF nativo de oficio).
+3. Iniciar trilha de **Fase 6.1** (admin de usuarios e acessos via UI).
+4. Fortalecer qualidade da **Fase 7.3** (testes unitarios e integracao das regras financeiras).
 
 ---
 

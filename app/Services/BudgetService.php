@@ -51,6 +51,9 @@ final class BudgetService
      *   parameters: array<int, array<string, mixed>>,
      *   scenario_parameters: array<int, array<string, mixed>>,
      *   default_variations: array<string, float>,
+     *   insufficiency_risks: array<int, array<string, mixed>>,
+     *   offenders: array<int, array<string, mixed>>,
+     *   active_alerts: array<int, array<string, mixed>>,
      *   scenarios: array<int, array<string, mixed>>
      * }
      */
@@ -85,6 +88,18 @@ final class BudgetService
         );
 
         $cycleId = (int) ($cycle['id'] ?? 0);
+        $insufficiencyRisks = $this->buildMonthlyInsufficiencyRisks(
+            projectionMonths: is_array($projection['months'] ?? null) ? $projection['months'] : [],
+            totalBudget: $totalBudget
+        );
+        $offenders = $cycleId > 0 ? $this->budget->topDeviationOffenders($cycleId, 10) : [];
+        $activeAlerts = $this->buildActiveAlerts(
+            totalBudget: $totalBudget,
+            availableAmount: $availableAmount,
+            projectedBalanceNextYear: $projectedBalanceNextYear,
+            insufficiencyRisks: $insufficiencyRisks,
+            offenders: $offenders
+        );
 
         return [
             'cycle' => $cycle,
@@ -111,6 +126,9 @@ final class BudgetService
             'parameters' => $this->budget->orgParameters(),
             'scenario_parameters' => $cycleId > 0 ? $this->budget->scenarioParameters($cycleId) : [],
             'default_variations' => self::DEFAULT_SCENARIO_VARIATIONS,
+            'insufficiency_risks' => $insufficiencyRisks,
+            'offenders' => $offenders,
+            'active_alerts' => $activeAlerts,
             'scenarios' => $this->budget->recentScenarios($cycleId, 20),
         ];
     }
@@ -136,6 +154,9 @@ final class BudgetService
 
         $organId = max(0, (int) ($input['organ_id'] ?? 0));
         $modality = $this->normalizeModality($this->clean($input['modality'] ?? null));
+        $movementType = $this->normalizeMovementType($this->clean($input['movement_type'] ?? null));
+        $cargo = $this->normalizeScopeValue($this->clean($input['cargo'] ?? null));
+        $setor = $this->normalizeScopeValue($this->clean($input['setor'] ?? null));
         $entryDate = $this->normalizeDate($this->clean($input['entry_date'] ?? null));
         $quantity = max(0, (int) ($input['quantity'] ?? 0));
         $scenarioNameInput = $this->clean($input['scenario_name'] ?? null);
@@ -166,11 +187,15 @@ final class BudgetService
 
         if ($avgMonthly === null || $avgMonthly <= 0.0) {
             if ($organId > 0) {
-                $parameter = $this->budget->findOrgParameterByOrgan($organId);
+                $parameter = $this->budget->findOrgParameterByScope(
+                    organId: $organId,
+                    cargo: $cargo !== '' ? $cargo : null,
+                    setor: $setor !== '' ? $setor : null
+                );
                 $paramAvg = max(0.0, $this->toFloat($parameter['avg_monthly_cost'] ?? 0));
                 if ($paramAvg > 0.0) {
                     $avgMonthly = $paramAvg;
-                    $avgSource = 'parametro_orgao';
+                    $avgSource = $this->resolveParameterSource($parameter, $cargo, $setor);
                 }
             }
 
@@ -209,6 +234,7 @@ final class BudgetService
 
         $scenarioParameter = $this->budget->findScenarioParameter($cycleId, $organId, $modality);
         $variations = $this->resolveScenarioVariations($scenarioParameter);
+        $movementDirection = $movementType === 'saida' ? -1 : 1;
 
         $scenarioMatrix = [];
         foreach ($this->scenarioDefinitions() as $scenarioDef) {
@@ -216,10 +242,10 @@ final class BudgetService
             $adjustedAvgMonthly = round(max(0.0, (float) $avgMonthly * (1 + ($variation / 100))), 2);
 
             $costCurrentYearPerPerson = round($adjustedAvgMonthly * $monthsRemaining, 2);
-            $costCurrentYear = round($costCurrentYearPerPerson * $quantity, 2);
-            $costNextYear = round($adjustedAvgMonthly * $annualFactor * $quantity, 2);
+            $costCurrentYear = round($costCurrentYearPerPerson * $quantity * $movementDirection, 2);
+            $costNextYear = round($adjustedAvgMonthly * $annualFactor * $quantity * $movementDirection, 2);
 
-            $maxCapacityBefore = $costCurrentYearPerPerson > 0.0
+            $maxCapacityBefore = $movementType === 'entrada' && $costCurrentYearPerPerson > 0.0
                 ? max(0, (int) floor(max(0.0, $availableBefore) / $costCurrentYearPerPerson))
                 : 0;
 
@@ -228,6 +254,7 @@ final class BudgetService
             $scenarioMatrix[] = [
                 'code' => $scenarioDef['code'],
                 'label' => $scenarioDef['label'],
+                'movement_type' => $movementType,
                 'variation_percent' => round($variation, 2),
                 'avg_monthly_cost' => $adjustedAvgMonthly,
                 'cost_current_year_per_person' => $costCurrentYearPerPerson,
@@ -253,6 +280,9 @@ final class BudgetService
             'budget_cycle_id' => $cycleId,
             'organ_id' => $organId,
             'modality' => $modality,
+            'movement_type' => $movementType,
+            'cargo' => $cargo,
+            'setor' => $setor,
             'scenario_name' => $scenarioName,
             'entry_date' => $entryDate,
             'quantity' => $quantity,
@@ -298,6 +328,9 @@ final class BudgetService
                     'budget_cycle_id' => $cycleId,
                     'organ_id' => $organId,
                     'modality' => $modality,
+                    'movement_type' => $movementType,
+                    'cargo' => $cargo,
+                    'setor' => $setor,
                     'entry_date' => $entryDate,
                     'quantity' => $quantity,
                     'avg_monthly_cost_base' => number_format((float) $baseScenario['avg_monthly_cost'], 2, '.', ''),
@@ -324,6 +357,9 @@ final class BudgetService
                     'hiring_scenario_id' => $scenarioId,
                     'organ_id' => $organId,
                     'modality' => $modality,
+                    'movement_type' => $movementType,
+                    'cargo' => $cargo,
+                    'setor' => $setor,
                     'quantity' => $quantity,
                     'risk_level_base' => (string) $baseScenario['risk_level'],
                     'risk_level_worst' => (string) $worstScenario['risk_level'],
@@ -355,6 +391,9 @@ final class BudgetService
                 'year' => $yearValue,
                 'scenario_name' => $scenarioName,
                 'modality' => $modality,
+                'movement_type' => $movementType,
+                'cargo' => $cargo,
+                'setor' => $setor,
                 'entry_date' => $entryDate,
                 'quantity' => $quantity,
                 'avg_monthly_cost' => round((float) $baseScenario['avg_monthly_cost'], 2),
@@ -379,6 +418,8 @@ final class BudgetService
     public function upsertOrgParameter(array $input, int $userId, string $ip, string $userAgent): array
     {
         $organId = max(0, (int) ($input['organ_id'] ?? 0));
+        $cargo = $this->normalizeScopeValue($this->clean($input['cargo'] ?? null));
+        $setor = $this->normalizeScopeValue($this->clean($input['setor'] ?? null));
         $avgMonthlyCost = $this->parseMoneyNullable($input['avg_monthly_cost'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
 
@@ -400,9 +441,11 @@ final class BudgetService
             ];
         }
 
-        $before = $this->budget->findOrgParameterByOrgan($organId);
+        $before = $this->budget->findOrgParameterExact($organId, $cargo, $setor);
         $id = $this->budget->upsertOrgParameter(
             organId: $organId,
+            cargo: $cargo,
+            setor: $setor,
             avgMonthlyCost: number_format((float) $avgMonthlyCost, 2, '.', ''),
             notes: $notes === null ? null : mb_substr($notes, 0, 4000),
             updatedBy: $userId > 0 ? $userId : null
@@ -416,7 +459,7 @@ final class BudgetService
             ];
         }
 
-        $after = $this->budget->findOrgParameterByOrgan($organId);
+        $after = $this->budget->findOrgParameterExact($organId, $cargo, $setor);
 
         $this->audit->log(
             entity: 'org_cost_parameter',
@@ -435,6 +478,8 @@ final class BudgetService
             type: 'budget.org_cost_parameter_upserted',
             payload: [
                 'organ_id' => $organId,
+                'cargo' => $cargo,
+                'setor' => $setor,
                 'avg_monthly_cost' => number_format((float) $avgMonthlyCost, 2, '.', ''),
                 'parameter_id' => $id,
             ],
@@ -663,6 +708,127 @@ final class BudgetService
         return max(-95.0, min(500.0, round($value, 2)));
     }
 
+    /**
+     * @param array<int, array<string, mixed>> $projectionMonths
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildMonthlyInsufficiencyRisks(array $projectionMonths, float $totalBudget): array
+    {
+        $result = [];
+        $cumulativeProjection = 0.0;
+
+        foreach ($projectionMonths as $month) {
+            $monthNumber = max(1, min(12, (int) ($month['month'] ?? 1)));
+            $monthProjection = round($this->toFloat($month['projected_total'] ?? 0), 2);
+            $cumulativeProjection = round($cumulativeProjection + $monthProjection, 2);
+
+            $cumulativeBudget = round(($totalBudget / 12) * $monthNumber, 2);
+            $difference = round($cumulativeBudget - $cumulativeProjection, 2);
+            $pressure = $cumulativeBudget > 0.009
+                ? round(($cumulativeProjection / $cumulativeBudget) * 100, 2)
+                : 0.0;
+
+            $riskLevel = 'baixo';
+            if ($difference < -0.009) {
+                $riskLevel = 'alto';
+            } elseif ($cumulativeBudget > 0.009 && $difference <= ($cumulativeBudget * 0.10)) {
+                $riskLevel = 'medio';
+            }
+
+            $result[] = [
+                'month' => $monthNumber,
+                'label' => (string) ($month['label'] ?? sprintf('%02d', $monthNumber)),
+                'cumulative_budget' => $cumulativeBudget,
+                'cumulative_projection' => $cumulativeProjection,
+                'difference' => $difference,
+                'pressure_percent' => $pressure,
+                'risk_level' => $riskLevel,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $insufficiencyRisks
+     * @param array<int, array<string, mixed>> $offenders
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildActiveAlerts(
+        float $totalBudget,
+        float $availableAmount,
+        float $projectedBalanceNextYear,
+        array $insufficiencyRisks,
+        array $offenders
+    ): array {
+        $alerts = [];
+
+        if ($availableAmount < -0.009) {
+            $alerts[] = [
+                'code' => 'available_negative',
+                'level' => 'alto',
+                'title' => 'Saldo disponivel negativo no ciclo',
+                'message' => sprintf('Deficit atual de R$ %s no saldo disponivel.', number_format(abs($availableAmount), 2, ',', '.')),
+            ];
+        } elseif ($totalBudget > 0.009 && $availableAmount <= ($totalBudget * 0.10)) {
+            $alerts[] = [
+                'code' => 'available_low_margin',
+                'level' => 'medio',
+                'title' => 'Margem de saldo no limite',
+                'message' => 'Saldo disponivel em faixa de atencao (<= 10% do orcamento anual).',
+            ];
+        }
+
+        if ($projectedBalanceNextYear < -0.009) {
+            $alerts[] = [
+                'code' => 'next_year_deficit',
+                'level' => 'alto',
+                'title' => 'Deficit projetado para o proximo ano',
+                'message' => sprintf('Projecao indica deficit de R$ %s no proximo ano.', number_format(abs($projectedBalanceNextYear), 2, ',', '.')),
+            ];
+        }
+
+        foreach ($insufficiencyRisks as $risk) {
+            $riskLevel = (string) ($risk['risk_level'] ?? 'baixo');
+            if ($riskLevel !== 'alto') {
+                continue;
+            }
+
+            $alerts[] = [
+                'code' => 'monthly_insufficiency',
+                'level' => 'alto',
+                'title' => 'Risco alto de insuficiencia mensal',
+                'message' => sprintf(
+                    'Mes %s com pressao de %s e diferenca acumulada de R$ %s.',
+                    (string) ($risk['label'] ?? '-'),
+                    number_format((float) ($risk['pressure_percent'] ?? 0), 2, ',', '.') . '%',
+                    number_format((float) abs((float) ($risk['difference'] ?? 0)), 2, ',', '.')
+                ),
+            ];
+            break;
+        }
+
+        if ($offenders !== []) {
+            $topOffender = $offenders[0];
+            $deficit = max(0.0, $this->toFloat($topOffender['deficit_amount'] ?? 0));
+            if ($deficit > 0.009) {
+                $alerts[] = [
+                    'code' => 'top_offender_deficit',
+                    'level' => 'medio',
+                    'title' => 'Ofensor relevante de desvio no pior caso',
+                    'message' => sprintf(
+                        '%s (%s) projeta deficit de R$ %s.',
+                        (string) ($topOffender['scenario_name'] ?? 'Cenario'),
+                        (string) ($topOffender['organ_name'] ?? 'Orgao'),
+                        number_format($deficit, 2, ',', '.')
+                    ),
+                ];
+            }
+        }
+
+        return $alerts;
+    }
+
     private function normalizeYear(int $year): int
     {
         if ($year < 2000 || $year > 2100) {
@@ -769,6 +935,47 @@ final class BudgetService
         $text = preg_replace('/\s+/', ' ', $text) ?? $text;
 
         return mb_substr($text, 0, 80);
+    }
+
+    private function normalizeMovementType(?string $value): string
+    {
+        $text = trim(mb_strtolower((string) $value));
+
+        return $text === 'saida' ? 'saida' : 'entrada';
+    }
+
+    private function resolveParameterSource(?array $parameter, string $inputCargo, string $inputSetor): string
+    {
+        $paramCargo = $this->normalizeScopeValue((string) ($parameter['cargo'] ?? ''));
+        $paramSetor = $this->normalizeScopeValue((string) ($parameter['setor'] ?? ''));
+        $cargo = $this->normalizeScopeValue($inputCargo);
+        $setor = $this->normalizeScopeValue($inputSetor);
+
+        if ($paramCargo !== '' && $paramSetor !== '' && $paramCargo === $cargo && $paramSetor === $setor) {
+            return 'parametro_orgao_cargo_setor';
+        }
+
+        if ($paramCargo !== '' && $paramCargo === $cargo && $paramSetor === '') {
+            return 'parametro_orgao_cargo';
+        }
+
+        if ($paramSetor !== '' && $paramSetor === $setor && $paramCargo === '') {
+            return 'parametro_orgao_setor';
+        }
+
+        return 'parametro_orgao';
+    }
+
+    private function normalizeScopeValue(?string $value): string
+    {
+        $text = trim(mb_strtolower((string) $value));
+        if ($text === '') {
+            return '';
+        }
+
+        $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+
+        return mb_substr($text, 0, 120);
     }
 
     private function clean(mixed $value): ?string

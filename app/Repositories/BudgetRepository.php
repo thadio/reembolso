@@ -192,6 +192,8 @@ final class BudgetRepository
             'SELECT
                 p.id,
                 p.organ_id,
+                p.cargo,
+                p.setor,
                 p.avg_monthly_cost,
                 p.notes,
                 p.updated_by,
@@ -203,7 +205,7 @@ final class BudgetRepository
              INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
              LEFT JOIN users u ON u.id = p.updated_by
              WHERE p.deleted_at IS NULL
-             ORDER BY o.name ASC'
+             ORDER BY o.name ASC, p.cargo ASC, p.setor ASC'
         );
 
         return $stmt->fetchAll();
@@ -212,10 +214,54 @@ final class BudgetRepository
     /** @return array<string, mixed>|null */
     public function findOrgParameterByOrgan(int $organId): ?array
     {
+        return $this->findOrgParameterExact($organId, '', '');
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findOrgParameterExact(int $organId, string $cargo, string $setor): ?array
+    {
         $stmt = $this->db->prepare(
             'SELECT
                 p.id,
                 p.organ_id,
+                p.cargo,
+                p.setor,
+                p.avg_monthly_cost,
+                p.notes,
+                p.updated_by,
+                p.created_at,
+                p.updated_at,
+                o.name AS organ_name
+             FROM org_cost_parameters p
+             INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
+             WHERE p.organ_id = :organ_id
+               AND p.cargo = :cargo
+               AND p.setor = :setor
+               AND p.deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'organ_id' => $organId,
+            'cargo' => $cargo,
+            'setor' => $setor,
+        ]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findOrgParameterByScope(int $organId, ?string $cargo, ?string $setor): ?array
+    {
+        $cargoScope = $this->normalizeScopeValue($cargo);
+        $setorScope = $this->normalizeScopeValue($setor);
+
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.id,
+                p.organ_id,
+                p.cargo,
+                p.setor,
                 p.avg_monthly_cost,
                 p.notes,
                 p.updated_by,
@@ -226,19 +272,50 @@ final class BudgetRepository
              INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
              WHERE p.organ_id = :organ_id
                AND p.deleted_at IS NULL
+               AND (
+                    (p.cargo = :cargo_exact AND p.setor = :setor_exact)
+                    OR (p.cargo = :cargo_fallback AND p.setor = "")
+                    OR (p.cargo = "" AND p.setor = :setor_fallback)
+                    OR (p.cargo = "" AND p.setor = "")
+               )
+             ORDER BY
+                CASE
+                    WHEN p.cargo = :cargo_rank AND p.setor = :setor_rank THEN 0
+                    WHEN p.cargo = :cargo_rank AND p.setor = "" THEN 1
+                    WHEN p.cargo = "" AND p.setor = :setor_rank THEN 2
+                    ELSE 3
+                END,
+                p.id DESC
              LIMIT 1'
         );
-        $stmt->execute(['organ_id' => $organId]);
+        $stmt->execute([
+            'organ_id' => $organId,
+            'cargo_exact' => $cargoScope,
+            'setor_exact' => $setorScope,
+            'cargo_fallback' => $cargoScope,
+            'setor_fallback' => $setorScope,
+            'cargo_rank' => $cargoScope,
+            'setor_rank' => $setorScope,
+        ]);
         $row = $stmt->fetch();
 
         return $row === false ? null : $row;
     }
 
-    public function upsertOrgParameter(int $organId, string $avgMonthlyCost, ?string $notes, ?int $updatedBy): int
+    public function upsertOrgParameter(
+        int $organId,
+        string $cargo,
+        string $setor,
+        string $avgMonthlyCost,
+        ?string $notes,
+        ?int $updatedBy
+    ): int
     {
         $stmt = $this->db->prepare(
             'INSERT INTO org_cost_parameters (
                 organ_id,
+                cargo,
+                setor,
                 avg_monthly_cost,
                 notes,
                 updated_by,
@@ -247,6 +324,8 @@ final class BudgetRepository
                 deleted_at
             ) VALUES (
                 :organ_id,
+                :cargo,
+                :setor,
                 :avg_monthly_cost,
                 :notes,
                 :updated_by,
@@ -264,12 +343,14 @@ final class BudgetRepository
 
         $stmt->execute([
             'organ_id' => $organId,
+            'cargo' => $cargo,
+            'setor' => $setor,
             'avg_monthly_cost' => $avgMonthlyCost,
             'notes' => $notes,
             'updated_by' => $updatedBy,
         ]);
 
-        $row = $this->findOrgParameterByOrgan($organId);
+        $row = $this->findOrgParameterExact($organId, $cargo, $setor);
 
         return (int) ($row['id'] ?? 0);
     }
@@ -554,6 +635,7 @@ final class BudgetRepository
     public function monthlyProjectionSeries(int $year): array
     {
         $monthsSql = $this->monthsSql();
+        $yearLiteral = (int) $year;
 
         $stmt = $this->db->prepare(
             'SELECT
@@ -612,15 +694,15 @@ final class BudgetRepository
                     IFNULL(SUM(
                         CASE
                             WHEN cpi.cost_type = "mensal"
-                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
                             THEN cpi.amount
                             WHEN cpi.cost_type = "anual"
-                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
                             THEN cpi.amount / 12
                             WHEN cpi.cost_type = "unico"
-                                 AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"), "%Y-%m")
+                                 AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"), "%Y-%m")
                             THEN cpi.amount
                             ELSE 0
                         END
@@ -639,7 +721,6 @@ final class BudgetRepository
             'projection_year_exec_reimbursement' => $year,
             'projection_year_committed_invoices' => $year,
             'projection_year_committed_reimbursement' => $year,
-            'projection_year_base' => $year,
         ]);
 
         return $stmt->fetchAll();
@@ -653,6 +734,9 @@ final class BudgetRepository
                 budget_cycle_id,
                 organ_id,
                 modality,
+                movement_type,
+                cargo,
+                setor,
                 scenario_name,
                 entry_date,
                 quantity,
@@ -673,6 +757,9 @@ final class BudgetRepository
                 :budget_cycle_id,
                 :organ_id,
                 :modality,
+                :movement_type,
+                :cargo,
+                :setor,
                 :scenario_name,
                 :entry_date,
                 :quantity,
@@ -696,6 +783,9 @@ final class BudgetRepository
             'budget_cycle_id' => $data['budget_cycle_id'],
             'organ_id' => $data['organ_id'],
             'modality' => $data['modality'],
+            'movement_type' => $data['movement_type'],
+            'cargo' => $data['cargo'],
+            'setor' => $data['setor'],
             'scenario_name' => $data['scenario_name'],
             'entry_date' => $data['entry_date'],
             'quantity' => $data['quantity'],
@@ -770,6 +860,9 @@ final class BudgetRepository
                 hs.budget_cycle_id,
                 hs.organ_id,
                 hs.modality,
+                hs.movement_type,
+                hs.cargo,
+                hs.setor,
                 hs.scenario_name,
                 hs.entry_date,
                 hs.quantity,
@@ -801,6 +894,9 @@ final class BudgetRepository
                 hs.budget_cycle_id,
                 hs.organ_id,
                 hs.modality,
+                hs.movement_type,
+                hs.cargo,
+                hs.setor,
                 hs.scenario_name,
                 hs.entry_date,
                 hs.quantity,
@@ -828,6 +924,49 @@ final class BudgetRepository
         return $stmt->fetchAll();
     }
 
+    /** @return array<int, array<string, mixed>> */
+    public function topDeviationOffenders(int $cycleId, int $limit = 10): array
+    {
+        $safeLimit = max(1, min(30, $limit));
+
+        $stmt = $this->db->prepare(
+            'SELECT
+                hs.id AS scenario_id,
+                hs.scenario_name,
+                hs.organ_id,
+                hs.modality,
+                hs.movement_type,
+                hs.cargo,
+                hs.setor,
+                hs.entry_date,
+                hs.quantity,
+                hs.available_before,
+                hsi.cost_current_year AS worst_cost_current_year,
+                (hs.available_before - hsi.cost_current_year) AS remaining_after_worst,
+                ABS(LEAST(hs.available_before - hsi.cost_current_year, 0)) AS deficit_amount,
+                hs.created_at,
+                o.name AS organ_name,
+                u.name AS created_by_name
+             FROM hiring_scenarios hs
+             INNER JOIN hiring_scenario_items hsi
+               ON hsi.hiring_scenario_id = hs.id
+              AND hsi.deleted_at IS NULL
+              AND hsi.scenario_code = "pior_caso"
+             LEFT JOIN organs o ON o.id = hs.organ_id
+             LEFT JOIN users u ON u.id = hs.created_by
+             WHERE hs.budget_cycle_id = :budget_cycle_id
+               AND hs.deleted_at IS NULL
+               AND hs.movement_type = "entrada"
+             ORDER BY deficit_amount DESC, hsi.cost_current_year DESC, hs.created_at DESC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':budget_cycle_id', $cycleId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $safeLimit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
     private function monthsSql(): string
     {
         return 'SELECT 1 AS month_number
@@ -842,5 +981,17 @@ final class BudgetRepository
                 UNION ALL SELECT 10
                 UNION ALL SELECT 11
                 UNION ALL SELECT 12';
+    }
+
+    private function normalizeScopeValue(?string $value): string
+    {
+        $text = trim(mb_strtolower((string) $value));
+        if ($text === '') {
+            return '';
+        }
+
+        $text = preg_replace('/\s+/', ' ', $text) ?? $text;
+
+        return mb_substr($text, 0, 120);
     }
 }

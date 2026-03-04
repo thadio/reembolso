@@ -14,6 +14,9 @@ $modalities = is_array($budget['modalities'] ?? null) ? $budget['modalities'] : 
 $parameters = is_array($budget['parameters'] ?? null) ? $budget['parameters'] : [];
 $scenarioParameters = is_array($budget['scenario_parameters'] ?? null) ? $budget['scenario_parameters'] : [];
 $defaultVariations = is_array($budget['default_variations'] ?? null) ? $budget['default_variations'] : [];
+$insufficiencyRisks = is_array($budget['insufficiency_risks'] ?? null) ? $budget['insufficiency_risks'] : [];
+$offenders = is_array($budget['offenders'] ?? null) ? $budget['offenders'] : [];
+$activeAlerts = is_array($budget['active_alerts'] ?? null) ? $budget['active_alerts'] : [];
 $scenarios = is_array($budget['scenarios'] ?? null) ? $budget['scenarios'] : [];
 $simulationResult = is_array($simulationResult ?? null) ? $simulationResult : null;
 $simulationMatrix = is_array($simulationResult['scenario_matrix'] ?? null) ? $simulationResult['scenario_matrix'] : [];
@@ -63,6 +66,29 @@ $modalityLabel = static function (?string $value): string {
     return mb_convert_case($normalized, MB_CASE_TITLE, 'UTF-8');
 };
 
+$movementTypeLabel = static function (?string $value): string {
+    return trim((string) $value) === 'saida' ? 'Saida' : 'Entrada';
+};
+
+$scopeLabel = static function (?string $cargo, ?string $setor): string {
+    $c = trim((string) $cargo);
+    $s = trim((string) $setor);
+
+    if ($c === '' && $s === '') {
+        return 'Geral';
+    }
+
+    if ($c !== '' && $s !== '') {
+        return 'Cargo: ' . $c . ' | Setor: ' . $s;
+    }
+
+    if ($c !== '') {
+        return 'Cargo: ' . $c;
+    }
+
+    return 'Setor: ' . $s;
+};
+
 $riskLabel = static function (string $value): string {
     return match ($value) {
         'alto' => 'Alto',
@@ -89,6 +115,9 @@ $defaultBaseVariation = (float) ($defaultVariations['base'] ?? 0.0);
 $defaultUpdatedVariation = (float) ($defaultVariations['atualizado'] ?? 10.0);
 $defaultWorstVariation = (float) ($defaultVariations['pior_caso'] ?? 25.0);
 $selectedModality = mb_strtolower((string) old('modality', 'geral'));
+$selectedMovementType = mb_strtolower((string) old('movement_type', 'entrada'));
+$selectedCargo = (string) old('cargo', '');
+$selectedSetor = (string) old('setor', '');
 ?>
 <div class="card">
   <div class="header-row">
@@ -146,6 +175,43 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
     <p class="kpi-value <?= $projectedBalance < 0 ? 'text-danger' : 'text-success' ?>"><?= e($formatMoney($summary['projected_balance_next_year'] ?? 0)) ?></p>
     <p class="dashboard-kpi-note">Comparacao com orcamento total do ciclo</p>
   </article>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Alertas ativos (5.4)</h3>
+      <p class="muted">Sinais de risco orcamentario e deficit projetado para acao imediata.</p>
+    </div>
+  </div>
+
+  <?php if ($activeAlerts === []): ?>
+    <div class="empty-state">
+      <p>Sem alertas ativos no momento para o ciclo selecionado.</p>
+    </div>
+  <?php else: ?>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nivel</th>
+            <th>Titulo</th>
+            <th>Mensagem</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($activeAlerts as $alert): ?>
+            <?php $alertLevel = (string) ($alert['level'] ?? 'baixo'); ?>
+            <tr>
+              <td><span class="badge <?= e($riskBadgeClass($alertLevel)) ?>"><?= e($riskLabel($alertLevel)) ?></span></td>
+              <td><?= e((string) ($alert['title'] ?? '-')) ?></td>
+              <td><?= e((string) ($alert['message'] ?? '-')) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
 </div>
 
 <div class="card">
@@ -218,6 +284,51 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
   <?php endif; ?>
 </div>
 
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Risco de insuficiencia por mes (5.2)</h3>
+      <p class="muted">Compara o acumulado projetado do ciclo com o envelope acumulado de orcamento.</p>
+    </div>
+  </div>
+
+  <?php if ($insufficiencyRisks === []): ?>
+    <div class="empty-state">
+      <p>Sem dados suficientes para calcular risco mensal de insuficiencia.</p>
+    </div>
+  <?php else: ?>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th>Orcamento acumulado</th>
+            <th>Projecao acumulada</th>
+            <th>Diferenca</th>
+            <th>Pressao</th>
+            <th>Risco</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($insufficiencyRisks as $risk): ?>
+            <?php $riskCode = (string) ($risk['risk_level'] ?? 'baixo'); ?>
+            <tr>
+              <td><?= e((string) ($risk['label'] ?? '-')) ?></td>
+              <td><?= e($formatMoney((float) ($risk['cumulative_budget'] ?? 0))) ?></td>
+              <td><?= e($formatMoney((float) ($risk['cumulative_projection'] ?? 0))) ?></td>
+              <td class="<?= (float) ($risk['difference'] ?? 0) < 0 ? 'text-danger' : 'text-success' ?>">
+                <?= e($formatMoney((float) ($risk['difference'] ?? 0))) ?>
+              </td>
+              <td><?= e($formatPercent((float) ($risk['pressure_percent'] ?? 0))) ?></td>
+              <td><span class="badge <?= e($riskBadgeClass($riskCode)) ?>"><?= e($riskLabel($riskCode)) ?></span></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+</div>
+
 <?php if ($canManage): ?>
   <div class="card">
     <div class="header-row">
@@ -241,6 +352,16 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
             </option>
           <?php endforeach; ?>
         </select>
+      </div>
+
+      <div class="field">
+        <label for="parameter_cargo">Cargo</label>
+        <input id="parameter_cargo" name="parameter_cargo" type="text" maxlength="120" value="<?= e(old('parameter_cargo', '')) ?>" placeholder="Opcional">
+      </div>
+
+      <div class="field">
+        <label for="parameter_setor">Setor</label>
+        <input id="parameter_setor" name="parameter_setor" type="text" maxlength="120" value="<?= e(old('parameter_setor', '')) ?>" placeholder="Opcional">
       </div>
 
       <div class="field">
@@ -268,6 +389,7 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
           <thead>
             <tr>
               <th>Orgao</th>
+              <th>Escopo</th>
               <th>Custo medio mensal</th>
               <th>Observacoes</th>
               <th>Atualizacao</th>
@@ -277,6 +399,7 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
             <?php foreach ($parameters as $parameter): ?>
               <tr>
                 <td><?= e((string) ($parameter['organ_name'] ?? '-')) ?></td>
+                <td><?= e($scopeLabel((string) ($parameter['cargo'] ?? ''), (string) ($parameter['setor'] ?? ''))) ?></td>
                 <td><?= e($formatMoney((float) ($parameter['avg_monthly_cost'] ?? 0))) ?></td>
                 <td><?= nl2br(e((string) ($parameter['notes'] ?? '-'))) ?></td>
                 <td>
@@ -450,6 +573,24 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
       </div>
 
       <div class="field">
+        <label for="movement_type">Tipo de movimento *</label>
+        <select id="movement_type" name="movement_type" required>
+          <option value="entrada" <?= $selectedMovementType === 'entrada' ? 'selected' : '' ?>>Entrada</option>
+          <option value="saida" <?= $selectedMovementType === 'saida' ? 'selected' : '' ?>>Saida</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="cargo">Cargo</label>
+        <input id="cargo" name="cargo" type="text" maxlength="120" value="<?= e($selectedCargo) ?>" placeholder="Opcional">
+      </div>
+
+      <div class="field">
+        <label for="setor">Setor</label>
+        <input id="setor" name="setor" type="text" maxlength="120" value="<?= e($selectedSetor) ?>" placeholder="Opcional">
+      </div>
+
+      <div class="field">
         <label for="scenario_name">Nome do cenario</label>
         <input id="scenario_name" name="scenario_name" type="text" maxlength="190" value="<?= e(old('scenario_name', '')) ?>" placeholder="Opcional">
       </div>
@@ -490,7 +631,9 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
         <p class="muted">
           <?= e((string) ($simulationResult['scenario_name'] ?? 'Simulacao')) ?> ·
           Ano <?= e((string) ($simulationResult['year'] ?? $year)) ?> ·
-          Modalidade <?= e($modalityLabel((string) ($simulationResult['modality'] ?? 'geral'))) ?>
+          Modalidade <?= e($modalityLabel((string) ($simulationResult['modality'] ?? 'geral'))) ?> ·
+          Movimento <?= e($movementTypeLabel((string) ($simulationResult['movement_type'] ?? 'entrada'))) ?> ·
+          <?= e($scopeLabel((string) ($simulationResult['cargo'] ?? ''), (string) ($simulationResult['setor'] ?? ''))) ?>
         </p>
       </div>
       <span class="badge <?= e($riskBadgeClass($simRisk)) ?>">Risco Base <?= e($riskLabel($simRisk)) ?></span>
@@ -573,6 +716,58 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
 <div class="card">
   <div class="header-row">
     <div>
+      <h3>Ranking de maiores ofensores (Pior Caso)</h3>
+      <p class="muted">Cenarios de entrada com maior deficit projetado no perfil de pior caso.</p>
+    </div>
+  </div>
+
+  <?php if ($offenders === []): ?>
+    <div class="empty-state">
+      <p>Nenhum ofensor de desvio identificado para o ciclo.</p>
+    </div>
+  <?php else: ?>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Cenario</th>
+            <th>Orgao</th>
+            <th>Modalidade</th>
+            <th>Escopo</th>
+            <th>Qtd.</th>
+            <th>Custo pior caso</th>
+            <th>Saldo apos pior caso</th>
+            <th>Deficit</th>
+            <th>Registro</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($offenders as $offender): ?>
+            <tr>
+              <td><?= e((string) ($offender['scenario_name'] ?? '-')) ?></td>
+              <td><?= e((string) ($offender['organ_name'] ?? '-')) ?></td>
+              <td><?= e($modalityLabel((string) ($offender['modality'] ?? 'geral'))) ?></td>
+              <td><?= e($scopeLabel((string) ($offender['cargo'] ?? ''), (string) ($offender['setor'] ?? ''))) ?></td>
+              <td><?= e((string) (int) ($offender['quantity'] ?? 0)) ?></td>
+              <td><?= e($formatMoney((float) ($offender['worst_cost_current_year'] ?? 0))) ?></td>
+              <td class="<?= (float) ($offender['remaining_after_worst'] ?? 0) < 0 ? 'text-danger' : 'text-success' ?>">
+                <?= e($formatMoney((float) ($offender['remaining_after_worst'] ?? 0))) ?>
+              </td>
+              <td class="<?= (float) ($offender['deficit_amount'] ?? 0) > 0 ? 'text-danger' : 'text-success' ?>">
+                <?= e($formatMoney((float) ($offender['deficit_amount'] ?? 0))) ?>
+              </td>
+              <td><?= e($formatDateTime((string) ($offender['created_at'] ?? ''))) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
       <h3>Cenarios recentes</h3>
       <p class="muted">Historico das simulacoes registradas no ciclo.</p>
     </div>
@@ -590,6 +785,8 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
             <th>Cenario</th>
             <th>Orgao</th>
             <th>Modalidade</th>
+            <th>Movimento</th>
+            <th>Escopo</th>
             <th>Entrada</th>
             <th>Qtd.</th>
             <th>Custo ano corrente</th>
@@ -611,6 +808,8 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
               </td>
               <td><?= e((string) ($scenario['organ_name'] ?? '-')) ?></td>
               <td><?= e($modalityLabel((string) ($scenario['modality'] ?? 'geral'))) ?></td>
+              <td><?= e($movementTypeLabel((string) ($scenario['movement_type'] ?? 'entrada'))) ?></td>
+              <td><?= e($scopeLabel((string) ($scenario['cargo'] ?? ''), (string) ($scenario['setor'] ?? ''))) ?></td>
               <td><?= e($formatDate((string) ($scenario['entry_date'] ?? ''))) ?></td>
               <td><?= e((string) (int) ($scenario['quantity'] ?? 0)) ?></td>
               <td><?= e($formatMoney((float) ($scenario['cost_current_year'] ?? 0))) ?></td>

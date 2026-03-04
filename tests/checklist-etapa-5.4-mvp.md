@@ -1,7 +1,7 @@
 # Checklist de Testes - Fase 5.4 (MVP Orcamento/Capacidade)
 
 ## Pre-condicoes
-- [ ] `php db/migrate.php` aplicado (incluindo `018_phase5_budget_capacity_mvp.sql`)
+- [ ] `php db/migrate.php` aplicado (incluindo `018`, `019`, `021` e `022` do modulo orcamentario)
 - [ ] `php db/seed.php` aplicado
 - [ ] Usuario com permissao `budget.view` e `budget.simulate`
 
@@ -11,10 +11,11 @@
 - [ ] KPIs exibem total, executado, comprometido e disponivel
 - [ ] Projecao do ano seguinte e saldo projetado sao exibidos
 
-## Parametrizacao por orgao
-- [ ] `POST /budget/parameters/upsert` salva custo medio mensal por orgao
-- [ ] Atualizacao de parametro existente funciona (upsert)
-- [ ] Tabela de parametros lista orgao, custo e usuario de atualizacao
+## Parametrizacao por orgao/cargo/setor
+- [ ] `POST /budget/parameters/upsert` salva custo medio por escopo (`orgao`, `cargo`, `setor`)
+- [ ] Atualizacao de parametro existente funciona (upsert por escopo)
+- [ ] Tabela de parametros lista orgao, escopo, custo e usuario de atualizacao
+- [ ] Escopo geral (sem cargo/setor) segue disponivel para fallback
 - [ ] Usuario sem `budget.manage` nao altera parametros
 
 ## Simulador de contratacao
@@ -22,8 +23,14 @@
 - [ ] Simulacao calcula impacto no ano corrente (pro rata) e no ano seguinte
 - [ ] Simulacao calcula capacidade maxima antes da contratacao
 - [ ] Simulacao mostra risco (`baixo`, `medio`, `alto`) conforme saldo remanescente
-- [ ] Fallback de custo medio usa parametro do orgao quando campo fica em branco
+- [ ] Fallback de custo medio usa prioridade de escopo (`cargo+setor` -> `cargo` -> `setor` -> `geral`)
 - [ ] Sem parametro do orgao, fallback usa media global de custos ativos
+
+## Alertas ativos
+- [ ] Painel \"Alertas ativos (5.4)\" e exibido no dashboard
+- [ ] Alertas incluem risco de saldo negativo e deficit projetado no proximo ano
+- [ ] Alertas incluem risco mensal alto de insuficiencia quando existir
+- [ ] Sem risco ativo, painel exibe estado vazio
 
 ## Historico de cenarios
 - [ ] Cenarios recentes sao exibidos na tela com custo, saldo e risco
