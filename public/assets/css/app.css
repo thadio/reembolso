@@ -368,6 +368,10 @@ textarea:focus {
   grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }
 
+.filters-process-meta {
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto auto;
+}
+
 .filters-people {
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }

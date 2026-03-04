@@ -11,6 +11,7 @@ use App\Controllers\InvoicesController;
 use App\Controllers\OfficeTemplatesController;
 use App\Controllers\OrgansController;
 use App\Controllers\PeopleController;
+use App\Controllers\ProcessMetadataController;
 
 $app = app();
 $router = $app->router();
@@ -63,6 +64,14 @@ $router->post('/office-templates/version/create', [OfficeTemplatesController::cl
 $router->post('/office-templates/generate', [OfficeTemplatesController::class, 'generate'], ['auth', 'permission:office_template.manage', 'csrf']);
 $router->get('/office-documents/show', [OfficeTemplatesController::class, 'showDocument'], ['auth', 'permission:office_template.view']);
 $router->get('/office-documents/print', [OfficeTemplatesController::class, 'printDocument'], ['auth', 'permission:office_template.view']);
+$router->get('/process-meta', [ProcessMetadataController::class, 'index'], ['auth', 'permission:process_meta.view']);
+$router->get('/process-meta/create', [ProcessMetadataController::class, 'create'], ['auth', 'permission:process_meta.manage']);
+$router->post('/process-meta/store', [ProcessMetadataController::class, 'store'], ['auth', 'permission:process_meta.manage', 'csrf']);
+$router->get('/process-meta/show', [ProcessMetadataController::class, 'show'], ['auth', 'permission:process_meta.view']);
+$router->get('/process-meta/edit', [ProcessMetadataController::class, 'edit'], ['auth', 'permission:process_meta.manage']);
+$router->post('/process-meta/update', [ProcessMetadataController::class, 'update'], ['auth', 'permission:process_meta.manage', 'csrf']);
+$router->post('/process-meta/delete', [ProcessMetadataController::class, 'destroy'], ['auth', 'permission:process_meta.manage', 'csrf']);
+$router->get('/process-meta/dou-attachment', [ProcessMetadataController::class, 'downloadDouAttachment'], ['auth', 'permission:process_meta.view']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);

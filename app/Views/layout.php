@@ -18,6 +18,8 @@ $canViewCostMirrors = in_array('cost_mirror.view', $authPermissions, true);
 $canManageCostMirrors = in_array('cost_mirror.manage', $authPermissions, true);
 $canViewOfficeTemplates = in_array('office_template.view', $authPermissions, true);
 $canManageOfficeTemplates = in_array('office_template.manage', $authPermissions, true);
+$canViewProcessMeta = in_array('process_meta.view', $authPermissions, true);
+$canManageProcessMeta = in_array('process_meta.manage', $authPermissions, true);
 
 $renderMenuIcon = static function (string $icon): string {
     switch ($icon) {
@@ -60,6 +62,13 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<path d="M15 2v5h5"></path>'
                 . '<path d="M9 12h8"></path>'
                 . '<path d="M9 16h8"></path>';
+            break;
+        case 'process_meta':
+            $body = '<path d="M6 3h9l5 5v13H6z"></path>'
+                . '<path d="M15 3v5h5"></path>'
+                . '<path d="M9 13h6"></path>'
+                . '<path d="M9 17h4"></path>'
+                . '<circle cx="17" cy="17" r="3"></circle>';
             break;
         case 'plus':
             $body = '<circle cx="12" cy="12" r="9"></circle>'
@@ -131,6 +140,14 @@ if ($canViewOfficeTemplates) {
         'active' => str_starts_with($path, '/office-templates') || str_starts_with($path, '/office-documents'),
     ];
 }
+if ($canViewProcessMeta) {
+    $mainMenuItems[] = [
+        'label' => 'Processo formal',
+        'href' => '/process-meta',
+        'icon' => 'process_meta',
+        'active' => str_starts_with($path, '/process-meta'),
+    ];
+}
 
 $quickMenuItems = [];
 if ($canManagePeople) {
@@ -179,6 +196,14 @@ if ($canManageOfficeTemplates) {
         'href' => '/office-templates/create',
         'icon' => 'plus',
         'active' => $path === '/office-templates/create',
+    ];
+}
+if ($canManageProcessMeta) {
+    $quickMenuItems[] = [
+        'label' => 'Novo processo',
+        'href' => '/process-meta/create',
+        'icon' => 'plus',
+        'active' => $path === '/process-meta/create',
     ];
 }
 ?>
