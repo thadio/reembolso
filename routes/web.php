@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 use App\Controllers\AuthController;
 use App\Controllers\CdosController;
+use App\Controllers\CostMirrorsController;
 use App\Controllers\DashboardController;
 use App\Controllers\HealthController;
+use App\Controllers\InvoicesController;
 use App\Controllers\OrgansController;
 use App\Controllers\PeopleController;
 
@@ -29,6 +31,26 @@ $router->post('/cdos/update', [CdosController::class, 'update'], ['auth', 'permi
 $router->post('/cdos/delete', [CdosController::class, 'destroy'], ['auth', 'permission:cdo.manage', 'csrf']);
 $router->post('/cdos/people/link', [CdosController::class, 'linkPerson'], ['auth', 'permission:cdo.manage', 'csrf']);
 $router->post('/cdos/people/unlink', [CdosController::class, 'unlinkPerson'], ['auth', 'permission:cdo.manage', 'csrf']);
+$router->get('/invoices', [InvoicesController::class, 'index'], ['auth', 'permission:invoice.view']);
+$router->get('/invoices/create', [InvoicesController::class, 'create'], ['auth', 'permission:invoice.manage']);
+$router->post('/invoices/store', [InvoicesController::class, 'store'], ['auth', 'permission:invoice.manage', 'csrf']);
+$router->get('/invoices/show', [InvoicesController::class, 'show'], ['auth', 'permission:invoice.view']);
+$router->get('/invoices/edit', [InvoicesController::class, 'edit'], ['auth', 'permission:invoice.manage']);
+$router->post('/invoices/update', [InvoicesController::class, 'update'], ['auth', 'permission:invoice.manage', 'csrf']);
+$router->post('/invoices/delete', [InvoicesController::class, 'destroy'], ['auth', 'permission:invoice.manage', 'csrf']);
+$router->post('/invoices/people/link', [InvoicesController::class, 'linkPerson'], ['auth', 'permission:invoice.manage', 'csrf']);
+$router->post('/invoices/people/unlink', [InvoicesController::class, 'unlinkPerson'], ['auth', 'permission:invoice.manage', 'csrf']);
+$router->get('/invoices/pdf', [InvoicesController::class, 'downloadPdf'], ['auth', 'permission:invoice.view']);
+$router->get('/cost-mirrors', [CostMirrorsController::class, 'index'], ['auth', 'permission:cost_mirror.view']);
+$router->get('/cost-mirrors/create', [CostMirrorsController::class, 'create'], ['auth', 'permission:cost_mirror.manage']);
+$router->post('/cost-mirrors/store', [CostMirrorsController::class, 'store'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->get('/cost-mirrors/show', [CostMirrorsController::class, 'show'], ['auth', 'permission:cost_mirror.view']);
+$router->get('/cost-mirrors/edit', [CostMirrorsController::class, 'edit'], ['auth', 'permission:cost_mirror.manage']);
+$router->post('/cost-mirrors/update', [CostMirrorsController::class, 'update'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->post('/cost-mirrors/delete', [CostMirrorsController::class, 'destroy'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->post('/cost-mirrors/items/store', [CostMirrorsController::class, 'storeItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->post('/cost-mirrors/items/import-csv', [CostMirrorsController::class, 'importCsv'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->post('/cost-mirrors/items/delete', [CostMirrorsController::class, 'destroyItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);

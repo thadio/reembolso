@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-03-04 — Fase 3.3 concluida (Espelho de custo detalhado)
+- Criada migration `011_phase3_cost_mirrors.sql` com:
+  - `cost_mirrors` (pessoa, orgao, competencia, vinculo opcional com boleto e total consolidado)
+  - `cost_mirror_items` (itens detalhados com quantidade, valor unitario e valor total)
+  - permissoes `cost_mirror.view` e `cost_mirror.manage` com concessao para perfis `sist_admin` e `admin`
+- Implementado `CostMirrorRepository` com:
+  - listagem paginada com filtros (orgao, pessoa, status, competencia e busca textual)
+  - CRUD de espelho e itens com soft delete
+  - consulta de pessoas/boletos ativos para vinculo
+  - recalculo de total do espelho a cada inclusao/remocao de item
+- Implementado `CostMirrorService` com:
+  - validacao de competencia e bloqueio de duplicidade ativa por pessoa + competencia
+  - validacao de compatibilidade espelho x boleto (orgao e competencia)
+  - cadastro manual de item com calculo por valor total ou quantidade x unitario
+  - importacao de CSV com validacao de cabecalho/linhas e persistencia transacional
+  - trilha de auditoria e eventos para create/update/delete, item add/remove e import CSV
+- Implementado modulo de espelhos:
+  - `CostMirrorsController`
+  - rotas protegidas (`/cost-mirrors`, CRUD, itens manuais, importacao CSV e remocao de item)
+  - views de lista, criacao, edicao e detalhe
+  - item de menu lateral visivel por permissao `cost_mirror.view`
+- Seed atualizado com permissoes de espelho de custo
+- Checklist da etapa adicionado em `tests/checklist-etapa-3.3.md`
+
+## 2026-03-04 — Fase 3.2 concluida (Boletos estruturados)
+- Criada migration `010_phase3_invoices.sql` com:
+  - `invoices` (orgao, competencia, vencimento, valor, status e metadados de PDF)
+  - `invoice_people` (vinculo boleto x pessoa com rateio opcional)
+  - permissoes `invoice.view` e `invoice.manage` com concessao para perfis `sist_admin` e `admin`
+- Implementado `InvoiceRepository` com:
+  - listagem paginada por filtros (orgao, status, competencia e busca)
+  - agregados de boleto (`total`, `rateado`, `saldo`, pessoas vinculadas)
+  - vinculo/desvinculo de pessoas com escopo por orgao do boleto
+  - consulta de PDF para download protegido
+- Implementado `InvoiceService` com:
+  - validacoes de cadastro/edicao (numero, orgao, competencia, vencimento, valor)
+  - upload seguro de PDF (`application/pdf`, limite de 15MB)
+  - status operacional (`aberto`, `vencido`, `pago_parcial`, `pago`, `cancelado`)
+  - bloqueio de rateio acima do saldo e de vinculos em status final
+  - auditoria e eventos para create/update/delete, vinculos e download de PDF
+- Implementado modulo de boletos:
+  - `InvoicesController`
+  - rotas protegidas (`/invoices`, CRUD, vinculo de pessoas e download de PDF)
+  - views de lista, criacao, edicao e detalhe com formulario de rateio
+  - item de menu lateral visivel por permissao `invoice.view`
+- Seed atualizado com permissoes de boletos estruturados
+- Checklist da etapa adicionado em `tests/checklist-etapa-3.2.md`
+
 ## 2026-03-04 — Etapa 7.1 iniciada (Backup/restore operacional)
 - Adicionados scripts:
   - `scripts/backup.sh` para backup de banco (`mysqldump`) e `storage/uploads`
