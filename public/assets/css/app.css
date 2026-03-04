@@ -140,6 +140,8 @@ a:hover { text-decoration: underline; }
 .badge-neutral { background: #eef2f7; color: #465264; }
 .badge-info { background: #d9effb; color: #114b72; }
 .badge-success { background: #e7f7ee; color: #17643a; }
+.badge-warning { background: #fff4d6; color: #8a5a00; }
+.badge-danger { background: #fde7e7; color: #9f1d1d; }
 
 .btn {
   display: inline-flex;
@@ -682,6 +684,14 @@ th a {
 
 .cost-version-form,
 .cost-item-form {
+  margin: 14px 0 16px;
+  border: 1px solid #d9e6ef;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 12px;
+}
+
+.reimbursement-form {
   margin: 14px 0 16px;
   border: 1px solid #d9e6ef;
   border-radius: 10px;

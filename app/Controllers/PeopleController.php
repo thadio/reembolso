@@ -11,11 +11,13 @@ use App\Repositories\DocumentRepository;
 use App\Repositories\PersonAuditRepository;
 use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
+use App\Repositories\ReimbursementRepository;
 use App\Services\CostPlanService;
 use App\Services\DocumentService;
 use App\Services\PersonAuditService;
 use App\Services\PipelineService;
 use App\Services\PeopleService;
+use App\Services\ReimbursementService;
 
 final class PeopleController extends Controller
 {
@@ -137,6 +139,7 @@ final class PeopleController extends Controller
         $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
         $documents = $this->documentService()->profileData($id, $documentsPage, 8);
         $costs = $this->costService()->profileData($id);
+        $reimbursements = $this->reimbursementService()->profileData($id, 80);
         $canViewAudit = $this->app->auth()->hasPermission('audit.view');
 
         $auditFilters = [
@@ -178,6 +181,7 @@ final class PeopleController extends Controller
             'pipeline' => $pipeline,
             'documents' => $documents,
             'costs' => $costs,
+            'reimbursements' => $reimbursements,
             'audit' => $audit,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $this->app->auth()->hasPermission('people.cpf.full'),
@@ -563,6 +567,79 @@ final class PeopleController extends Controller
         $this->redirect('/people/show?id=' . $personId);
     }
 
+    public function storeReimbursement(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa inválida para lançamento financeiro.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->reimbursementService()->createEntry(
+            personId: $personId,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function markReimbursementPaid(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $entryId = (int) $request->input('entry_id', '0');
+
+        if ($personId <= 0 || $entryId <= 0) {
+            flash('error', 'Dados inválidos para baixa de lançamento.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->reimbursementService()->markAsPaid(
+            personId: $personId,
+            entryId: $entryId,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
     public function exportAudit(Request $request): void
     {
         $personId = (int) $request->input('person_id', '0');
@@ -700,6 +777,15 @@ final class PeopleController extends Controller
     {
         return new CostPlanService(
             new CostPlanRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
+        );
+    }
+
+    private function reimbursementService(): ReimbursementService
+    {
+        return new ReimbursementService(
+            new ReimbursementRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
         );

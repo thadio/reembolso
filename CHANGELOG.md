@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-03-04 — Fase 2.4 concluída (Financeiro real de reembolsos)
+- Criada migration `008_phase2_reimbursement_entries.sql` com tabela `reimbursement_entries` para:
+  - lançamentos financeiros reais por pessoa (`boleto`, `pagamento`, `ajuste`)
+  - status de execução (`pendente`, `pago`, `cancelado`)
+  - competência, vencimento e data de pagamento
+- Implementado `ReimbursementRepository` com:
+  - resumo financeiro por pessoa (pendente/pago/vencido)
+  - listagem ordenada de lançamentos
+  - criação de lançamento e baixa de pagamento
+- Implementado `ReimbursementService` com:
+  - validações de tipo/status/valor/datas
+  - regras de baixa automática para status pago
+  - auditoria (`entity=reimbursement_entry`) e eventos de sistema
+- `PeopleController` e rotas atualizados com:
+  - `POST /people/reimbursements/store`
+  - `POST /people/reimbursements/mark-paid`
+- Perfil 360 atualizado com seção **Reembolsos reais**:
+  - KPIs de pendente/pago/vencido e total de lançamentos
+  - formulário de registro de lançamento
+  - tabela de execução financeira com ação “Marcar como pago”
+- Escopo de auditoria por pessoa ampliado para incluir `reimbursement_entry`
+- Checklist da etapa adicionado em `tests/checklist-etapa-2.4.md`
+
 ## 2026-03-04 — Fase 2.3 concluída (Dashboard operacional)
 - Implementado `DashboardRepository` com consultas de agregação para:
   - totais de pessoas/órgãos ativos

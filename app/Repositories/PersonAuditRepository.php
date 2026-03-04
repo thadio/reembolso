@@ -176,6 +176,7 @@ final class PersonAuditRepository
         $params['person_id_document'] = $personId;
         $params['person_id_cost_plan'] = $personId;
         $params['person_id_cost_item'] = $personId;
+        $params['person_id_reimbursement'] = $personId;
 
         return '(
             (a.entity = "person" AND a.entity_id = :person_id_person)
@@ -203,6 +204,11 @@ final class PersonAuditRepository
                 SELECT 1 FROM cost_plan_items cpi
                 WHERE cpi.id = a.entity_id
                   AND cpi.person_id = :person_id_cost_item
+            ))
+            OR (a.entity = "reimbursement_entry" AND EXISTS (
+                SELECT 1 FROM reimbursement_entries re
+                WHERE re.id = a.entity_id
+                  AND re.person_id = :person_id_reimbursement
             ))
         )';
     }

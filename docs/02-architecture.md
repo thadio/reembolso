@@ -24,6 +24,7 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `PipelineService`: movimentacao/status/timeline da pessoa
 - `DocumentService`: dossie documental, upload seguro e download protegido
 - `CostPlanService`: custos previstos por pessoa com versionamento e comparacao entre versoes
+- `ReimbursementService`: controle de reembolso real (boletos/pagamentos) com baixa financeira
 - `PersonAuditService`: trilha auditavel por pessoa com filtros e exportacao CSV
 
 ## Modelo de dados (resumo)
@@ -31,7 +32,7 @@ Tabelas principais:
 - `users`, `roles`, `permissions`, `role_permissions`, `user_roles`
 - `organs`, `people`, `assignments`, `assignment_statuses`
 - `timeline_events`, `timeline_event_attachments`, `documents`
-- `cost_plans`, `cost_plan_items`
+- `cost_plans`, `cost_plan_items`, `reimbursement_entries`
 - `audit_log`, `system_events`, `migrations`
 
 ## Compatibilidade operacional

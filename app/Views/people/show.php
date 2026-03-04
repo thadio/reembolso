@@ -56,6 +56,38 @@ $costItems = $costs['items'] ?? [];
 $costSummary = $costs['summary'] ?? ['monthly_total' => 0, 'annualized_total' => 0, 'items_count' => 0];
 $costVersions = $costs['versions'] ?? [];
 $costComparison = $costs['comparison'] ?? ['monthly_delta' => null, 'annualized_delta' => null, 'previous_version_number' => null];
+$reimbursements = $reimbursements ?? [
+    'summary' => [
+        'total_entries' => 0,
+        'pending_total' => 0,
+        'paid_total' => 0,
+        'canceled_total' => 0,
+        'overdue_total' => 0,
+        'pending_count' => 0,
+        'paid_count' => 0,
+        'canceled_count' => 0,
+        'overdue_count' => 0,
+        'boletos_count' => 0,
+        'payments_count' => 0,
+        'adjustments_count' => 0,
+    ],
+    'items' => [],
+];
+$reimbursementSummary = $reimbursements['summary'] ?? [
+    'total_entries' => 0,
+    'pending_total' => 0,
+    'paid_total' => 0,
+    'canceled_total' => 0,
+    'overdue_total' => 0,
+    'pending_count' => 0,
+    'paid_count' => 0,
+    'canceled_count' => 0,
+    'overdue_count' => 0,
+    'boletos_count' => 0,
+    'payments_count' => 0,
+    'adjustments_count' => 0,
+];
+$reimbursementItems = $reimbursements['items'] ?? [];
 $audit = $audit ?? [
     'items' => [],
     'pagination' => [
@@ -176,6 +208,41 @@ $costTypeLabel = static function (string $type): string {
     };
 };
 
+$reimbursementTypeLabel = static function (string $type): string {
+    return match ($type) {
+        'boleto' => 'Boleto',
+        'pagamento' => 'Pagamento',
+        'ajuste' => 'Ajuste',
+        default => ucfirst(str_replace('_', ' ', $type)),
+    };
+};
+
+$reimbursementStatusLabel = static function (string $status, bool $overdue = false): string {
+    if ($overdue) {
+        return 'Vencido';
+    }
+
+    return match ($status) {
+        'pendente' => 'Pendente',
+        'pago' => 'Pago',
+        'cancelado' => 'Cancelado',
+        default => ucfirst(str_replace('_', ' ', $status)),
+    };
+};
+
+$reimbursementStatusClass = static function (string $status, bool $overdue = false): string {
+    if ($overdue) {
+        return 'badge-danger';
+    }
+
+    return match ($status) {
+        'pendente' => 'badge-warning',
+        'pago' => 'badge-success',
+        'cancelado' => 'badge-neutral',
+        default => 'badge-neutral',
+    };
+};
+
 $auditEntityLabel = static function (string $entity): string {
     return match ($entity) {
         'person' => 'Pessoa',
@@ -184,6 +251,7 @@ $auditEntityLabel = static function (string $entity): string {
         'document' => 'Documento',
         'cost_plan' => 'Plano de custos',
         'cost_plan_item' => 'Item de custo',
+        'reimbursement_entry' => 'Reembolso real',
         default => ucfirst(str_replace('_', ' ', $entity)),
     };
 };
@@ -278,6 +346,7 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
     <span class="tab-chip">Timeline</span>
     <span class="tab-chip">Documentos</span>
     <span class="tab-chip">Custos</span>
+    <span class="tab-chip">Financeiro real</span>
     <span class="tab-chip">Auditoria</span>
   </div>
 
@@ -771,6 +840,159 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
           </tbody>
         </table>
       </div>
+    </div>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Reembolsos reais</h3>
+      <p class="muted">Controle financeiro de boletos, pagamentos e ajustes executados.</p>
+    </div>
+  </div>
+
+  <div class="grid-kpi costs-kpi">
+    <article class="card kpi-card">
+      <p class="kpi-label">Pendente</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($reimbursementSummary['pending_total'] ?? 0))) ?></p>
+      <p class="muted"><?= e((string) ((int) ($reimbursementSummary['pending_count'] ?? 0))) ?> lançamento(s)</p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Pago</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($reimbursementSummary['paid_total'] ?? 0))) ?></p>
+      <p class="muted"><?= e((string) ((int) ($reimbursementSummary['paid_count'] ?? 0))) ?> lançamento(s)</p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Vencido</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($reimbursementSummary['overdue_total'] ?? 0))) ?></p>
+      <p class="muted"><?= e((string) ((int) ($reimbursementSummary['overdue_count'] ?? 0))) ?> lançamento(s)</p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Total de lançamentos</p>
+      <p class="kpi-value"><?= e((string) ((int) ($reimbursementSummary['total_entries'] ?? 0))) ?></p>
+      <p class="muted">Boletos: <?= e((string) ((int) ($reimbursementSummary['boletos_count'] ?? 0))) ?> | Pagamentos: <?= e((string) ((int) ($reimbursementSummary['payments_count'] ?? 0))) ?></p>
+    </article>
+  </div>
+
+  <?php if (($canManage ?? false) === true): ?>
+    <form method="post" action="<?= e(url('/people/reimbursements/store')) ?>" class="reimbursement-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+      <div class="form-grid">
+        <div class="field">
+          <label for="reimbursement_entry_type">Tipo</label>
+          <select id="reimbursement_entry_type" name="entry_type">
+            <option value="boleto">Boleto</option>
+            <option value="pagamento">Pagamento</option>
+            <option value="ajuste">Ajuste</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="reimbursement_status">Status</label>
+          <select id="reimbursement_status" name="status">
+            <option value="pendente">Pendente</option>
+            <option value="pago">Pago</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+        </div>
+        <div class="field field-wide">
+          <label for="reimbursement_title">Título do lançamento</label>
+          <input id="reimbursement_title" name="title" type="text" minlength="3" maxlength="190" required placeholder="Ex.: Boleto órgão de origem - março/2026">
+        </div>
+        <div class="field">
+          <label for="reimbursement_amount">Valor</label>
+          <input id="reimbursement_amount" name="amount" type="number" min="0" step="0.01" required>
+        </div>
+        <div class="field">
+          <label for="reimbursement_reference_month">Competência</label>
+          <input id="reimbursement_reference_month" name="reference_month" type="month">
+        </div>
+        <div class="field">
+          <label for="reimbursement_due_date">Vencimento</label>
+          <input id="reimbursement_due_date" name="due_date" type="date">
+        </div>
+        <div class="field">
+          <label for="reimbursement_paid_at">Data do pagamento</label>
+          <input id="reimbursement_paid_at" name="paid_at" type="date">
+        </div>
+        <div class="field field-wide">
+          <label for="reimbursement_notes">Observações</label>
+          <textarea id="reimbursement_notes" name="notes" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Registrar lançamento</button>
+      </div>
+    </form>
+  <?php endif; ?>
+
+  <?php if ($reimbursementItems === []): ?>
+    <p class="muted">Nenhum lançamento financeiro registrado para esta pessoa.</p>
+  <?php else: ?>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Título</th>
+            <th>Competência</th>
+            <th>Valor</th>
+            <th>Status</th>
+            <th>Vencimento</th>
+            <th>Pago em</th>
+            <th>Responsável</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($reimbursementItems as $entry): ?>
+            <?php
+              $entryStatus = (string) ($entry['status'] ?? '');
+              $dueDateRaw = (string) ($entry['due_date'] ?? '');
+              $isOverdue = $entryStatus === 'pendente'
+                  && trim($dueDateRaw) !== ''
+                  && strtotime($dueDateRaw) !== false
+                  && strtotime($dueDateRaw) < strtotime(date('Y-m-d'));
+              $canMarkAsPaid = (($canManage ?? false) === true)
+                  && $entryStatus !== 'pago'
+                  && $entryStatus !== 'cancelado';
+            ?>
+            <tr>
+              <td><?= e($reimbursementTypeLabel((string) ($entry['entry_type'] ?? ''))) ?></td>
+              <td>
+                <strong><?= e((string) ($entry['title'] ?? '-')) ?></strong>
+                <?php if (trim((string) ($entry['notes'] ?? '')) !== ''): ?>
+                  <div class="muted"><?= nl2br(e((string) $entry['notes'])) ?></div>
+                <?php endif; ?>
+              </td>
+              <td><?= e($formatDate((string) ($entry['reference_month'] ?? ''))) ?></td>
+              <td><?= e($formatMoney((float) ($entry['amount'] ?? 0))) ?></td>
+              <td>
+                <span class="badge <?= e($reimbursementStatusClass($entryStatus, $isOverdue)) ?>">
+                  <?= e($reimbursementStatusLabel($entryStatus, $isOverdue)) ?>
+                </span>
+              </td>
+              <td><?= e($formatDate($dueDateRaw)) ?></td>
+              <td><?= e($formatDateTime((string) ($entry['paid_at'] ?? ''))) ?></td>
+              <td><?= e((string) ($entry['created_by_name'] ?? 'Sistema')) ?></td>
+              <td class="actions-cell">
+                <?php if ($canMarkAsPaid): ?>
+                  <form method="post" action="<?= e(url('/people/reimbursements/mark-paid')) ?>">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+                    <input type="hidden" name="entry_id" value="<?= e((string) ((int) ($entry['id'] ?? 0))) ?>">
+                    <input type="hidden" name="paid_at" value="<?= e(date('Y-m-d')) ?>">
+                    <button type="submit" class="btn btn-ghost">Marcar como pago</button>
+                  </form>
+                <?php else: ?>
+                  <span class="muted">-</span>
+                <?php endif; ?>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
     </div>
   <?php endif; ?>
 </div>

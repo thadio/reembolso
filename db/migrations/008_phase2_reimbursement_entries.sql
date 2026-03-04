@@ -1,0 +1,30 @@
+-- Fase 2.4 - Reembolsos reais por pessoa (boletos/pagamentos)
+
+CREATE TABLE IF NOT EXISTS reimbursement_entries (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  person_id BIGINT UNSIGNED NOT NULL,
+  assignment_id BIGINT UNSIGNED NULL,
+  entry_type VARCHAR(30) NOT NULL DEFAULT 'boleto',
+  status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+  title VARCHAR(190) NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  reference_month DATE NULL,
+  due_date DATE NULL,
+  paid_at DATETIME NULL,
+  notes TEXT NULL,
+  created_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
+  KEY idx_reimbursement_person (person_id),
+  KEY idx_reimbursement_assignment (assignment_id),
+  KEY idx_reimbursement_status (status),
+  KEY idx_reimbursement_type (entry_type),
+  KEY idx_reimbursement_due_date (due_date),
+  KEY idx_reimbursement_reference_month (reference_month),
+  KEY idx_reimbursement_created_by (created_by),
+  KEY idx_reimbursement_deleted_at (deleted_at),
+  CONSTRAINT fk_reimbursement_person FOREIGN KEY (person_id) REFERENCES people(id),
+  CONSTRAINT fk_reimbursement_assignment FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_reimbursement_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
