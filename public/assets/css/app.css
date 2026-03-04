@@ -372,8 +372,21 @@ textarea:focus {
   grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }
 
+.filters-sla {
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto auto;
+}
+
+.filters-sla-dispatch {
+  grid-template-columns: 1fr auto 2fr;
+}
+
 .filters-people {
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr auto auto;
+}
+
+.sla-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
 }
 
 .table-wrap {
@@ -881,6 +894,14 @@ th a {
     grid-template-columns: 1fr 1fr 1fr;
   }
 
+  .filters-sla {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .filters-sla-dispatch {
+    grid-template-columns: 1fr;
+  }
+
   .list-with-aside {
     grid-template-columns: 1fr;
   }
@@ -944,6 +965,14 @@ th a {
   }
 
   .filters-office-template {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-sla {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-sla-dispatch {
     grid-template-columns: 1fr;
   }
 

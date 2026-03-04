@@ -20,6 +20,8 @@ $canViewOfficeTemplates = in_array('office_template.view', $authPermissions, tru
 $canManageOfficeTemplates = in_array('office_template.manage', $authPermissions, true);
 $canViewProcessMeta = in_array('process_meta.view', $authPermissions, true);
 $canManageProcessMeta = in_array('process_meta.manage', $authPermissions, true);
+$canViewSla = in_array('sla.view', $authPermissions, true);
+$canManageSla = in_array('sla.manage', $authPermissions, true);
 
 $renderMenuIcon = static function (string $icon): string {
     switch ($icon) {
@@ -69,6 +71,11 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<path d="M9 13h6"></path>'
                 . '<path d="M9 17h4"></path>'
                 . '<circle cx="17" cy="17" r="3"></circle>';
+            break;
+        case 'sla':
+            $body = '<path d="M12 3a9 9 0 1 0 9 9"></path>'
+                . '<path d="M12 7v5l3 2"></path>'
+                . '<path d="M17 3h4v4"></path>';
             break;
         case 'plus':
             $body = '<circle cx="12" cy="12" r="9"></circle>'
@@ -148,6 +155,14 @@ if ($canViewProcessMeta) {
         'active' => str_starts_with($path, '/process-meta'),
     ];
 }
+if ($canViewSla) {
+    $mainMenuItems[] = [
+        'label' => 'SLA',
+        'href' => '/sla-alerts',
+        'icon' => 'sla',
+        'active' => str_starts_with($path, '/sla-alerts'),
+    ];
+}
 
 $quickMenuItems = [];
 if ($canManagePeople) {
@@ -204,6 +219,14 @@ if ($canManageProcessMeta) {
         'href' => '/process-meta/create',
         'icon' => 'plus',
         'active' => $path === '/process-meta/create',
+    ];
+}
+if ($canManageSla) {
+    $quickMenuItems[] = [
+        'label' => 'Regras SLA',
+        'href' => '/sla-alerts/rules',
+        'icon' => 'plus',
+        'active' => $path === '/sla-alerts/rules',
     ];
 }
 ?>

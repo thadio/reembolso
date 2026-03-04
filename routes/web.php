@@ -12,6 +12,7 @@ use App\Controllers\OfficeTemplatesController;
 use App\Controllers\OrgansController;
 use App\Controllers\PeopleController;
 use App\Controllers\ProcessMetadataController;
+use App\Controllers\SlaAlertsController;
 
 $app = app();
 $router = $app->router();
@@ -72,6 +73,10 @@ $router->get('/process-meta/edit', [ProcessMetadataController::class, 'edit'], [
 $router->post('/process-meta/update', [ProcessMetadataController::class, 'update'], ['auth', 'permission:process_meta.manage', 'csrf']);
 $router->post('/process-meta/delete', [ProcessMetadataController::class, 'destroy'], ['auth', 'permission:process_meta.manage', 'csrf']);
 $router->get('/process-meta/dou-attachment', [ProcessMetadataController::class, 'downloadDouAttachment'], ['auth', 'permission:process_meta.view']);
+$router->get('/sla-alerts', [SlaAlertsController::class, 'index'], ['auth', 'permission:sla.view']);
+$router->get('/sla-alerts/rules', [SlaAlertsController::class, 'rules'], ['auth', 'permission:sla.manage']);
+$router->post('/sla-alerts/rules/upsert', [SlaAlertsController::class, 'upsertRule'], ['auth', 'permission:sla.manage', 'csrf']);
+$router->post('/sla-alerts/dispatch-email', [SlaAlertsController::class, 'dispatchEmail'], ['auth', 'permission:sla.manage', 'csrf']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);
