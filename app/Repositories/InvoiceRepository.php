@@ -285,6 +285,51 @@ final class InvoiceRepository
     }
 
     /** @return array<int, array<string, mixed>> */
+    public function paymentsByInvoice(int $invoiceId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.id,
+                p.invoice_id,
+                p.payment_date,
+                p.amount,
+                p.process_reference,
+                p.proof_original_name,
+                p.proof_storage_path,
+                p.notes,
+                p.created_by,
+                p.created_at,
+                p.updated_at,
+                u.name AS created_by_name,
+                IFNULL(SUM(pp.allocated_amount), 0) AS allocated_amount
+             FROM payments p
+             LEFT JOIN users u ON u.id = p.created_by
+             LEFT JOIN payment_people pp
+               ON pp.payment_id = p.id
+              AND pp.deleted_at IS NULL
+             WHERE p.invoice_id = :invoice_id
+               AND p.deleted_at IS NULL
+             GROUP BY
+                p.id,
+                p.invoice_id,
+                p.payment_date,
+                p.amount,
+                p.process_reference,
+                p.proof_original_name,
+                p.proof_storage_path,
+                p.notes,
+                p.created_by,
+                p.created_at,
+                p.updated_at,
+                u.name
+             ORDER BY p.payment_date DESC, p.id DESC'
+        );
+        $stmt->execute(['invoice_id' => $invoiceId]);
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
     public function availablePeopleForLinking(int $invoiceId, int $limit = 300): array
     {
         $invoice = $this->findById($invoiceId);
@@ -517,6 +562,30 @@ final class InvoiceRepository
         return $stmt->execute(['invoice_id' => $invoiceId]);
     }
 
+    public function softDeletePaymentPeopleByInvoice(int $invoiceId): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE payment_people
+             SET deleted_at = NOW(), updated_at = NOW()
+             WHERE invoice_id = :invoice_id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute(['invoice_id' => $invoiceId]);
+    }
+
+    public function softDeletePaymentsByInvoice(int $invoiceId): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE payments
+             SET deleted_at = NOW(), updated_at = NOW()
+             WHERE invoice_id = :invoice_id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute(['invoice_id' => $invoiceId]);
+    }
+
     public function softDelete(int $id): bool
     {
         $stmt = $this->db->prepare(
@@ -564,6 +633,163 @@ final class InvoiceRepository
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function activeLinksForPayment(int $invoiceId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                id,
+                invoice_id,
+                person_id,
+                allocated_amount,
+                paid_amount
+             FROM invoice_people
+             WHERE invoice_id = :invoice_id
+               AND deleted_at IS NULL
+             ORDER BY id ASC'
+        );
+        $stmt->execute(['invoice_id' => $invoiceId]);
+
+        return $stmt->fetchAll();
+    }
+
+    /** @param array<string, mixed> $data */
+    public function createPayment(array $data): int
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO payments (
+                invoice_id,
+                payment_date,
+                amount,
+                process_reference,
+                proof_original_name,
+                proof_stored_name,
+                proof_mime_type,
+                proof_file_size,
+                proof_storage_path,
+                notes,
+                created_by,
+                created_at,
+                updated_at,
+                deleted_at
+             ) VALUES (
+                :invoice_id,
+                :payment_date,
+                :amount,
+                :process_reference,
+                :proof_original_name,
+                :proof_stored_name,
+                :proof_mime_type,
+                :proof_file_size,
+                :proof_storage_path,
+                :notes,
+                :created_by,
+                NOW(),
+                NOW(),
+                NULL
+             )'
+        );
+
+        $stmt->execute([
+            'invoice_id' => $data['invoice_id'],
+            'payment_date' => $data['payment_date'],
+            'amount' => $data['amount'],
+            'process_reference' => $data['process_reference'],
+            'proof_original_name' => $data['proof_original_name'],
+            'proof_stored_name' => $data['proof_stored_name'],
+            'proof_mime_type' => $data['proof_mime_type'],
+            'proof_file_size' => $data['proof_file_size'],
+            'proof_storage_path' => $data['proof_storage_path'],
+            'notes' => $data['notes'],
+            'created_by' => $data['created_by'],
+        ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function incrementPersonLinkPaidAmount(int $invoicePersonId, string $amount): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE invoice_people
+             SET paid_amount = LEAST(allocated_amount, paid_amount + :amount), updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $invoicePersonId,
+            'amount' => $amount,
+        ]);
+    }
+
+    public function createPaymentPersonAllocation(int $paymentId, int $invoiceId, int $invoicePersonId, int $personId, string $amount): int
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO payment_people (
+                payment_id,
+                invoice_id,
+                invoice_person_id,
+                person_id,
+                allocated_amount,
+                created_at,
+                updated_at,
+                deleted_at
+             ) VALUES (
+                :payment_id,
+                :invoice_id,
+                :invoice_person_id,
+                :person_id,
+                :allocated_amount,
+                NOW(),
+                NOW(),
+                NULL
+             )'
+        );
+
+        $stmt->execute([
+            'payment_id' => $paymentId,
+            'invoice_id' => $invoiceId,
+            'invoice_person_id' => $invoicePersonId,
+            'person_id' => $personId,
+            'allocated_amount' => $amount,
+        ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function sumPaymentsByInvoice(int $invoiceId): string
+    {
+        $stmt = $this->db->prepare(
+            'SELECT IFNULL(SUM(amount), 0) AS total_paid
+             FROM payments
+             WHERE invoice_id = :invoice_id
+               AND deleted_at IS NULL'
+        );
+        $stmt->execute(['invoice_id' => $invoiceId]);
+        $total = (float) ($stmt->fetch()['total_paid'] ?? 0);
+
+        return number_format($total, 2, '.', '');
+    }
+
+    public function updateInvoicePaidAmountAndStatus(int $invoiceId, string $paidAmount, string $status): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE invoices
+             SET
+                paid_amount = :paid_amount,
+                status = :status,
+                updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $invoiceId,
+            'paid_amount' => $paidAmount,
+            'status' => $status,
+        ]);
     }
 
     public function softDeletePersonLink(int $linkId): bool
@@ -672,6 +898,46 @@ final class InvoiceRepository
         }
 
         if (trim((string) ($row['pdf_storage_path'] ?? '')) === '') {
+            return null;
+        }
+
+        return $row;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findPaymentProofById(int $paymentId, ?int $invoiceId = null): ?array
+    {
+        $sql = 'SELECT
+                    p.id,
+                    p.invoice_id,
+                    p.payment_date,
+                    p.amount,
+                    p.proof_original_name,
+                    p.proof_mime_type,
+                    p.proof_storage_path,
+                    i.invoice_number
+                FROM payments p
+                INNER JOIN invoices i ON i.id = p.invoice_id AND i.deleted_at IS NULL
+                WHERE p.id = :id
+                  AND p.deleted_at IS NULL';
+        $params = ['id' => $paymentId];
+
+        if ($invoiceId !== null) {
+            $sql .= ' AND p.invoice_id = :invoice_id';
+            $params['invoice_id'] = $invoiceId;
+        }
+
+        $sql .= ' LIMIT 1';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch();
+
+        if ($row === false) {
+            return null;
+        }
+
+        if (trim((string) ($row['proof_storage_path'] ?? '')) === '') {
             return null;
         }
 

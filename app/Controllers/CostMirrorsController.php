@@ -233,7 +233,7 @@ final class CostMirrorsController extends Controller
         $this->redirect('/cost-mirrors/show?id=' . $mirrorId);
     }
 
-    public function importItems(Request $request): void
+    public function importCsv(Request $request): void
     {
         $mirrorId = (int) $request->input('mirror_id', '0');
         if ($mirrorId <= 0) {
@@ -241,7 +241,7 @@ final class CostMirrorsController extends Controller
             $this->redirect('/cost-mirrors');
         }
 
-        $file = is_array($_FILES['items_csv'] ?? null) ? $_FILES['items_csv'] : null;
+        $file = is_array($_FILES['csv_file'] ?? null) ? $_FILES['csv_file'] : null;
 
         $result = $this->service()->importCsv(
             mirrorId: $mirrorId,

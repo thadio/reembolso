@@ -44,6 +44,8 @@ $router->post('/invoices/update', [InvoicesController::class, 'update'], ['auth'
 $router->post('/invoices/delete', [InvoicesController::class, 'destroy'], ['auth', 'permission:invoice.manage', 'csrf']);
 $router->post('/invoices/people/link', [InvoicesController::class, 'linkPerson'], ['auth', 'permission:invoice.manage', 'csrf']);
 $router->post('/invoices/people/unlink', [InvoicesController::class, 'unlinkPerson'], ['auth', 'permission:invoice.manage', 'csrf']);
+$router->post('/invoices/payments/store', [InvoicesController::class, 'storePayment'], ['auth', 'permission:invoice.manage', 'csrf']);
+$router->get('/invoices/payments/proof', [InvoicesController::class, 'downloadPaymentProof'], ['auth', 'permission:invoice.view']);
 $router->get('/invoices/pdf', [InvoicesController::class, 'downloadPdf'], ['auth', 'permission:invoice.view']);
 $router->get('/cost-mirrors', [CostMirrorsController::class, 'index'], ['auth', 'permission:cost_mirror.view']);
 $router->get('/cost-mirrors/create', [CostMirrorsController::class, 'create'], ['auth', 'permission:cost_mirror.manage']);

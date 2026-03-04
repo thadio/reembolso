@@ -58,7 +58,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | Fase 0 - Fundacao e seguranca base | `[x]` | MVC leve, auth, RBAC, CSRF, auditoria, health |
 | Fase 1 - Pipeline operacional | `[x]` | Orgaos, pessoas, pipeline, timeline, dossie |
 | Fase 2 - Financeiro base | `[x]` | custos, auditoria por pessoa, dashboard, reembolso, conciliacao |
-| Fase 3 - Nucleo financeiro estruturado | `[~]` | 3.1, 3.2 e 3.3 concluidas; 3.4 e 3.5 pendentes |
+| Fase 3 - Nucleo financeiro estruturado | `[x]` | 3.1 a 3.5 concluidas (CDO, boletos, espelho, conciliacao e pagamentos) |
 | Fase 4 - Automacao administrativa | `[~]` | 4.1 parcial concluida (catalogo/versionamento/merge/HTML); 4.2 e 4.3 pendentes |
 | Fase 5 - Inteligencia orcamentaria e relatorios | `[ ]` | projecoes, cenarios, relatorios premium, modulo orcamentario |
 | Fase 6 - Compliance e seguranca avancada | `[ ]` | admin de usuarios via UI, LGPD avancado, hardening |
@@ -96,8 +96,8 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 ### 2.4 Lacunas criticas pendentes
 
 - `[x]` Espelho de custo item a item por competencia
-- `[ ]` Conciliacao item a item com justificativa e aprovacao
-- `[ ]` Pagamentos completos com comprovante e conciliacao por titulo
+- `[x]` Conciliacao item a item com justificativa e aprovacao
+- `[x]` Pagamentos completos com comprovante e conciliacao por titulo
 - `[~]` Geracao de oficios por templates versionados
 - `[ ]` Importacao CSV em massa (pessoas e orgaos)
 - `[ ]` Gestao administrativa de usuarios/papeis via UI
@@ -130,8 +130,8 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-40 | Cadastro de boleto (dominio proprio) | `[x]` | Implementado com `invoices` e metadados de boleto/PDF |
 | RF-41 | Boleto agrupando multiplas pessoas | `[x]` | Implementado com `invoice_people` e vinculo 1..N |
 | RF-42 | Espelho por competencia e pessoa | `[x]` | Implementado com `cost_mirrors` + `cost_mirror_items`, cadastro manual e importacao CSV |
-| RF-43 | Conciliacao automatica item e total | `[~]` | Total por competencia existe; item a item nao |
-| RF-44 | Registro de pagamento com comprovante/processo | `[~]` | Baixa existe; comprovante/vinculo formal nao |
+| RF-43 | Conciliacao automatica item e total | `[x]` | Implementada conciliacao item a item com workflow de justificativa/aprovacao |
+| RF-44 | Registro de pagamento com comprovante/processo | `[x]` | Implementada baixa parcial/total com comprovante e vinculo por titulo |
 | RF-45 | Painel financeiro completo de status | `[~]` | KPI parcial; falta modulo financeiro consolidado |
 | RF-50 | Dashboard executivo (KPIs + operacional) | `[x]` | Implementado |
 | RF-51 | Relatorios filtraveis por multiplos eixos | `[ ]` | Nao implementado como modulo dedicado |
@@ -216,17 +216,17 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 3.4 - Conciliacao avancada e workflow
 
-- `[ ]` Conciliacao item a item (previsto x espelho)
-- `[ ]` Tabela de divergencias com severidade
-- `[ ]` Justificativa obrigatoria para divergencia acima de limiar
-- `[ ]` Aprovacao de conferencia com bloqueio de edicao
+- `[x]` Conciliacao item a item (previsto x espelho)
+- `[x]` Tabela de divergencias com severidade
+- `[x]` Justificativa obrigatoria para divergencia acima de limiar
+- `[x]` Aprovacao de conferencia com bloqueio de edicao
 
 #### Etapa 3.5 - Pagamentos completos
 
-- `[ ]` Criar tabela `payments` e vinculo com boletos
-- `[ ]` Baixa total/parcial por boleto
-- `[ ]` Upload de comprovante de pagamento
-- `[ ]` Integracao com status financeiro por pessoa
+- `[x]` Criar tabela `payments` e vinculo com boletos
+- `[x]` Baixa total/parcial por boleto
+- `[x]` Upload de comprovante de pagamento
+- `[x]` Integracao com status financeiro por pessoa
 
 ### Fase 4 - Automacao de processo administrativo (SEI/oficios/SLA)
 
@@ -532,10 +532,10 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 ## 9) Proximo ciclo recomendado (execucao imediata)
 
-1. Entregar **Fase 3.4 (conciliacao item a item + workflow)**.
-2. Fechar **Fase 3.5 (pagamentos completos)**.
-3. Abrir **Fase 5.4 MVP (orcamento/capacidade)** com dashboard + simulador.
-4. Avancar **Fase 4.2 (metadados formais de processo)** em paralelo controlado.
+1. Abrir **Fase 5.4 MVP (orcamento/capacidade)** com dashboard + simulador.
+2. Avancar **Fase 4.2 (metadados formais de processo)** em paralelo controlado.
+3. Evoluir **Fase 5.1 (projecoes e cenarios)** com base no financeiro consolidado.
+4. Consolidar **Fase 5.3 (relatorios premium)** apos fechamento do MVP orcamentario.
 
 ---
 

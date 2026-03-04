@@ -98,6 +98,7 @@ final class InvoicesController extends Controller
             'title' => 'Detalhe do boleto',
             'invoice' => $invoice,
             'links' => $this->service()->links($id),
+            'payments' => $this->service()->payments($id),
             'availablePeople' => $canManage ? $this->service()->availablePeople($id, 500) : [],
             'canManage' => $canManage,
         ]);
@@ -228,6 +229,75 @@ final class InvoicesController extends Controller
 
         flash('success', $result['message']);
         $this->redirect('/invoices/show?id=' . $invoiceId);
+    }
+
+    public function storePayment(Request $request): void
+    {
+        $invoiceId = (int) $request->input('invoice_id', '0');
+        if ($invoiceId <= 0) {
+            flash('error', 'Boleto invalido para registrar pagamento.');
+            $this->redirect('/invoices');
+        }
+
+        $result = $this->service()->registerPayment(
+            invoiceId: $invoiceId,
+            input: $request->all(),
+            file: is_array($_FILES['payment_proof'] ?? null) ? $_FILES['payment_proof'] : null,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/invoices/show?id=' . $invoiceId);
+        }
+
+        flash('success', $result['message']);
+        $this->redirect('/invoices/show?id=' . $invoiceId);
+    }
+
+    public function downloadPaymentProof(Request $request): void
+    {
+        $paymentId = (int) $request->input('id', '0');
+        $invoiceIdRaw = (int) $request->input('invoice_id', '0');
+        $invoiceId = $invoiceIdRaw > 0 ? $invoiceIdRaw : null;
+        if ($paymentId <= 0) {
+            flash('error', 'Comprovante de pagamento invalido.');
+            $this->redirect($invoiceIdRaw > 0 ? '/invoices/show?id=' . $invoiceIdRaw : '/invoices');
+        }
+
+        $file = $this->service()->paymentProofForDownload(
+            paymentId: $paymentId,
+            invoiceId: $invoiceId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if ($file === null) {
+            flash('error', 'Comprovante de pagamento nao encontrado.');
+            $this->redirect($invoiceIdRaw > 0 ? '/invoices/show?id=' . $invoiceIdRaw : '/invoices');
+        }
+
+        $path = (string) $file['path'];
+        $mimeType = (string) $file['mime_type'];
+        $fileName = (string) $file['original_name'];
+
+        if (!is_file($path)) {
+            flash('error', 'Arquivo de comprovante nao encontrado no storage.');
+            $this->redirect($invoiceIdRaw > 0 ? '/invoices/show?id=' . $invoiceIdRaw : '/invoices');
+        }
+
+        if (!headers_sent()) {
+            header('Content-Type: ' . ($mimeType !== '' ? $mimeType : 'application/octet-stream'));
+            header('Content-Length: ' . (string) filesize($path));
+            header('Content-Disposition: attachment; filename="' . rawurlencode($fileName !== '' ? $fileName : ('comprovante_' . $paymentId)) . '"');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        readfile($path);
+        exit;
     }
 
     public function downloadPdf(Request $request): void

@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-03-04 — Fase 3.5 concluida (Pagamentos completos por boleto)
+- Criada migration `017_phase3_payments.sql` com:
+  - `payments` (baixa financeira por boleto com data, valor e comprovante)
+  - `payment_people` (alocacao automatica de baixa por pessoa vinculada ao boleto)
+- `InvoiceRepository` ampliado com:
+  - persistencia de pagamentos e alocacoes por pessoa
+  - somatorio de pagamentos por boleto e atualizacao de `invoices.paid_amount`
+  - consulta de comprovante para download protegido
+- `InvoiceService` ampliado com:
+  - `registerPayment` para baixa parcial/total com validacoes de saldo
+  - upload seguro de comprovante (`PDF`, `PNG`, `JPG`, `JPEG`, limite 15MB)
+  - integracao com status financeiro do boleto (`aberto`, `vencido`, `pago_parcial`, `pago`)
+  - integracao por pessoa via atualizacao de `invoice_people.paid_amount`
+  - bloqueio de remocao de vinculo quando ja houver valor pago para a pessoa
+- `InvoicesController`, rotas e view de detalhe atualizados com:
+  - `POST /invoices/payments/store`
+  - `GET /invoices/payments/proof`
+  - formulario de registro de pagamento e historico de baixas por boleto
+- Checklist da etapa adicionado em `tests/checklist-etapa-3.5.md`
+
+## 2026-03-04 — Fase 3.4 concluida (Conciliacao avancada de espelho)
+- Criada migration `016_phase3_reconciliation_workflow.sql` com:
+  - `cost_mirror_reconciliations` (cabecalho, status e bloqueio de edicao)
+  - `cost_mirror_divergences` (divergencias item a item com severidade e justificativa)
+- Implementados `CostMirrorReconciliationRepository`, `CostMirrorReconciliationService` e `CostMirrorReconciliationController` com:
+  - conciliacao item a item previsto x espelho
+  - workflow de justificativa obrigatoria acima de limiar e aprovacao
+  - bloqueio de edicao no espelho apos aprovacao
+  - auditoria e eventos de sistema para run/justificativa/aprovacao
+- Rotas adicionadas em `/cost-mirrors/reconciliation/*`
+- `CostMirrorService`, `CostMirrorsController` e view de detalhe ajustados para respeitar bloqueio por conciliacao aprovada
+- Ajustado `CostMirrorsController` para consumir upload CSV no campo correto (`csv_file`)
+- Checklist da etapa adicionado em `tests/checklist-etapa-3.4.md`
+
 ## 2026-03-04 — Fase 4.1 iniciada (Templates de oficio)
 - Criada migration `012_phase4_office_templates.sql` com:
   - `office_templates` (catalogo por chave/tipo com status ativo)

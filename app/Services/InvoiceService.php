@@ -11,8 +11,10 @@ final class InvoiceService
 {
     private const ALLOWED_STATUSES = ['aberto', 'vencido', 'pago_parcial', 'pago', 'cancelado'];
     private const FINAL_STATUSES = ['pago', 'cancelado'];
-    private const ALLOWED_EXTENSIONS = ['pdf'];
-    private const ALLOWED_MIME = ['application/pdf'];
+    private const INVOICE_PDF_ALLOWED_EXTENSIONS = ['pdf'];
+    private const INVOICE_PDF_ALLOWED_MIME = ['application/pdf'];
+    private const PAYMENT_PROOF_ALLOWED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg'];
+    private const PAYMENT_PROOF_ALLOWED_MIME = ['application/pdf', 'image/png', 'image/jpeg'];
     private const MAX_FILE_SIZE = 15728640; // 15MB
 
     public function __construct(
@@ -65,6 +67,12 @@ final class InvoiceService
     public function links(int $invoiceId): array
     {
         return $this->invoices->linksByInvoice($invoiceId);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function payments(int $invoiceId): array
+    {
+        return $this->invoices->paymentsByInvoice($invoiceId);
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -338,6 +346,8 @@ final class InvoiceService
 
         try {
             $this->invoices->beginTransaction();
+            $this->invoices->softDeletePaymentPeopleByInvoice($id);
+            $this->invoices->softDeletePaymentsByInvoice($id);
             $this->invoices->softDeleteLinksByInvoice($id);
             $this->invoices->softDelete($id);
 
@@ -529,6 +539,14 @@ final class InvoiceService
             ];
         }
 
+        if ((float) ($link['paid_amount'] ?? 0) > 0.009) {
+            return [
+                'ok' => false,
+                'message' => 'Vinculo com pagamento registrado nao pode ser removido.',
+                'errors' => ['Remocao bloqueada: ja existe valor pago para esta pessoa no boleto.'],
+            ];
+        }
+
         try {
             $this->invoices->beginTransaction();
             $this->invoices->softDeletePersonLink($linkId);
@@ -572,6 +590,284 @@ final class InvoiceService
             'ok' => true,
             'message' => 'Vinculo removido com sucesso.',
             'errors' => [],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|null $file
+     * @return array{ok: bool, message: string, errors: array<int, string>}
+     */
+    public function registerPayment(int $invoiceId, array $input, ?array $file, int $userId, string $ip, string $userAgent): array
+    {
+        $invoice = $this->invoices->findById($invoiceId);
+        if ($invoice === null) {
+            return [
+                'ok' => false,
+                'message' => 'Boleto nao encontrado para registro de pagamento.',
+                'errors' => ['Boleto nao encontrado para registro de pagamento.'],
+            ];
+        }
+
+        $currentStatus = $this->effectiveStatus(
+            status: (string) ($invoice['status'] ?? 'aberto'),
+            dueDate: (string) ($invoice['due_date'] ?? ''),
+            paidAmount: (float) ($invoice['paid_amount'] ?? 0),
+            totalAmount: (float) ($invoice['total_amount'] ?? 0)
+        );
+
+        if ($currentStatus === 'cancelado') {
+            return [
+                'ok' => false,
+                'message' => 'Boleto cancelado nao permite registro de pagamento.',
+                'errors' => ['Boleto em status cancelado nao permite baixa financeira.'],
+            ];
+        }
+
+        $paymentDate = $this->normalizeDate($this->clean($input['payment_date'] ?? null));
+        $amount = $this->parseMoneyStrict($input['amount'] ?? null);
+        $processReference = $this->clean($input['process_reference'] ?? null);
+        $notes = $this->clean($input['notes'] ?? null);
+
+        $errors = [];
+        if ($paymentDate === null) {
+            $errors[] = 'Data do pagamento invalida.';
+        }
+
+        if ($amount === null || (float) $amount <= 0.0) {
+            $errors[] = 'Valor do pagamento invalido (deve ser maior que zero).';
+        }
+
+        if ($errors !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel registrar pagamento.',
+                'errors' => $errors,
+            ];
+        }
+
+        $totalAmount = max(0.0, (float) ($invoice['total_amount'] ?? 0));
+        $paidAmount = max(0.0, (float) ($invoice['paid_amount'] ?? 0));
+        $outstanding = max(0.0, $totalAmount - $paidAmount);
+        if ($outstanding <= 0.009) {
+            return [
+                'ok' => false,
+                'message' => 'Boleto ja esta quitado.',
+                'errors' => ['Nao ha saldo pendente para nova baixa.'],
+            ];
+        }
+
+        if ((float) $amount - $outstanding > 0.009) {
+            return [
+                'ok' => false,
+                'message' => 'Pagamento excede saldo pendente do boleto.',
+                'errors' => ['Valor de baixa acima do saldo pendente.'],
+            ];
+        }
+
+        $proofResult = $this->persistPaymentProof($file, (int) ($invoice['organ_id'] ?? 0));
+        if (!$proofResult['ok']) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel registrar pagamento.',
+                'errors' => [$proofResult['error']],
+            ];
+        }
+
+        $proofMeta = $proofResult['meta'] ?? [];
+        $paidByLinks = 0.0;
+        $allocationCount = 0;
+
+        try {
+            $this->invoices->beginTransaction();
+
+            $paymentId = $this->invoices->createPayment([
+                'invoice_id' => $invoiceId,
+                'payment_date' => $paymentDate,
+                'amount' => $amount,
+                'process_reference' => $processReference === null ? null : mb_substr($processReference, 0, 120),
+                'proof_original_name' => $proofMeta['proof_original_name'] ?? null,
+                'proof_stored_name' => $proofMeta['proof_stored_name'] ?? null,
+                'proof_mime_type' => $proofMeta['proof_mime_type'] ?? null,
+                'proof_file_size' => $proofMeta['proof_file_size'] ?? null,
+                'proof_storage_path' => $proofMeta['proof_storage_path'] ?? null,
+                'notes' => $notes === null ? null : mb_substr($notes, 0, 4000),
+                'created_by' => $userId > 0 ? $userId : null,
+            ]);
+
+            if ($paymentId <= 0) {
+                throw new \RuntimeException('Falha ao persistir pagamento.');
+            }
+
+            $remaining = (float) $amount;
+            $links = $this->invoices->activeLinksForPayment($invoiceId);
+            foreach ($links as $link) {
+                if ($remaining <= 0.009) {
+                    break;
+                }
+
+                $linkAllocated = max(0.0, (float) ($link['allocated_amount'] ?? 0));
+                $linkPaid = max(0.0, (float) ($link['paid_amount'] ?? 0));
+                $linkRemaining = max(0.0, $linkAllocated - $linkPaid);
+
+                if ($linkRemaining <= 0.009) {
+                    continue;
+                }
+
+                $chunk = min($remaining, $linkRemaining);
+                if ($chunk <= 0.0) {
+                    continue;
+                }
+
+                $chunkFormatted = number_format($chunk, 2, '.', '');
+                $this->invoices->incrementPersonLinkPaidAmount((int) ($link['id'] ?? 0), $chunkFormatted);
+                $this->invoices->createPaymentPersonAllocation(
+                    paymentId: $paymentId,
+                    invoiceId: $invoiceId,
+                    invoicePersonId: (int) ($link['id'] ?? 0),
+                    personId: (int) ($link['person_id'] ?? 0),
+                    amount: $chunkFormatted
+                );
+
+                $paidByLinks += $chunk;
+                $remaining = max(0.0, round($remaining - $chunk, 2));
+                $allocationCount++;
+            }
+
+            $newPaidAmount = $this->invoices->sumPaymentsByInvoice($invoiceId);
+            $newStatus = $this->effectiveStatus(
+                status: $currentStatus,
+                dueDate: (string) ($invoice['due_date'] ?? ''),
+                paidAmount: (float) $newPaidAmount,
+                totalAmount: $totalAmount
+            );
+            $this->invoices->updateInvoicePaidAmountAndStatus($invoiceId, $newPaidAmount, $newStatus);
+
+            $unallocatedAmount = number_format(max(0.0, (float) $amount - $paidByLinks), 2, '.', '');
+            $this->audit->log(
+                entity: 'payment',
+                entityId: $paymentId,
+                action: 'create',
+                beforeData: null,
+                afterData: [
+                    'invoice_id' => $invoiceId,
+                    'payment_date' => $paymentDate,
+                    'amount' => $amount,
+                    'process_reference' => $processReference,
+                    'allocated_to_people' => number_format($paidByLinks, 2, '.', ''),
+                    'unallocated_amount' => $unallocatedAmount,
+                    'allocation_count' => $allocationCount,
+                ],
+                metadata: null,
+                userId: $userId,
+                ip: $ip,
+                userAgent: $userAgent
+            );
+
+            $this->events->recordEvent(
+                entity: 'invoice',
+                type: 'invoice.payment_registered',
+                payload: [
+                    'invoice_id' => $invoiceId,
+                    'payment_id' => $paymentId,
+                    'amount' => $amount,
+                    'allocated_to_people' => number_format($paidByLinks, 2, '.', ''),
+                    'unallocated_amount' => $unallocatedAmount,
+                    'status' => $newStatus,
+                ],
+                entityId: $invoiceId,
+                userId: $userId
+            );
+
+            if ($currentStatus !== $newStatus) {
+                $this->events->recordEvent(
+                    entity: 'invoice',
+                    type: 'invoice.status_changed',
+                    payload: [
+                        'invoice_number' => (string) ($invoice['invoice_number'] ?? ''),
+                        'before_status' => $currentStatus,
+                        'after_status' => $newStatus,
+                    ],
+                    entityId: $invoiceId,
+                    userId: $userId
+                );
+            }
+
+            $this->invoices->commit();
+        } catch (\Throwable $exception) {
+            $this->invoices->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel registrar pagamento.',
+                'errors' => ['Falha ao persistir pagamento e atualizar financeiro do boleto.'],
+            ];
+        }
+
+        $isFullyPaid = ((float) $amount + $paidAmount) + 0.009 >= $totalAmount;
+        $message = $isFullyPaid
+            ? 'Pagamento registrado. Boleto liquidado com sucesso.'
+            : 'Pagamento registrado com sucesso.';
+
+        return [
+            'ok' => true,
+            'message' => $message,
+            'errors' => [],
+        ];
+    }
+
+    /** @return array{path: string, original_name: string, mime_type: string, id: int, invoice_id: int, invoice_number: string}|null */
+    public function paymentProofForDownload(int $paymentId, ?int $invoiceId, int $userId, string $ip, string $userAgent): ?array
+    {
+        $payment = $this->invoices->findPaymentProofById($paymentId, $invoiceId);
+        if ($payment === null) {
+            return null;
+        }
+
+        $base = rtrim((string) $this->config->get('paths.storage_uploads', ''), '/');
+        if ($base === '') {
+            return null;
+        }
+
+        $relative = ltrim((string) ($payment['proof_storage_path'] ?? ''), '/');
+        $path = $base . '/' . $relative;
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $this->audit->log(
+            entity: 'payment',
+            entityId: (int) ($payment['id'] ?? 0),
+            action: 'download_proof',
+            beforeData: null,
+            afterData: [
+                'invoice_id' => (int) ($payment['invoice_id'] ?? 0),
+                'invoice_number' => (string) ($payment['invoice_number'] ?? ''),
+            ],
+            metadata: null,
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'invoice',
+            type: 'invoice.payment_proof_downloaded',
+            payload: [
+                'invoice_id' => (int) ($payment['invoice_id'] ?? 0),
+                'payment_id' => (int) ($payment['id'] ?? 0),
+            ],
+            entityId: (int) ($payment['invoice_id'] ?? 0),
+            userId: $userId
+        );
+
+        return [
+            'path' => $path,
+            'original_name' => (string) ($payment['proof_original_name'] ?? ('comprovante_pagamento_' . $paymentId . '.pdf')),
+            'mime_type' => (string) ($payment['proof_mime_type'] ?? 'application/octet-stream'),
+            'id' => (int) ($payment['id'] ?? 0),
+            'invoice_id' => (int) ($payment['invoice_id'] ?? 0),
+            'invoice_number' => (string) ($payment['invoice_number'] ?? ''),
         ];
     }
 
@@ -744,7 +1040,7 @@ final class InvoiceService
         }
 
         $ext = mb_strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
-        if (!in_array($ext, self::ALLOWED_EXTENSIONS, true)) {
+        if (!in_array($ext, self::INVOICE_PDF_ALLOWED_EXTENSIONS, true)) {
             return [
                 'ok' => false,
                 'error' => 'Apenas arquivo PDF e permitido para o boleto.',
@@ -758,7 +1054,7 @@ final class InvoiceService
             finfo_close($finfo);
         }
 
-        if (!in_array($mime, self::ALLOWED_MIME, true)) {
+        if (!in_array($mime, self::INVOICE_PDF_ALLOWED_MIME, true)) {
             return [
                 'ok' => false,
                 'error' => 'Tipo de arquivo invalido. Envie um PDF valido.',
@@ -815,6 +1111,118 @@ final class InvoiceService
                 'pdf_mime_type' => $mime,
                 'pdf_file_size' => $size,
                 'pdf_storage_path' => $subDir . '/' . $storedName,
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>|null $file
+     * @return array{ok: bool, error: string, meta: array<string, mixed>|null}
+     */
+    private function persistPaymentProof(?array $file, int $organId): array
+    {
+        if ($file === null || !isset($file['error'])) {
+            return ['ok' => true, 'error' => '', 'meta' => null];
+        }
+
+        $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE) {
+            return ['ok' => true, 'error' => '', 'meta' => null];
+        }
+
+        if ($error !== UPLOAD_ERR_OK) {
+            return [
+                'ok' => false,
+                'error' => 'Falha no upload do comprovante de pagamento.',
+                'meta' => null,
+            ];
+        }
+
+        $originalName = (string) ($file['name'] ?? '');
+        $tmpName = (string) ($file['tmp_name'] ?? '');
+        $size = (int) ($file['size'] ?? 0);
+
+        if ($size <= 0 || $size > self::MAX_FILE_SIZE) {
+            return [
+                'ok' => false,
+                'error' => 'Comprovante fora do limite permitido (15MB).',
+                'meta' => null,
+            ];
+        }
+
+        $ext = mb_strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
+        if (!in_array($ext, self::PAYMENT_PROOF_ALLOWED_EXTENSIONS, true)) {
+            return [
+                'ok' => false,
+                'error' => 'Comprovante invalido. Formatos aceitos: PDF, PNG, JPG e JPEG.',
+                'meta' => null,
+            ];
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = $finfo !== false ? (string) finfo_file($finfo, $tmpName) : '';
+        if ($finfo !== false) {
+            finfo_close($finfo);
+        }
+
+        if (!in_array($mime, self::PAYMENT_PROOF_ALLOWED_MIME, true)) {
+            return [
+                'ok' => false,
+                'error' => 'Tipo de arquivo invalido para comprovante de pagamento.',
+                'meta' => null,
+            ];
+        }
+
+        $baseUploads = rtrim((string) $this->config->get('paths.storage_uploads', ''), '/');
+        if ($baseUploads === '') {
+            return [
+                'ok' => false,
+                'error' => 'Diretorio de uploads nao configurado.',
+                'meta' => null,
+            ];
+        }
+
+        $safeExt = $ext === 'jpeg' ? 'jpg' : $ext;
+        $subDir = sprintf('payments/%d/%s', max(0, $organId), date('Y/m'));
+        $targetDir = $baseUploads . '/' . $subDir;
+        if (!is_dir($targetDir) && !mkdir($targetDir, 0775, true) && !is_dir($targetDir)) {
+            return [
+                'ok' => false,
+                'error' => 'Nao foi possivel preparar diretorio do comprovante.',
+                'meta' => null,
+            ];
+        }
+
+        try {
+            $storedName = bin2hex(random_bytes(16)) . '.' . $safeExt;
+            $targetPath = $targetDir . '/' . $storedName;
+
+            if (!move_uploaded_file($tmpName, $targetPath)) {
+                if (!rename($tmpName, $targetPath)) {
+                    return [
+                        'ok' => false,
+                        'error' => 'Nao foi possivel salvar comprovante de pagamento.',
+                        'meta' => null,
+                    ];
+                }
+            }
+        } catch (\Throwable $exception) {
+            return [
+                'ok' => false,
+                'error' => 'Falha ao processar nome seguro do comprovante.',
+                'meta' => null,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'error' => '',
+            'meta' => [
+                'proof_original_name' => mb_substr($originalName, 0, 255),
+                'proof_stored_name' => $storedName,
+                'proof_mime_type' => $mime,
+                'proof_file_size' => $size,
+                'proof_storage_path' => $subDir . '/' . $storedName,
             ],
         ];
     }
