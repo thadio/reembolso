@@ -35,6 +35,7 @@ $router->post('/people/documents/store', [PeopleController::class, 'storeDocumen
 $router->get('/people/documents/download', [PeopleController::class, 'downloadDocument'], ['auth', 'permission:people.view']);
 $router->post('/people/costs/version/create', [PeopleController::class, 'createCostVersion'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/costs/item/store', [PeopleController::class, 'storeCostItem'], ['auth', 'permission:people.manage', 'csrf']);
+$router->get('/people/audit/export', [PeopleController::class, 'exportAudit'], ['auth', 'permission:audit.view']);
 $router->get('/organs', [OrgansController::class, 'index'], ['auth', 'permission:organs.view']);
 $router->get('/organs/create', [OrgansController::class, 'create'], ['auth', 'permission:organs.manage']);
 $router->post('/organs/store', [OrgansController::class, 'store'], ['auth', 'permission:organs.manage', 'csrf']);

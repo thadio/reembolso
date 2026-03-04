@@ -563,6 +563,91 @@ final class PeopleController extends Controller
         $this->redirect('/people/show?id=' . $personId);
     }
 
+    public function exportAudit(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa inválida para exportação de auditoria.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $filters = [
+            'entity' => (string) $request->input('audit_entity', ''),
+            'action' => (string) $request->input('audit_action', ''),
+            'q' => (string) $request->input('audit_q', ''),
+            'from_date' => (string) $request->input('audit_from', ''),
+            'to_date' => (string) $request->input('audit_to', ''),
+        ];
+
+        $export = $this->auditTrailService()->exportRows($personId, $filters, 2000);
+        $rows = $export['rows'];
+
+        $fileName = sprintf('auditoria-pessoa-%d-%s.csv', $personId, date('Ymd_His'));
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="' . $fileName . '"');
+
+        $output = fopen('php://output', 'wb');
+        if ($output === false) {
+            exit;
+        }
+
+        fwrite($output, "\xEF\xBB\xBF");
+
+        fputcsv($output, [
+            'data_hora',
+            'entidade',
+            'entidade_id',
+            'acao',
+            'usuario',
+            'ip',
+            'user_agent',
+            'before_data',
+            'after_data',
+            'metadata',
+        ]);
+
+        $normalizePayload = static function (mixed $payload): string {
+            if (!is_string($payload) || trim($payload) === '') {
+                return '';
+            }
+
+            $decoded = json_decode($payload, true);
+            if (!is_array($decoded)) {
+                return $payload;
+            }
+
+            $encoded = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            return is_string($encoded) ? $encoded : $payload;
+        };
+
+        foreach ($rows as $row) {
+            fputcsv($output, [
+                (string) ($row['created_at'] ?? ''),
+                (string) ($row['entity'] ?? ''),
+                isset($row['entity_id']) ? (string) $row['entity_id'] : '',
+                (string) ($row['action'] ?? ''),
+                (string) ($row['user_name'] ?? ''),
+                (string) ($row['ip'] ?? ''),
+                (string) ($row['user_agent'] ?? ''),
+                $normalizePayload($row['before_data'] ?? null),
+                $normalizePayload($row['after_data'] ?? null),
+                $normalizePayload($row['metadata'] ?? null),
+            ]);
+        }
+
+        fclose($output);
+        exit;
+    }
+
     /** @return array<string, mixed> */
     private function emptyPerson(): array
     {

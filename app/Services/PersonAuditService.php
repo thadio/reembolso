@@ -46,6 +46,21 @@ final class PersonAuditService
     }
 
     /**
+     * @param array<string, mixed> $inputFilters
+     * @return array{rows: array<int, array<string, mixed>>, filters: array{entity: string, action: string, q: string, from_date: string, to_date: string}}
+     */
+    public function exportRows(int $personId, array $inputFilters, int $limit = 2000): array
+    {
+        $filters = $this->normalizeFilters($inputFilters);
+        $limit = max(1, min(5000, $limit));
+
+        return [
+            'rows' => $this->audits->listByPerson($personId, $filters, $limit),
+            'filters' => $filters,
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $input
      * @return array{entity: string, action: string, q: string, from_date: string, to_date: string}
      */

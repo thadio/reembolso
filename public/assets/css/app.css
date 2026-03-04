@@ -139,6 +139,7 @@ a:hover { text-decoration: underline; }
 
 .badge-neutral { background: #eef2f7; color: #465264; }
 .badge-info { background: #d9effb; color: #114b72; }
+.badge-success { background: #e7f7ee; color: #17643a; }
 
 .btn {
   display: inline-flex;
@@ -623,6 +624,60 @@ th a {
 .kpi-card {
   padding: 12px;
   box-shadow: none;
+}
+
+.dashboard-kpi-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.dashboard-status-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-status-row {
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dashboard-status-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-status-bar {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e2e8f0;
+}
+
+.dashboard-status-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #0a6a9b 0%, #3ea3d1 100%);
+}
+
+.dashboard-recent-title {
+  margin: 6px 0 0;
+}
+
+.dashboard-recent-meta {
+  margin: 6px 0 0;
+  color: #4a5568;
+  font-size: 0.88rem;
 }
 
 .cost-version-form,

@@ -240,6 +240,24 @@ $buildProfileUrl = static function (array $overrides = [], array $remove = []) u
 $buildTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['timeline_page' => $targetPage]);
 $buildDocumentsPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['documents_page' => $targetPage]);
 $buildAuditPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['audit_page' => $targetPage]);
+$buildAuditExportUrl = static function () use ($personId, $auditFilters): string {
+    $params = [
+        'person_id' => $personId,
+        'audit_entity' => (string) ($auditFilters['entity'] ?? ''),
+        'audit_action' => (string) ($auditFilters['action'] ?? ''),
+        'audit_q' => (string) ($auditFilters['q'] ?? ''),
+        'audit_from' => (string) ($auditFilters['from_date'] ?? ''),
+        'audit_to' => (string) ($auditFilters['to_date'] ?? ''),
+    ];
+
+    foreach ($params as $key => $value) {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            unset($params[$key]);
+        }
+    }
+
+    return url('/people/audit/export?' . http_build_query($params));
+};
 ?>
 <div class="card">
   <div class="header-row">
@@ -813,6 +831,7 @@ $buildAuditPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['a
       </div>
       <div class="form-actions">
         <a class="btn btn-outline" href="<?= e($buildProfileUrl(['audit_page' => 1], ['audit_entity', 'audit_action', 'audit_q', 'audit_from', 'audit_to'])) ?>">Limpar</a>
+        <a class="btn btn-outline" href="<?= e($buildAuditExportUrl()) ?>">Exportar CSV</a>
         <button type="submit" class="btn btn-primary">Filtrar</button>
       </div>
     </form>

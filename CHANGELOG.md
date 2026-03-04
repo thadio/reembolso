@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-03-04 — Fase 2.3 concluída (Dashboard operacional)
+- Implementado `DashboardRepository` com consultas de agregação para:
+  - totais de pessoas/órgãos ativos
+  - cobertura documental por pessoa
+  - cobertura de custos por pessoa (versão ativa)
+  - volume de timeline e auditoria dos últimos 30 dias
+  - distribuição do pipeline por etapa
+  - últimas movimentações da timeline
+- Implementado `DashboardService` para:
+  - normalização de métricas
+  - cálculo de percentuais de cobertura
+  - geração de recomendação operacional baseada nos gaps da base
+- `DashboardController` atualizado para consumir o serviço e expor dados reais para a view
+- Dashboard atualizado com:
+  - KPIs reais
+  - distribuição visual do pipeline por etapa
+  - bloco de recomendação de próxima ação
+  - lista de movimentações recentes com atalho para Perfil 360
+- CSS atualizado com estilos específicos do novo painel operacional
+- Checklist da etapa adicionado em `tests/checklist-etapa-2.3.md`
+
+## 2026-03-04 — Fase 2.2 concluída (Auditoria no Perfil 360 + exportação CSV)
+- Implementado `PersonAuditRepository` com:
+  - escopo de auditoria por pessoa considerando entidades relacionadas (`person`, `assignment`, `timeline_event`, `document`, `cost_plan`, `cost_plan_item`)
+  - paginação com filtros básicos (`entidade`, `ação`, `busca`, período)
+  - consulta para exportação de trilha filtrada
+- Implementado `PersonAuditService` para:
+  - normalização de filtros de auditoria
+  - montagem de dados paginados para o Perfil 360
+  - preparação de dados para exportação CSV
+- `PeopleController` atualizado com:
+  - carregamento da seção de auditoria no `show`
+  - controle de visibilidade por permissão `audit.view`
+  - endpoint de exportação `GET /people/audit/export`
+- Perfil 360 atualizado na seção de auditoria com:
+  - formulário de filtros
+  - listagem paginada de registros
+  - exibição de `before_data`, `after_data` e `metadata`
+  - botão de exportação CSV respeitando filtros aplicados
+- CSS atualizado para o novo bloco visual de auditoria
+- Checklist da etapa adicionado em `tests/checklist-etapa-2.2.md`
+
 ## 2026-03-04 — Fase 2.1 concluída (Custos previstos + versionamento)
 - Criada migration `007_phase2_cost_plans.sql` com:
   - `cost_plans` (versionamento por pessoa, indicador de versão ativa)

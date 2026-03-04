@@ -18,11 +18,13 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `Config`: carrega variaveis de ambiente
 - `Database`: conexao PDO
 - `Auth`: autenticacao, rate limit e permissoes
+- `DashboardService`: consolidacao de metricas operacionais (pessoas, cobertura de dossie/custos e movimentacao recente)
 - `AuditService`: trilha de auditoria
 - `EventService`: eventos de sistema
 - `PipelineService`: movimentacao/status/timeline da pessoa
 - `DocumentService`: dossie documental, upload seguro e download protegido
 - `CostPlanService`: custos previstos por pessoa com versionamento e comparacao entre versoes
+- `PersonAuditService`: trilha auditavel por pessoa com filtros e exportacao CSV
 
 ## Modelo de dados (resumo)
 Tabelas principais:

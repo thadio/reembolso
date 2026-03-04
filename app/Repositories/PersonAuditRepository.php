@@ -19,9 +19,7 @@ final class PersonAuditRepository
      */
     public function paginateByPerson(int $personId, array $filters, int $page, int $perPage): array
     {
-        $params = [];
-        $where = [$this->scopeSql($personId, $params)];
-        $this->appendFilters($filters, $where, $params);
+        ['where' => $where, 'params' => $params] = $this->buildWhereAndParams($personId, $filters);
 
         $countSql = sprintf(
             'SELECT COUNT(*) AS total
@@ -75,6 +73,44 @@ final class PersonAuditRepository
             'per_page' => $perPage,
             'pages' => $pages,
         ];
+    }
+
+    /**
+     * @param array<string, string|null> $filters
+     * @return array<int, array<string, mixed>>
+     */
+    public function listByPerson(int $personId, array $filters, int $limit = 2000): array
+    {
+        ['where' => $where, 'params' => $params] = $this->buildWhereAndParams($personId, $filters);
+
+        $sql = sprintf(
+            'SELECT
+                a.id,
+                a.entity,
+                a.entity_id,
+                a.action,
+                a.before_data,
+                a.after_data,
+                a.metadata,
+                a.user_id,
+                a.ip,
+                a.user_agent,
+                a.created_at,
+                u.name AS user_name
+             FROM audit_log a
+             LEFT JOIN users u ON u.id = a.user_id
+             WHERE %s
+             ORDER BY a.created_at DESC, a.id DESC
+             LIMIT :limit',
+            implode(' AND ', $where)
+        );
+
+        $stmt = $this->db->prepare($sql);
+        $this->bindNamedParams($stmt, $params);
+        $stmt->bindValue(':limit', max(1, min(5000, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
     }
 
     /** @return array<int, string> */
@@ -207,6 +243,19 @@ final class PersonAuditRepository
             $where[] = 'a.created_at <= :filter_to_date';
             $params['filter_to_date'] = $toDate . ' 23:59:59';
         }
+    }
+
+    /**
+     * @param array<string, string|null> $filters
+     * @return array{where: array<int, string>, params: array<string, int|string>}
+     */
+    private function buildWhereAndParams(int $personId, array $filters): array
+    {
+        $params = [];
+        $where = [$this->scopeSql($personId, $params)];
+        $this->appendFilters($filters, $where, $params);
+
+        return ['where' => $where, 'params' => $params];
     }
 
     /**

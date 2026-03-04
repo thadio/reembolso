@@ -3,10 +3,10 @@
 Aplicacao web em PHP para gestao de movimentacao de forca de trabalho, pipeline de pessoas, timeline e reembolsos.
 
 ## Estado atual
-- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5 e 2.1
+- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2 e 2.3
 - Stack: PHP 8.1+, MySQL/Percona 5.7+, Apache (shared hosting compativel)
 - Deploy alvo: execucao via bash no servidor
-- Modulos ativos: pipeline de pessoas, timeline completa, dossie documental com upload/download seguro e custos previstos com versionamento
+- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento e auditoria filtravel no Perfil 360
 
 ## Inicio rapido (local)
 1. Copie `.env.example` para `.env`.
@@ -34,6 +34,7 @@ php -S localhost:8000 -t public
 - `GET /people/documents/download?id={documentId}&person_id={personId}`
 - `POST /people/costs/version/create`
 - `POST /people/costs/item/store`
+- `GET /people/audit/export?person_id={personId}&audit_*={filtros}`
 
 ## Portal de documentacao
 A documentacao oficial esta centralizada em `/docs`:

@@ -11,3 +11,5 @@
 - Redundancias e docs legadas removidas/depreciadas
 - Atualizacao arquitetural para incluir fase 1.5 (dossie documental)
 - Atualizacao arquitetural para incluir fase 2.1 (custos previstos e versionamento)
+- Atualizacao arquitetural para incluir fase 2.2 (auditoria filtravel e exportacao CSV no Perfil 360)
+- Atualizacao arquitetural para incluir fase 2.3 (dashboard operacional com metricas reais)
