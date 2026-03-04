@@ -67,3 +67,20 @@ Quando ocorrer falha grave (corrupcao de dados, deploy inconsistente, perda de u
 - Endpoint: `/health`
 - Log aplicacao: `storage/logs/app.log`
 - Log web server: configuracao do Apache/PHP-FPM no servidor
+
+## Snapshot de KPIs (fase 7.2)
+Geracao manual:
+```bash
+cd /var/www/reembolso
+./scripts/kpi-snapshot.php
+```
+
+Simulacao sem gravar:
+```bash
+./scripts/kpi-snapshot.php --dry-run
+```
+
+Exemplo de cron (a cada 4 horas):
+```cron
+0 */4 * * * cd /var/www/reembolso && ./scripts/kpi-snapshot.php >> storage/logs/kpi-snapshot.log 2>&1
+```

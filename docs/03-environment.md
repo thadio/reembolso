@@ -39,6 +39,10 @@ Arquivo de exemplo: `.env.example`
 - `BACKUP_RETENTION_DAYS` (default: `14`)
 - `BACKUP_INCLUDE_ENV` (`0` ou `1`, default: `0`)
 
+### Opcionais para snapshots de KPI (fase 7.2)
+- `OPS_KPI_SNAPSHOT_DIR` (default: `storage/ops/kpi_snapshots`)
+- `OPS_KPI_SNAPSHOT_RETENTION_DAYS` (default: `30`)
+
 ### Opcionais para upload FTP
 - `FTP_HOST`
 - `FTP_PORT`

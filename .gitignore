@@ -24,8 +24,10 @@ build/
 /storage/logs/*
 /storage/uploads/*
 /storage/backups/
+/storage/ops/*
 !/storage/uploads/.gitkeep
 !/storage/uploads/.htaccess
+!/storage/ops/.gitkeep
 bootstrap/cache/
 cache/
 tmp/
