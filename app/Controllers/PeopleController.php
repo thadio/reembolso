@@ -11,12 +11,14 @@ use App\Repositories\DocumentRepository;
 use App\Repositories\PersonAuditRepository;
 use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
+use App\Repositories\ReconciliationRepository;
 use App\Repositories\ReimbursementRepository;
 use App\Services\CostPlanService;
 use App\Services\DocumentService;
 use App\Services\PersonAuditService;
 use App\Services\PipelineService;
 use App\Services\PeopleService;
+use App\Services\ReconciliationService;
 use App\Services\ReimbursementService;
 
 final class PeopleController extends Controller
@@ -139,6 +141,7 @@ final class PeopleController extends Controller
         $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
         $documents = $this->documentService()->profileData($id, $documentsPage, 8);
         $costs = $this->costService()->profileData($id);
+        $conciliation = $this->conciliationService()->profileData($id, 8);
         $reimbursements = $this->reimbursementService()->profileData($id, 80);
         $canViewAudit = $this->app->auth()->hasPermission('audit.view');
 
@@ -181,6 +184,7 @@ final class PeopleController extends Controller
             'pipeline' => $pipeline,
             'documents' => $documents,
             'costs' => $costs,
+            'conciliation' => $conciliation,
             'reimbursements' => $reimbursements,
             'audit' => $audit,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
@@ -788,6 +792,13 @@ final class PeopleController extends Controller
             new ReimbursementRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
+        );
+    }
+
+    private function conciliationService(): ReconciliationService
+    {
+        return new ReconciliationService(
+            new ReconciliationRepository($this->app->db())
         );
     }
 

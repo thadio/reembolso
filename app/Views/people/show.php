@@ -56,6 +56,39 @@ $costItems = $costs['items'] ?? [];
 $costSummary = $costs['summary'] ?? ['monthly_total' => 0, 'annualized_total' => 0, 'items_count' => 0];
 $costVersions = $costs['versions'] ?? [];
 $costComparison = $costs['comparison'] ?? ['monthly_delta' => null, 'annualized_delta' => null, 'previous_version_number' => null];
+$conciliation = $conciliation ?? [
+    'active_plan' => null,
+    'summary' => [
+        'current_month' => '',
+        'months_analyzed' => 0,
+        'expected_current' => 0,
+        'actual_posted_current' => 0,
+        'actual_paid_current' => 0,
+        'deviation_posted_current' => 0,
+        'deviation_paid_current' => 0,
+        'expected_window_total' => 0,
+        'actual_posted_window_total' => 0,
+        'actual_paid_window_total' => 0,
+        'deviation_posted_window_total' => 0,
+        'deviation_paid_window_total' => 0,
+    ],
+    'rows' => [],
+];
+$conciliationSummary = $conciliation['summary'] ?? [
+    'current_month' => '',
+    'months_analyzed' => 0,
+    'expected_current' => 0,
+    'actual_posted_current' => 0,
+    'actual_paid_current' => 0,
+    'deviation_posted_current' => 0,
+    'deviation_paid_current' => 0,
+    'expected_window_total' => 0,
+    'actual_posted_window_total' => 0,
+    'actual_paid_window_total' => 0,
+    'deviation_posted_window_total' => 0,
+    'deviation_paid_window_total' => 0,
+];
+$conciliationRows = $conciliation['rows'] ?? [];
 $reimbursements = $reimbursements ?? [
     'summary' => [
         'total_entries' => 0,
@@ -197,6 +230,26 @@ $formatMoney = static function (float|int|string|null $value): string {
     $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
 
     return 'R$ ' . number_format($numeric, 2, ',', '.');
+};
+
+$formatSignedMoney = static function (float|int|string|null $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+    $prefix = $numeric > 0 ? '+' : '';
+
+    return $prefix . 'R$ ' . number_format($numeric, 2, ',', '.');
+};
+
+$deviationClass = static function (float|int|string|null $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+    if ($numeric > 0.009) {
+        return 'text-danger';
+    }
+
+    if ($numeric < -0.009) {
+        return 'text-success';
+    }
+
+    return 'text-muted';
 };
 
 $costTypeLabel = static function (string $type): string {
@@ -346,6 +399,7 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
     <span class="tab-chip">Timeline</span>
     <span class="tab-chip">Documentos</span>
     <span class="tab-chip">Custos</span>
+    <span class="tab-chip">Conciliação</span>
     <span class="tab-chip">Financeiro real</span>
     <span class="tab-chip">Auditoria</span>
   </div>
@@ -840,6 +894,74 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
           </tbody>
         </table>
       </div>
+    </div>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Conciliação previsto x real</h3>
+      <p class="muted">Comparativo por competência entre custos previstos (versão ativa) e reembolsos reais.</p>
+    </div>
+    <?php if ($activeCostPlan !== null): ?>
+      <span class="badge badge-info">Base prevista: V<?= e((string) ((int) ($activeCostPlan['version_number'] ?? 0))) ?></span>
+    <?php endif; ?>
+  </div>
+
+  <div class="grid-kpi costs-kpi">
+    <article class="card kpi-card">
+      <p class="kpi-label">Previsto (mês atual)</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($conciliationSummary['expected_current'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Real lançado (mês atual)</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($conciliationSummary['actual_posted_current'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Real pago (mês atual)</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($conciliationSummary['actual_paid_current'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Desvio lançado (mês atual)</p>
+      <p class="kpi-value <?= e($deviationClass($conciliationSummary['deviation_posted_current'] ?? 0)) ?>">
+        <?= e($formatSignedMoney((float) ($conciliationSummary['deviation_posted_current'] ?? 0))) ?>
+      </p>
+    </article>
+  </div>
+
+  <?php if ($conciliationRows === []): ?>
+    <p class="muted">Sem dados suficientes para conciliação por competência.</p>
+  <?php else: ?>
+    <p class="muted">
+      Janela analisada: <?= e((string) ((int) ($conciliationSummary['months_analyzed'] ?? 0))) ?> competência(s) |
+      Desvio acumulado (lançado): <span class="<?= e($deviationClass($conciliationSummary['deviation_posted_window_total'] ?? 0)) ?>"><?= e($formatSignedMoney((float) ($conciliationSummary['deviation_posted_window_total'] ?? 0))) ?></span>
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Competência</th>
+            <th>Previsto</th>
+            <th>Real lançado</th>
+            <th>Real pago</th>
+            <th>Desvio lançado</th>
+            <th>Desvio pago</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($conciliationRows as $row): ?>
+            <tr>
+              <td><?= e($formatDate((string) ($row['competence'] ?? ''))) ?></td>
+              <td><?= e($formatMoney((float) ($row['expected'] ?? 0))) ?></td>
+              <td><?= e($formatMoney((float) ($row['actual_posted'] ?? 0))) ?></td>
+              <td><?= e($formatMoney((float) ($row['actual_paid'] ?? 0))) ?></td>
+              <td class="<?= e($deviationClass($row['deviation_posted'] ?? 0)) ?>"><?= e($formatSignedMoney((float) ($row['deviation_posted'] ?? 0))) ?></td>
+              <td class="<?= e($deviationClass($row['deviation_paid'] ?? 0)) ?>"><?= e($formatSignedMoney((float) ($row['deviation_paid'] ?? 0))) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
     </div>
   <?php endif; ?>
 </div>

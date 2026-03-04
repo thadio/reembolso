@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-03-04 — Fase 2.5 concluída (Conciliação previsto x real)
+- Implementado `ReconciliationRepository` para consulta de:
+  - versão ativa de custos por pessoa
+  - itens previstos da versão ativa
+  - lançamentos reais (`reimbursement_entries`) elegíveis para conciliação
+- Implementado `ReconciliationService` com:
+  - consolidação por competência (previsto, real lançado, real pago)
+  - cálculo de desvio por competência e acumulado
+  - resumo por pessoa para o mês atual e janela analisada
+- `PeopleController` atualizado para carregar dados de conciliação no Perfil 360
+- Perfil 360 atualizado com seção **Conciliação previsto x real**:
+  - KPIs do mês atual (previsto, real lançado, real pago e desvio)
+  - tabela por competência com desvios lançado/pago
+- Dashboard atualizado com KPI de conciliação do mês:
+  - previsto global vs real lançado/pago
+  - desvio global exibido no painel principal
+- `DashboardService` atualizado para:
+  - normalizar métricas de conciliação
+  - priorizar recomendação operacional quando há desvio financeiro no mês
+- Checklist da etapa adicionado em `tests/checklist-etapa-2.5.md`
+
 ## 2026-03-04 — Fase 2.4 concluída (Financeiro real de reembolsos)
 - Criada migration `008_phase2_reimbursement_entries.sql` com tabela `reimbursement_entries` para:
   - lançamentos financeiros reais por pessoa (`boleto`, `pagamento`, `ajuste`)

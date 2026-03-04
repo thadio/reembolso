@@ -39,7 +39,54 @@ final class DashboardRepository
                  WHERE t.event_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS timeline_last_30_days,
                 (SELECT COUNT(*)
                  FROM audit_log al
-                 WHERE al.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS audit_last_30_days'
+                 WHERE al.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS audit_last_30_days,
+                (SELECT IFNULL(SUM(
+                    CASE
+                        WHEN i.id IS NULL THEN 0
+                        WHEN i.cost_type = "mensal"
+                             AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
+                             AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                        THEN i.amount
+                        WHEN i.cost_type = "anual"
+                             AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
+                             AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                        THEN i.amount / 12
+                        WHEN i.cost_type = "unico"
+                             AND (
+                               (i.start_date IS NOT NULL AND DATE_FORMAT(i.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                               OR (i.start_date IS NULL AND DATE_FORMAT(i.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                             )
+                        THEN i.amount
+                        ELSE 0
+                    END
+                 ), 0)
+                 FROM cost_plans cp
+                 INNER JOIN people p ON p.id = cp.person_id AND p.deleted_at IS NULL
+                 LEFT JOIN cost_plan_items i ON i.cost_plan_id = cp.id AND i.deleted_at IS NULL
+                 WHERE cp.deleted_at IS NULL
+                   AND cp.is_active = 1) AS expected_reimbursement_current_month,
+                (SELECT IFNULL(SUM(
+                    CASE
+                        WHEN r.status IN ("pendente", "pago")
+                             AND DATE_FORMAT(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)), "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")
+                        THEN r.amount
+                        ELSE 0
+                    END
+                 ), 0)
+                 FROM reimbursement_entries r
+                 INNER JOIN people p ON p.id = r.person_id AND p.deleted_at IS NULL
+                 WHERE r.deleted_at IS NULL) AS actual_reimbursement_posted_current_month,
+                (SELECT IFNULL(SUM(
+                    CASE
+                        WHEN r.status = "pago"
+                             AND DATE_FORMAT(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)), "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")
+                        THEN r.amount
+                        ELSE 0
+                    END
+                 ), 0)
+                 FROM reimbursement_entries r
+                 INNER JOIN people p ON p.id = r.person_id AND p.deleted_at IS NULL
+                 WHERE r.deleted_at IS NULL) AS actual_reimbursement_paid_current_month'
         );
 
         $row = $stmt->fetch();

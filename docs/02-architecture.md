@@ -25,6 +25,7 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `DocumentService`: dossie documental, upload seguro e download protegido
 - `CostPlanService`: custos previstos por pessoa com versionamento e comparacao entre versoes
 - `ReimbursementService`: controle de reembolso real (boletos/pagamentos) com baixa financeira
+- `ReconciliationService`: conciliacao previsto x real por pessoa e por competencia
 - `PersonAuditService`: trilha auditavel por pessoa com filtros e exportacao CSV
 
 ## Modelo de dados (resumo)

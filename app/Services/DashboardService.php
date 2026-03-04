@@ -54,6 +54,9 @@ final class DashboardService
 
         $withoutDocuments = max(0, $totalPeople - $peopleWithDocuments);
         $withoutCostPlan = max(0, $totalPeople - $peopleWithActiveCostPlan);
+        $expectedReimbursement = max(0.0, (float) ($raw['expected_reimbursement_current_month'] ?? 0));
+        $actualPostedReimbursement = max(0.0, (float) ($raw['actual_reimbursement_posted_current_month'] ?? 0));
+        $actualPaidReimbursement = max(0.0, (float) ($raw['actual_reimbursement_paid_current_month'] ?? 0));
 
         return [
             'total_people' => $totalPeople,
@@ -68,6 +71,11 @@ final class DashboardService
             'cost_plan_coverage_percent' => $this->percent($peopleWithActiveCostPlan, $totalPeople),
             'timeline_last_30_days' => max(0, (int) ($raw['timeline_last_30_days'] ?? 0)),
             'audit_last_30_days' => max(0, (int) ($raw['audit_last_30_days'] ?? 0)),
+            'expected_reimbursement_current_month' => round($expectedReimbursement, 2),
+            'actual_reimbursement_posted_current_month' => round($actualPostedReimbursement, 2),
+            'actual_reimbursement_paid_current_month' => round($actualPaidReimbursement, 2),
+            'reconciliation_deviation_posted_current' => round($actualPostedReimbursement - $expectedReimbursement, 2),
+            'reconciliation_deviation_paid_current' => round($actualPaidReimbursement - $expectedReimbursement, 2),
         ];
     }
 
@@ -103,6 +111,7 @@ final class DashboardService
         $withoutDocuments = (int) ($summary['people_without_documents'] ?? 0);
         $withoutCostPlan = (int) ($summary['people_without_cost_plan'] ?? 0);
         $inProgress = (int) ($summary['in_progress_people'] ?? 0);
+        $deviationPosted = (float) ($summary['reconciliation_deviation_posted_current'] ?? 0.0);
 
         if ($totalPeople === 0) {
             return [
@@ -110,6 +119,19 @@ final class DashboardService
                 'description' => 'Ainda nao ha pessoas no pipeline. Comece com o primeiro cadastro para liberar a trilha operacional.',
                 'label' => 'Cadastrar pessoa',
                 'path' => '/people/create',
+            ];
+        }
+
+        if (abs($deviationPosted) >= 0.01) {
+            $isOver = $deviationPosted > 0;
+
+            return [
+                'title' => 'Conciliação financeira do mês',
+                'description' => $isOver
+                    ? sprintf('Desvio positivo de %s entre previsto e real lançado no mês atual. Priorize revisão de competências no Perfil 360.', $this->money($deviationPosted))
+                    : sprintf('Desvio negativo de %s entre previsto e real lançado no mês atual. Valide lançamentos pendentes e janela de competência.', $this->money(abs($deviationPosted))),
+                'label' => 'Revisar pessoas',
+                'path' => '/people',
             ];
         }
 
@@ -155,5 +177,10 @@ final class DashboardService
         }
 
         return round(($value / $total) * 100, 1);
+    }
+
+    private function money(float $value): string
+    {
+        return 'R$ ' . number_format($value, 2, ',', '.');
     }
 }

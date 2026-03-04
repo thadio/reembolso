@@ -14,3 +14,4 @@
 - Atualizacao arquitetural para incluir fase 2.2 (auditoria filtravel e exportacao CSV no Perfil 360)
 - Atualizacao arquitetural para incluir fase 2.3 (dashboard operacional com metricas reais)
 - Atualizacao arquitetural para incluir fase 2.4 (financeiro real de reembolsos no Perfil 360)
+- Atualizacao arquitetural para incluir fase 2.5 (conciliacao previsto x real por pessoa e competencia)

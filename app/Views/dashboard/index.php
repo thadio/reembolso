@@ -16,6 +16,11 @@ $dashboard = $dashboard ?? [
         'cost_plan_coverage_percent' => 0,
         'timeline_last_30_days' => 0,
         'audit_last_30_days' => 0,
+        'expected_reimbursement_current_month' => 0,
+        'actual_reimbursement_posted_current_month' => 0,
+        'actual_reimbursement_paid_current_month' => 0,
+        'reconciliation_deviation_posted_current' => 0,
+        'reconciliation_deviation_paid_current' => 0,
     ],
     'status_distribution' => [],
     'recent_timeline' => [],
@@ -48,6 +53,33 @@ $formatPercent = static function (float|int|string $value): string {
     $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
 
     return number_format($numeric, 1, ',', '.') . '%';
+};
+
+$formatMoney = static function (float|int|string $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+
+    return 'R$ ' . number_format($numeric, 2, ',', '.');
+};
+
+$formatSignedMoney = static function (float|int|string $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+    $prefix = $numeric > 0 ? '+' : '';
+
+    return $prefix . 'R$ ' . number_format($numeric, 2, ',', '.');
+};
+
+$deviationClass = static function (float|int|string $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+
+    if ($numeric > 0.009) {
+        return 'text-danger';
+    }
+
+    if ($numeric < -0.009) {
+        return 'text-success';
+    }
+
+    return 'text-muted';
 };
 
 $statusBadgeClass = static function (string $status): string {
@@ -102,6 +134,18 @@ $eventTypeLabel = static function (string $value): string {
     <p class="kpi-label">Cobertura de custos</p>
     <p class="kpi-value"><?= e($formatPercent((float) ($summary['cost_plan_coverage_percent'] ?? 0))) ?></p>
     <p class="dashboard-kpi-note">Com versão ativa: <?= e((string) (int) ($summary['people_with_active_cost_plan'] ?? 0)) ?> · Sem: <?= e((string) (int) ($summary['people_without_cost_plan'] ?? 0)) ?></p>
+  </article>
+
+  <article class="card kpi-card">
+    <p class="kpi-label">Desvio previsto x real (mês)</p>
+    <p class="kpi-value <?= e($deviationClass((float) ($summary['reconciliation_deviation_posted_current'] ?? 0))) ?>">
+      <?= e($formatSignedMoney((float) ($summary['reconciliation_deviation_posted_current'] ?? 0))) ?>
+    </p>
+    <p class="dashboard-kpi-note">
+      Previsto: <?= e($formatMoney((float) ($summary['expected_reimbursement_current_month'] ?? 0))) ?> |
+      Real lançado: <?= e($formatMoney((float) ($summary['actual_reimbursement_posted_current_month'] ?? 0))) ?> |
+      Real pago: <?= e($formatMoney((float) ($summary['actual_reimbursement_paid_current_month'] ?? 0))) ?>
+    </p>
   </article>
 
   <article class="card kpi-card">
