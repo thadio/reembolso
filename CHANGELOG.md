@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-04 — Fase 1.5 concluída (Dossiê documental)
+- Criada migration `006_phase1_documents_dossier.sql` com tabela `documents`
+- Implementado `DocumentRepository` e `DocumentService` para:
+  - upload múltiplo com validação de extensão/MIME/tamanho
+  - armazenamento seguro em `storage/uploads/{person_id}/documents/{Y}/{m}`
+  - listagem paginada de documentos no Perfil 360
+  - download protegido por pessoa/permissão
+- `PeopleController` e rotas atualizados com:
+  - `POST /people/documents/store`
+  - `GET /people/documents/download`
+- Perfil 360 atualizado na seção de documentos com:
+  - formulário de upload múltiplo
+  - drag-and-drop
+  - metadados (tipo, SEI, data, tags, observações)
+  - paginação e ação de download por item
+- Auditoria implementada para:
+  - upload (`entity=document`, `action=upload`)
+  - download (`entity=document`, `action=download`)
+- Checklist da etapa adicionado em `tests/checklist-etapa-1.5.md`
+
+## 2026-03-04 — Reorganizacao DevOps/Docs
+- Documentacao centralizada em `/docs` com estrutura numerada (`01` a `07`)
+- `README.md` transformado em portal da documentacao
+- `docs/03-environment.md` definido como fonte canonica de ambiente
+- `docs/04-deploy.md` reescrito para deploy via bash no servidor
+- `scripts/deploy.sh` reescrito para fluxo idempotente no servidor atual
+- Adicionados `scripts/healthcheck.sh` e `scripts/rollback.sh`
+- `serverconfig.md` da raiz convertido para arquivo deprecado com ponteiro
+- Conteudos legados em `_ignore/docs` removidos para evitar duplicidade e riscos
+- `.env.example` simplificado e padronizado com placeholders seguros
+- `.gitignore` reforcado para segredos/chaves/backups/dumps
+
 ## 2026-03-04 — Fase 1.4 concluída (Timeline completa)
 - Criada migration `005_phase1_timeline_attachments.sql` com tabela `timeline_event_attachments`
 - `PipelineRepository` expandido com:

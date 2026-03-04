@@ -1,0 +1,44 @@
+# 07 - Security
+
+## Politica de segredos
+Nunca versionar:
+- `.env` e variantes com credenciais reais
+- chaves privadas (`*.pem`, `*.key`, `id_*`)
+- dumps/backups de banco com dados reais
+- tokens de API, senhas e usuarios reais de infraestrutura
+
+## Se houver vazamento
+1. Rotacionar imediatamente:
+- senha de banco
+- senhas de FTP/SSH
+- tokens/API keys
+- contas administrativas afetadas
+
+2. Invalidar sessoes e revisar acessos.
+3. Registrar incidente e impacto.
+
+## Historico git com segredos
+Se segredo entrou no historico do Git:
+- priorizar **rotacao imediata**
+- avaliar limpeza de historico com `git filter-repo`
+- **nao executar reescrita de historico sem alinhamento explicito do time**
+
+## Checklist de PR (anti-vazamento)
+- [ ] Nao ha credenciais em `.md`, `.php`, `.sh`, `.sql`
+- [ ] `.env` nao foi alterado/adicionado
+- [ ] `.env.example` usa placeholders
+- [ ] Sem IP/usuario sensivel em docs
+- [ ] Sem arquivos de backup/dump/chave no commit
+
+## Seguranca aplicacional (runtime)
+- Middlewares ativos: `auth`, `csrf`, `permission:*`
+- Uploads armazenados fora de `public/` em `storage/uploads`
+- Bloqueio de execucao em upload via `storage/uploads/.htaccess`
+- Validacao de anexos/timeline e documentos:
+  - extensoes permitidas: `pdf`, `jpg`, `jpeg`, `png`
+  - MIME permitido: `application/pdf`, `image/jpeg`, `image/png`
+  - limite de tamanho: `10MB` por arquivo
+- Endpoints sensiveis:
+  - `POST /people/timeline/store` e `POST /people/timeline/rectify` exigem `people.manage`
+  - `POST /people/documents/store` exige `people.manage`
+  - `GET /people/timeline/attachment`, `GET /people/timeline/print` e `GET /people/documents/download` exigem `people.view`

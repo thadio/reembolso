@@ -31,6 +31,8 @@ $router->post('/people/timeline/store', [PeopleController::class, 'storeTimeline
 $router->post('/people/timeline/rectify', [PeopleController::class, 'rectifyTimelineEvent'], ['auth', 'permission:people.manage', 'csrf']);
 $router->get('/people/timeline/attachment', [PeopleController::class, 'downloadTimelineAttachment'], ['auth', 'permission:people.view']);
 $router->get('/people/timeline/print', [PeopleController::class, 'timelinePrint'], ['auth', 'permission:people.view']);
+$router->post('/people/documents/store', [PeopleController::class, 'storeDocument'], ['auth', 'permission:people.manage', 'csrf']);
+$router->get('/people/documents/download', [PeopleController::class, 'downloadDocument'], ['auth', 'permission:people.view']);
 $router->get('/organs', [OrgansController::class, 'index'], ['auth', 'permission:organs.view']);
 $router->get('/organs/create', [OrgansController::class, 'create'], ['auth', 'permission:organs.manage']);
 $router->post('/organs/store', [OrgansController::class, 'store'], ['auth', 'permission:organs.manage', 'csrf']);

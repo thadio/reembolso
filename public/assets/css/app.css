@@ -562,6 +562,60 @@ th a {
   padding-top: 8px;
 }
 
+.document-form {
+  margin: 14px 0 16px;
+  border: 1px solid #d9e6ef;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 12px;
+}
+
+.document-list {
+  display: grid;
+  gap: 10px;
+}
+
+.document-item {
+  border: 1px solid #d9e6ef;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fbfdff;
+}
+
+.document-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.document-title-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dropzone {
+  border: 1px dashed #9ec4d7;
+  border-radius: 10px;
+  background: #f2f9fd;
+  padding: 10px;
+}
+
+.dropzone.is-dragover {
+  border-color: #0b6fa4;
+  background: #e7f4fb;
+}
+
+.dropzone-text {
+  margin: 0 0 8px;
+}
+
+.dropzone-input {
+  width: 100%;
+}
+
 @media (max-width: 1024px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -612,6 +666,11 @@ th a {
   }
 
   .timeline-item-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .document-item-header {
     flex-direction: column;
     align-items: flex-start;
   }

@@ -1,0 +1,56 @@
+# 03 - Environment (Source of Truth)
+
+Este arquivo e a referencia canonica de ambiente e configuracao de servidor.
+
+## Matriz de ambientes
+- `local`: desenvolvimento
+- `production`: servidor final
+
+## Variaveis de ambiente
+Arquivo de exemplo: `.env.example`
+
+### Obrigatorias para runtime
+- `NAME`
+- `BASE_URL`
+- `TIMEZONE`
+- `APP_ENV`
+- `APP_DEBUG`
+- `DB_HOST`
+- `DB_PORT`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASS`
+- `DB_CHARSET`
+- `SESSION_NAME`
+- `SESSION_TTL_SECONDS`
+- `CSRF_TTL_SECONDS`
+- `LOGIN_MAX_ATTEMPTS`
+- `LOGIN_DECAY_SECONDS`
+- `SEED_ADMIN_NAME`
+- `SEED_ADMIN_EMAIL`
+- `SEED_ADMIN_PASSWORD`
+
+### Opcionais para operacao/deploy
+- `DEPLOY_RESTART_COMMAND` (ex.: restart de PHP-FPM/Apache quando aplicavel)
+- `DEPLOY_HEALTH_PATH` (default: `/health`)
+
+## Requisitos do servidor
+- Apache 2.4+
+- PHP 8.1+
+- MySQL/Percona 5.7+
+- `DocumentRoot` apontando para `public/` (preferencial)
+
+## Permissoes de runtime
+Diretorios obrigatorios:
+- `storage/logs`
+- `storage/uploads`
+
+Permissoes recomendadas:
+```bash
+chmod 775 storage storage/logs storage/uploads
+```
+
+## Decisao sobre serverconfig duplicado
+- Arquivo canonico: **`docs/03-environment.md`**
+- `serverconfig.md` (raiz) passa a ser apenas ponteiro para este documento
+- Arquivos legados em `_ignore/docs` foram removidos/depreciados para evitar duplicidade

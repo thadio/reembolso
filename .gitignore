@@ -3,6 +3,10 @@
 # Environment secrets
 .env
 .env.*
+*.env
+*.secret
+secrets/
+secret/
 
 # Dependencies
 vendor/
@@ -22,7 +26,28 @@ bootstrap/cache/
 cache/
 tmp/
 *.log
+*.bak
+*.backup
+*.tmp
+*.swp
+*.dump
+*.sql.gz
+*.tar
+*.tar.gz
+*.zip
 
 # Test artifacts
 coverage/
 /.phpunit.result.cache
+
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub

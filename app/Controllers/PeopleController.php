@@ -6,8 +6,10 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\DocumentRepository;
 use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
+use App\Services\DocumentService;
 use App\Services\PipelineService;
 use App\Services\PeopleService;
 
@@ -106,6 +108,7 @@ final class PeopleController extends Controller
     {
         $id = (int) $request->input('id', '0');
         $timelinePage = max(1, (int) $request->input('timeline_page', '1'));
+        $documentsPage = max(1, (int) $request->input('documents_page', '1'));
         if ($id <= 0) {
             flash('error', 'Pessoa inválida.');
             $this->redirect('/people');
@@ -127,11 +130,13 @@ final class PeopleController extends Controller
 
         $person = $this->service()->find($id) ?? $person;
         $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
+        $documents = $this->documentService()->profileData($id, $documentsPage, 8);
 
         $this->view('people/show', [
             'title' => 'Perfil 360',
             'person' => $person,
             'pipeline' => $pipeline,
+            'documents' => $documents,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $this->app->auth()->hasPermission('people.cpf.full'),
         ]);
@@ -378,6 +383,73 @@ final class PeopleController extends Controller
         ], 'print_layout');
     }
 
+    public function storeDocument(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa inválida para upload de documento.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->documentService()->uploadDocuments(
+            personId: $personId,
+            input: $request->all(),
+            files: $_FILES,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            $messages = array_merge($result['errors'], $result['warnings']);
+            flash('error', implode(' ', $messages));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function downloadDocument(Request $request): void
+    {
+        $documentId = (int) $request->input('id', '0');
+        $personId = (int) $request->input('person_id', '0');
+
+        if ($documentId <= 0 || $personId <= 0) {
+            flash('error', 'Documento inválido.');
+            $this->redirect('/people');
+        }
+
+        $file = $this->documentService()->documentForDownload(
+            documentId: $documentId,
+            personId: $personId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+        if ($file === null) {
+            flash('error', 'Documento não encontrado ou acesso não autorizado.');
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        header('Content-Type: ' . $file['mime_type']);
+        header('Content-Length: ' . (string) filesize($file['path']));
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="' . rawurlencode($file['original_name']) . '"');
+        readfile($file['path']);
+        exit;
+    }
+
     /** @return array<string, mixed> */
     private function emptyPerson(): array
     {
@@ -410,6 +482,16 @@ final class PeopleController extends Controller
     {
         return new PipelineService(
             new PipelineRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events(),
+            $this->app->config()
+        );
+    }
+
+    private function documentService(): DocumentService
+    {
+        return new DocumentService(
+            new DocumentRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events(),
             $this->app->config()

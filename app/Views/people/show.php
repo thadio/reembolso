@@ -22,6 +22,19 @@ $nextStatus = $pipeline['next_status'] ?? null;
 $timeline = $pipeline['timeline'] ?? [];
 $timelinePagination = $pipeline['timeline_pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $eventTypes = $pipeline['event_types'] ?? [];
+$documents = $documents ?? [
+    'items' => [],
+    'pagination' => [
+        'total' => 0,
+        'page' => 1,
+        'per_page' => 8,
+        'pages' => 1,
+    ],
+    'document_types' => [],
+];
+$documentItems = $documents['items'] ?? [];
+$documentsPagination = $documents['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
+$documentTypes = $documents['document_types'] ?? [];
 $personId = (int) ($person['id'] ?? 0);
 
 $statusLabel = static function (string $value): string {
@@ -53,6 +66,16 @@ $formatDateTime = static function (?string $value): string {
     $timestamp = strtotime($value);
 
     return $timestamp === false ? $value : date('d/m/Y H:i', $timestamp);
+};
+
+$formatDate = static function (?string $value): string {
+    if ($value === null || trim($value) === '') {
+        return '-';
+    }
+
+    $timestamp = strtotime($value);
+
+    return $timestamp === false ? $value : date('d/m/Y', $timestamp);
 };
 
 $decodeMetadata = static function (mixed $metadata): array {
@@ -93,8 +116,16 @@ $formatBytes = static function (int $size): string {
     return (string) $size . ' B';
 };
 
-$buildTimelinePageUrl = static function (int $targetPage) use ($personId): string {
-    return url('/people/show?id=' . $personId . '&timeline_page=' . $targetPage);
+$buildTimelinePageUrl = static function (int $targetPage) use ($personId, $documentsPagination): string {
+    $documentsPage = max(1, (int) ($documentsPagination['page'] ?? 1));
+
+    return url('/people/show?id=' . $personId . '&timeline_page=' . $targetPage . '&documents_page=' . $documentsPage);
+};
+
+$buildDocumentsPageUrl = static function (int $targetPage) use ($personId, $timelinePagination): string {
+    $timelinePage = max(1, (int) ($timelinePagination['page'] ?? 1));
+
+    return url('/people/show?id=' . $personId . '&timeline_page=' . $timelinePage . '&documents_page=' . $targetPage);
 };
 ?>
 <div class="card">
@@ -327,9 +358,116 @@ $buildTimelinePageUrl = static function (int $targetPage) use ($personId): strin
   <?php endif; ?>
 </div>
 
-<div class="card card-placeholder">
-  <h3>Documentos</h3>
-  <p class="muted">Aba será preenchida na Etapa 1.5.</p>
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Documentos</h3>
+      <p class="muted">Dossiê documental da pessoa com upload seguro e download protegido.</p>
+    </div>
+  </div>
+
+  <?php if (($canManage ?? false) === true): ?>
+    <form method="post" action="<?= e(url('/people/documents/store')) ?>" enctype="multipart/form-data" class="document-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+      <div class="form-grid">
+        <div class="field">
+          <label for="document_type_id">Tipo de documento</label>
+          <select id="document_type_id" name="document_type_id" required>
+            <option value="">Selecione...</option>
+            <?php foreach ($documentTypes as $type): ?>
+              <option value="<?= e((string) ((int) ($type['id'] ?? 0))) ?>">
+                <?= e((string) ($type['name'] ?? 'Tipo')) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="document_date">Data do documento</label>
+          <input id="document_date" name="document_date" type="date">
+        </div>
+        <div class="field">
+          <label for="document_title">Título (opcional)</label>
+          <input id="document_title" name="title" type="text" maxlength="190" placeholder="Ex.: Ofício 123/2026">
+        </div>
+        <div class="field">
+          <label for="document_reference_sei">Referência SEI</label>
+          <input id="document_reference_sei" name="reference_sei" type="text" maxlength="120" placeholder="00000.000000/2026-00">
+        </div>
+        <div class="field field-wide">
+          <label for="document_tags">Tags</label>
+          <input id="document_tags" name="tags" type="text" placeholder="oficio, resposta, cdo">
+        </div>
+        <div class="field field-wide">
+          <label for="document_notes">Observações</label>
+          <textarea id="document_notes" name="notes" rows="3"></textarea>
+        </div>
+        <div class="field field-wide">
+          <label for="document_files">Arquivos (PDF/JPG/PNG até 10MB)</label>
+          <div class="dropzone" data-input-id="document_files">
+            <p class="dropzone-text muted">Arraste e solte arquivos aqui ou clique para selecionar.</p>
+            <input id="document_files" class="dropzone-input" name="files[]" type="file" multiple required accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Enviar documentos</button>
+      </div>
+    </form>
+  <?php endif; ?>
+
+  <?php if ($documentItems === []): ?>
+    <p class="muted">Nenhum documento registrado para esta pessoa.</p>
+  <?php else: ?>
+    <div class="document-list">
+      <?php foreach ($documentItems as $document): ?>
+        <article class="document-item">
+          <div class="document-item-header">
+            <div class="document-title-wrap">
+              <strong><?= e((string) ($document['title'] ?? 'Documento')) ?></strong>
+              <span class="badge badge-neutral"><?= e((string) ($document['document_type_name'] ?? 'Tipo')) ?></span>
+            </div>
+            <a class="btn btn-ghost" href="<?= e(url('/people/documents/download?id=' . (int) ($document['id'] ?? 0) . '&person_id=' . $personId)) ?>">Baixar</a>
+          </div>
+          <p class="muted">Arquivo: <?= e((string) ($document['original_name'] ?? '-')) ?> (<?= e($formatBytes((int) ($document['file_size'] ?? 0))) ?>)</p>
+          <?php if (trim((string) ($document['reference_sei'] ?? '')) !== ''): ?>
+            <p class="muted">SEI: <?= e((string) $document['reference_sei']) ?></p>
+          <?php endif; ?>
+          <?php if (trim((string) ($document['document_date'] ?? '')) !== ''): ?>
+            <p class="muted">Data do documento: <?= e($formatDate((string) $document['document_date'])) ?></p>
+          <?php endif; ?>
+          <?php if (trim((string) ($document['tags'] ?? '')) !== ''): ?>
+            <p class="muted">Tags: <?= e((string) $document['tags']) ?></p>
+          <?php endif; ?>
+          <?php if (trim((string) ($document['notes'] ?? '')) !== ''): ?>
+            <p class="muted">Observações: <?= nl2br(e((string) $document['notes'])) ?></p>
+          <?php endif; ?>
+          <p class="muted">Enviado por: <?= e((string) ($document['uploaded_by_name'] ?? 'Sistema')) ?> em <?= e($formatDateTime((string) ($document['created_at'] ?? ''))) ?></p>
+        </article>
+      <?php endforeach; ?>
+    </div>
+
+    <?php
+      $documentsTotal = (int) ($documentsPagination['total'] ?? 0);
+      $documentsPage = (int) ($documentsPagination['page'] ?? 1);
+      $documentsPerPage = max(1, (int) ($documentsPagination['per_page'] ?? 8));
+      $documentsPages = max(1, (int) ($documentsPagination['pages'] ?? 1));
+      $documentsStart = $documentsTotal > 0 ? (($documentsPage - 1) * $documentsPerPage) + 1 : 0;
+      $documentsEnd = min($documentsTotal, $documentsPage * $documentsPerPage);
+    ?>
+    <div class="pagination-row">
+      <span class="muted">Exibindo <?= e((string) $documentsStart) ?>-<?= e((string) $documentsEnd) ?> de <?= e((string) $documentsTotal) ?> documentos</span>
+      <div class="pagination-links">
+        <?php if ($documentsPage > 1): ?>
+          <a class="btn btn-outline" href="<?= e($buildDocumentsPageUrl($documentsPage - 1)) ?>">Anterior</a>
+        <?php endif; ?>
+        <span class="muted">Página <?= e((string) $documentsPage) ?> de <?= e((string) $documentsPages) ?></span>
+        <?php if ($documentsPage < $documentsPages): ?>
+          <a class="btn btn-outline" href="<?= e($buildDocumentsPageUrl($documentsPage + 1)) ?>">Próxima</a>
+        <?php endif; ?>
+      </div>
+    </div>
+  <?php endif; ?>
 </div>
 
 <div class="card card-placeholder">
