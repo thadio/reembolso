@@ -33,6 +33,8 @@ $permissions = [
     ['name' => 'people.view', 'description' => 'Visualizar pessoas'],
     ['name' => 'people.manage', 'description' => 'Gerenciar cadastro de pessoas'],
     ['name' => 'people.cpf.full', 'description' => 'Visualizar CPF completo'],
+    ['name' => 'mte_destinations.view', 'description' => 'Visualizar lotações MTE'],
+    ['name' => 'mte_destinations.manage', 'description' => 'Gerenciar cadastro de lotações MTE'],
     ['name' => 'organs.view', 'description' => 'Visualizar órgãos'],
     ['name' => 'organs.manage', 'description' => 'Gerenciar cadastro de órgãos'],
     ['name' => 'audit.view', 'description' => 'Visualizar trilha de auditoria'],
@@ -40,9 +42,9 @@ $permissions = [
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
-    'admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'organs.view', 'organs.manage', 'audit.view'],
-    'user' => ['dashboard.view', 'people.view', 'organs.view'],
+    'sist_admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'mte_destinations.view', 'mte_destinations.manage', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
+    'admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'mte_destinations.view', 'mte_destinations.manage', 'organs.view', 'organs.manage', 'audit.view'],
+    'user' => ['dashboard.view', 'people.view', 'mte_destinations.view', 'organs.view'],
 ];
 
 $documentTypes = [

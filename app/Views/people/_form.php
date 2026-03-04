@@ -65,7 +65,31 @@ $person = $person ?? [];
 
     <div class="field">
       <label for="mte_destination">Lotação destino MTE</label>
-      <input id="mte_destination" name="mte_destination" type="text" value="<?= e(old('mte_destination', (string) ($person['mte_destination'] ?? ''))) ?>">
+      <?php
+        $selectedDestination = trim((string) old('mte_destination', (string) ($person['mte_destination'] ?? '')));
+        $knownDestinations = [];
+      ?>
+      <select id="mte_destination" name="mte_destination">
+        <option value="">Não informada</option>
+        <?php foreach (($mteDestinations ?? []) as $destination): ?>
+          <?php
+            $destinationName = trim((string) ($destination['name'] ?? ''));
+            if ($destinationName === '') {
+                continue;
+            }
+
+            $destinationCode = trim((string) ($destination['code'] ?? ''));
+            $knownDestinations[$destinationName] = true;
+            $destinationLabel = $destinationCode === '' ? $destinationName : ($destinationCode . ' - ' . $destinationName);
+          ?>
+          <option value="<?= e($destinationName) ?>" <?= $selectedDestination === $destinationName ? 'selected' : '' ?>>
+            <?= e($destinationLabel) ?>
+          </option>
+        <?php endforeach; ?>
+        <?php if ($selectedDestination !== '' && !isset($knownDestinations[$selectedDestination])): ?>
+          <option value="<?= e($selectedDestination) ?>" selected><?= e($selectedDestination) ?> (valor legado)</option>
+        <?php endif; ?>
+      </select>
     </div>
 
     <div class="field">

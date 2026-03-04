@@ -54,6 +54,12 @@ final class PeopleService
         return $this->people->activeModalities();
     }
 
+    /** @return array<int, array<string, mixed>> */
+    public function activeMteDestinations(): array
+    {
+        return $this->people->activeMteDestinations();
+    }
+
     /** @return array<int, string> */
     public function statuses(): array
     {
@@ -66,7 +72,7 @@ final class PeopleService
      */
     public function create(array $input, int $userId, string $ip, string $userAgent): array
     {
-        $validation = $this->validate($input);
+        $validation = $this->validate($input, null);
         if ($validation['errors'] !== []) {
             return [
                 'ok' => false,
@@ -133,7 +139,7 @@ final class PeopleService
             ];
         }
 
-        $validation = $this->validate($input);
+        $validation = $this->validate($input, $this->clean($before['mte_destination'] ?? null));
         if ($validation['errors'] !== []) {
             return [
                 'ok' => false,
@@ -218,9 +224,10 @@ final class PeopleService
 
     /**
      * @param array<string, mixed> $input
+     * @param ?string $legacyDestination
      * @return array{errors: array<int, string>, data: array<string, mixed>}
      */
-    private function validate(array $input): array
+    private function validate(array $input, ?string $legacyDestination): array
     {
         $organId = (int) ($input['organ_id'] ?? 0);
         $modalityId = (int) ($input['desired_modality_id'] ?? 0);
@@ -254,6 +261,15 @@ final class PeopleService
 
         if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'E-mail inválido.';
+        }
+
+        if ($destination !== null && !$this->people->mteDestinationExists($destination)) {
+            $isLegacyDestination = $legacyDestination !== null
+                && mb_strtolower($legacyDestination) === mb_strtolower($destination);
+
+            if (!$isLegacyDestination) {
+                $errors[] = 'Lotação MTE inválida. Selecione uma lotação cadastrada.';
+            }
         }
 
         $data = [

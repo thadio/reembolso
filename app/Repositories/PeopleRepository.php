@@ -307,4 +307,30 @@ final class PeopleRepository
 
         return $stmt->fetchAll();
     }
+
+    /** @return array<int, array<string, mixed>> */
+    public function activeMteDestinations(): array
+    {
+        $stmt = $this->db->query(
+            'SELECT id, name, code
+             FROM mte_destinations
+             WHERE deleted_at IS NULL
+             ORDER BY name ASC'
+        );
+
+        return $stmt->fetchAll();
+    }
+
+    public function mteDestinationExists(string $name): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id
+             FROM mte_destinations
+             WHERE name = :name AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['name' => $name]);
+
+        return $stmt->fetch() !== false;
+    }
 }

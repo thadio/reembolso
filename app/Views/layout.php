@@ -10,6 +10,8 @@ $canViewBudget = in_array('budget.view', $authPermissions, true);
 $canManageBudget = in_array('budget.manage', $authPermissions, true);
 $canViewPeople = in_array('people.view', $authPermissions, true);
 $canManagePeople = in_array('people.manage', $authPermissions, true);
+$canViewMteDestinations = in_array('mte_destinations.view', $authPermissions, true);
+$canManageMteDestinations = in_array('mte_destinations.manage', $authPermissions, true);
 $canViewOrgans = in_array('organs.view', $authPermissions, true);
 $canManageOrgans = in_array('organs.manage', $authPermissions, true);
 $canViewCdos = in_array('cdo.view', $authPermissions, true);
@@ -51,6 +53,10 @@ $renderMenuIcon = static function (string $icon): string {
             $body = '<rect x="3" y="3" width="18" height="18" rx="2"></rect>'
                 . '<path d="M9 21V8h6v13"></path>'
                 . '<path d="M9 12h6"></path>';
+            break;
+        case 'mte_destination':
+            $body = '<path d="M12 22s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11z"></path>'
+                . '<circle cx="12" cy="11" r="2.5"></circle>';
             break;
         case 'cdo':
             $body = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>'
@@ -125,6 +131,14 @@ if ($canViewPeople) {
         'active' => str_starts_with($path, '/people'),
     ];
 }
+if ($canViewMteDestinations) {
+    $mainMenuItems[] = [
+        'label' => 'Lotações MTE',
+        'href' => '/mte-destinations',
+        'icon' => 'mte_destination',
+        'active' => str_starts_with($path, '/mte-destinations'),
+    ];
+}
 if ($canViewOrgans) {
     $mainMenuItems[] = [
         'label' => 'Órgãos',
@@ -189,6 +203,14 @@ if ($canManagePeople) {
         'href' => '/people/create',
         'icon' => 'plus',
         'active' => $path === '/people/create',
+    ];
+}
+if ($canManageMteDestinations) {
+    $quickMenuItems[] = [
+        'label' => 'Nova lotação MTE',
+        'href' => '/mte-destinations/create',
+        'icon' => 'plus',
+        'active' => $path === '/mte-destinations/create',
     ];
 }
 if ($canManageBudget) {

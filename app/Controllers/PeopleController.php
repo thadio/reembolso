@@ -80,6 +80,7 @@ final class PeopleController extends Controller
             'statuses' => $this->service()->statuses(),
             'organs' => $this->service()->activeOrgans(),
             'modalities' => $this->service()->activeModalities(),
+            'mteDestinations' => $this->service()->activeMteDestinations(),
         ]);
     }
 
@@ -213,6 +214,7 @@ final class PeopleController extends Controller
             'statuses' => $this->service()->statuses(),
             'organs' => $this->service()->activeOrgans(),
             'modalities' => $this->service()->activeModalities(),
+            'mteDestinations' => $this->service()->activeMteDestinations(),
         ]);
     }
 

@@ -5,11 +5,18 @@ declare(strict_types=1);
 $year = max(2000, min(2100, (int) ($year ?? date('Y'))));
 $budget = is_array($budget ?? null) ? $budget : [];
 $summary = is_array($budget['summary'] ?? null) ? $budget['summary'] : [];
+$projection = is_array($budget['projection'] ?? null) ? $budget['projection'] : [];
+$projectionMonths = is_array($projection['months'] ?? null) ? $projection['months'] : [];
+$nextYearScenarios = is_array($projection['next_year_scenarios'] ?? null) ? $projection['next_year_scenarios'] : [];
 $cycle = is_array($budget['cycle'] ?? null) ? $budget['cycle'] : [];
 $organs = is_array($budget['organs'] ?? null) ? $budget['organs'] : [];
+$modalities = is_array($budget['modalities'] ?? null) ? $budget['modalities'] : [];
 $parameters = is_array($budget['parameters'] ?? null) ? $budget['parameters'] : [];
+$scenarioParameters = is_array($budget['scenario_parameters'] ?? null) ? $budget['scenario_parameters'] : [];
+$defaultVariations = is_array($budget['default_variations'] ?? null) ? $budget['default_variations'] : [];
 $scenarios = is_array($budget['scenarios'] ?? null) ? $budget['scenarios'] : [];
 $simulationResult = is_array($simulationResult ?? null) ? $simulationResult : null;
+$simulationMatrix = is_array($simulationResult['scenario_matrix'] ?? null) ? $simulationResult['scenario_matrix'] : [];
 $canManage = (bool) ($canManage ?? false);
 $canSimulate = (bool) ($canSimulate ?? false);
 
@@ -17,6 +24,12 @@ $formatMoney = static function (float|int|string $value): string {
     $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
 
     return 'R$ ' . number_format($numeric, 2, ',', '.');
+};
+
+$formatPercent = static function (float|int|string $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+
+    return number_format($numeric, 2, ',', '.') . '%';
 };
 
 $formatDate = static function (?string $value): string {
@@ -39,6 +52,17 @@ $formatDateTime = static function (?string $value): string {
     return $timestamp === false ? $value : date('d/m/Y H:i', $timestamp);
 };
 
+$modalityLabel = static function (?string $value): string {
+    $raw = trim((string) $value);
+    if ($raw === '') {
+        return 'geral';
+    }
+
+    $normalized = str_replace('_', ' ', $raw);
+
+    return mb_convert_case($normalized, MB_CASE_TITLE, 'UTF-8');
+};
+
 $riskLabel = static function (string $value): string {
     return match ($value) {
         'alto' => 'Alto',
@@ -59,6 +83,12 @@ $summaryRisk = (string) ($summary['risk_level'] ?? 'baixo');
 $totalBudget = (float) ($summary['total_budget'] ?? 0);
 $availableAmount = (float) ($summary['available_amount'] ?? 0);
 $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
+$annualProjectionCurrentYear = (float) ($projection['annual_projection_current_year'] ?? 0);
+$annualBalanceCurrentYear = (float) ($projection['annual_balance_current_year'] ?? 0);
+$defaultBaseVariation = (float) ($defaultVariations['base'] ?? 0.0);
+$defaultUpdatedVariation = (float) ($defaultVariations['atualizado'] ?? 10.0);
+$defaultWorstVariation = (float) ($defaultVariations['pior_caso'] ?? 25.0);
+$selectedModality = mb_strtolower((string) old('modality', 'geral'));
 ?>
 <div class="card">
   <div class="header-row">
@@ -116,6 +146,76 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
     <p class="kpi-value <?= $projectedBalance < 0 ? 'text-danger' : 'text-success' ?>"><?= e($formatMoney($summary['projected_balance_next_year'] ?? 0)) ?></p>
     <p class="dashboard-kpi-note">Comparacao com orcamento total do ciclo</p>
   </article>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Projecoes 5.1 (mensal, anual e proximo ano)</h3>
+      <p class="muted">Consolidacao mensal do ciclo e envelopes de cenario para o proximo ano.</p>
+    </div>
+  </div>
+
+  <div class="grid-kpi">
+    <article class="card kpi-card">
+      <p class="kpi-label">Projecao mensal media</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($projection['monthly_average_projection'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Projecao anual (ciclo atual)</p>
+      <p class="kpi-value"><?= e($formatMoney($annualProjectionCurrentYear)) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Saldo anual projetado</p>
+      <p class="kpi-value <?= $annualBalanceCurrentYear < 0 ? 'text-danger' : 'text-success' ?>"><?= e($formatMoney($annualBalanceCurrentYear)) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Prox. ano (Base)</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($nextYearScenarios['base'] ?? 0))) ?></p>
+      <p class="dashboard-kpi-note">Sem variacao adicional</p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Prox. ano (Atualizado)</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($nextYearScenarios['atualizado'] ?? 0))) ?></p>
+      <p class="dashboard-kpi-note">Variacao padrao <?= e($formatPercent($defaultUpdatedVariation)) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Prox. ano (Pior Caso)</p>
+      <p class="kpi-value"><?= e($formatMoney((float) ($nextYearScenarios['pior_caso'] ?? 0))) ?></p>
+      <p class="dashboard-kpi-note">Variacao padrao <?= e($formatPercent($defaultWorstVariation)) ?></p>
+    </article>
+  </div>
+
+  <?php if ($projectionMonths === []): ?>
+    <div class="empty-state">
+      <p>Sem dados para montar serie mensal de projecao.</p>
+    </div>
+  <?php else: ?>
+    <div class="table-wrap" style="margin-top:12px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th>Executado</th>
+            <th>Comprometido</th>
+            <th>Base projetada</th>
+            <th>Total projetado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($projectionMonths as $monthProjection): ?>
+            <tr>
+              <td><?= e((string) ($monthProjection['label'] ?? '-')) ?></td>
+              <td><?= e($formatMoney((float) ($monthProjection['executed_amount'] ?? 0))) ?></td>
+              <td><?= e($formatMoney((float) ($monthProjection['committed_amount'] ?? 0))) ?></td>
+              <td><?= e($formatMoney((float) ($monthProjection['projected_base_amount'] ?? 0))) ?></td>
+              <td><?= e($formatMoney((float) ($monthProjection['projected_total'] ?? 0))) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
 </div>
 
 <?php if ($canManage): ?>
@@ -190,14 +290,132 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
       </div>
     <?php endif; ?>
   </div>
+
+  <div class="card">
+    <div class="header-row">
+      <div>
+        <h3>Variacoes de cenario por orgao/modalidade</h3>
+        <p class="muted">Define variacoes para cenarios Base, Atualizado e Pior Caso no simulador.</p>
+      </div>
+    </div>
+
+    <form method="post" action="<?= e(url('/budget/scenario-parameters/upsert')) ?>" class="form-grid">
+      <?= csrf_field() ?>
+      <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+
+      <div class="field field-wide">
+        <label for="scenario_parameter_organ_id">Orgao *</label>
+        <select id="scenario_parameter_organ_id" name="scenario_parameter_organ_id" required>
+          <option value="">Selecione um orgao</option>
+          <?php foreach ($organs as $organ): ?>
+            <option value="<?= e((string) ($organ['id'] ?? 0)) ?>" <?= old('scenario_parameter_organ_id') === (string) ($organ['id'] ?? '') ? 'selected' : '' ?>>
+              <?= e((string) ($organ['name'] ?? '-')) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="scenario_parameter_modality">Modalidade *</label>
+        <select id="scenario_parameter_modality" name="scenario_parameter_modality" required>
+          <option value="geral" <?= mb_strtolower((string) old('scenario_parameter_modality', 'geral')) === 'geral' ? 'selected' : '' ?>>Geral</option>
+          <?php foreach ($modalities as $modality): ?>
+            <?php $modalityValue = mb_strtolower(trim((string) ($modality['name'] ?? ''))); ?>
+            <?php if ($modalityValue === '') { continue; } ?>
+            <option value="<?= e($modalityValue) ?>" <?= mb_strtolower((string) old('scenario_parameter_modality', 'geral')) === $modalityValue ? 'selected' : '' ?>>
+              <?= e((string) ($modality['name'] ?? '-')) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="scenario_parameter_base_variation_percent">Variacao Base (%) *</label>
+        <input
+          id="scenario_parameter_base_variation_percent"
+          name="scenario_parameter_base_variation_percent"
+          type="text"
+          value="<?= e(old('scenario_parameter_base_variation_percent', number_format($defaultBaseVariation, 2, ',', '.'))) ?>"
+          required
+        >
+      </div>
+
+      <div class="field">
+        <label for="scenario_parameter_updated_variation_percent">Variacao Atualizado (%) *</label>
+        <input
+          id="scenario_parameter_updated_variation_percent"
+          name="scenario_parameter_updated_variation_percent"
+          type="text"
+          value="<?= e(old('scenario_parameter_updated_variation_percent', number_format($defaultUpdatedVariation, 2, ',', '.'))) ?>"
+          required
+        >
+      </div>
+
+      <div class="field">
+        <label for="scenario_parameter_worst_variation_percent">Variacao Pior Caso (%) *</label>
+        <input
+          id="scenario_parameter_worst_variation_percent"
+          name="scenario_parameter_worst_variation_percent"
+          type="text"
+          value="<?= e(old('scenario_parameter_worst_variation_percent', number_format($defaultWorstVariation, 2, ',', '.'))) ?>"
+          required
+        >
+      </div>
+
+      <div class="field field-wide">
+        <label for="scenario_parameter_notes">Observacoes</label>
+        <textarea id="scenario_parameter_notes" name="scenario_parameter_notes" rows="3"><?= e(old('scenario_parameter_notes', '')) ?></textarea>
+      </div>
+
+      <div class="form-actions field-wide">
+        <button type="submit" class="btn btn-primary">Salvar variacoes</button>
+      </div>
+    </form>
+
+    <?php if ($scenarioParameters === []): ?>
+      <div class="empty-state">
+        <p>Nenhuma variacao de cenario cadastrada para este ciclo.</p>
+      </div>
+    <?php else: ?>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Orgao</th>
+              <th>Modalidade</th>
+              <th>Base</th>
+              <th>Atualizado</th>
+              <th>Pior Caso</th>
+              <th>Atualizacao</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($scenarioParameters as $scenarioParameter): ?>
+              <tr>
+                <td><?= e((string) ($scenarioParameter['organ_name'] ?? '-')) ?></td>
+                <td><?= e($modalityLabel((string) ($scenarioParameter['modality'] ?? 'geral'))) ?></td>
+                <td><?= e($formatPercent((float) ($scenarioParameter['base_variation_percent'] ?? 0))) ?></td>
+                <td><?= e($formatPercent((float) ($scenarioParameter['updated_variation_percent'] ?? 0))) ?></td>
+                <td><?= e($formatPercent((float) ($scenarioParameter['worst_variation_percent'] ?? 0))) ?></td>
+                <td>
+                  <?= e($formatDateTime((string) ($scenarioParameter['updated_at'] ?? ''))) ?>
+                  <div class="muted">por <?= e((string) ($scenarioParameter['updated_by_name'] ?? 'N/I')) ?></div>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
+  </div>
 <?php endif; ?>
 
 <?php if ($canSimulate): ?>
   <div class="card">
     <div class="header-row">
       <div>
-        <h3>Simulador de contratacao</h3>
-        <p class="muted">Calculo de impacto no ano corrente e no ano seguinte.</p>
+        <h3>Simulador de contratacao multiparametrico</h3>
+        <p class="muted">Cenarios Base, Atualizado e Pior Caso com variacao por orgao/modalidade.</p>
       </div>
     </div>
 
@@ -212,6 +430,20 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
           <?php foreach ($organs as $organ): ?>
             <option value="<?= e((string) ($organ['id'] ?? 0)) ?>" <?= old('organ_id') === (string) ($organ['id'] ?? '') ? 'selected' : '' ?>>
               <?= e((string) ($organ['name'] ?? '-')) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="modality">Modalidade *</label>
+        <select id="modality" name="modality" required>
+          <option value="geral" <?= $selectedModality === 'geral' ? 'selected' : '' ?>>Geral</option>
+          <?php foreach ($modalities as $modality): ?>
+            <?php $modalityValue = mb_strtolower(trim((string) ($modality['name'] ?? ''))); ?>
+            <?php if ($modalityValue === '') { continue; } ?>
+            <option value="<?= e($modalityValue) ?>" <?= $selectedModality === $modalityValue ? 'selected' : '' ?>>
+              <?= e((string) ($modality['name'] ?? '-')) ?>
             </option>
           <?php endforeach; ?>
         </select>
@@ -255,9 +487,13 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
     <div class="header-row">
       <div>
         <h3>Resultado da ultima simulacao</h3>
-        <p class="muted"><?= e((string) ($simulationResult['scenario_name'] ?? 'Simulacao')) ?> · Ano <?= e((string) ($simulationResult['year'] ?? $year)) ?></p>
+        <p class="muted">
+          <?= e((string) ($simulationResult['scenario_name'] ?? 'Simulacao')) ?> ·
+          Ano <?= e((string) ($simulationResult['year'] ?? $year)) ?> ·
+          Modalidade <?= e($modalityLabel((string) ($simulationResult['modality'] ?? 'geral'))) ?>
+        </p>
       </div>
-      <span class="badge <?= e($riskBadgeClass($simRisk)) ?>">Risco <?= e($riskLabel($simRisk)) ?></span>
+      <span class="badge <?= e($riskBadgeClass($simRisk)) ?>">Risco Base <?= e($riskLabel($simRisk)) ?></span>
     </div>
 
     <div class="grid-kpi">
@@ -266,7 +502,7 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
         <p class="kpi-value"><?= e((string) (int) ($simulationResult['quantity'] ?? 0)) ?></p>
       </article>
       <article class="card kpi-card">
-        <p class="kpi-label">Custo medio mensal</p>
+        <p class="kpi-label">Custo medio mensal (Base)</p>
         <p class="kpi-value"><?= e($formatMoney((float) ($simulationResult['avg_monthly_cost'] ?? 0))) ?></p>
       </article>
       <article class="card kpi-card">
@@ -274,24 +510,63 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
         <p class="kpi-value"><?= e((string) (int) ($simulationResult['months_remaining'] ?? 0)) ?></p>
       </article>
       <article class="card kpi-card">
-        <p class="kpi-label">Impacto ano corrente</p>
+        <p class="kpi-label">Impacto ano corrente (Base)</p>
         <p class="kpi-value"><?= e($formatMoney((float) ($simulationResult['cost_current_year'] ?? 0))) ?></p>
       </article>
       <article class="card kpi-card">
-        <p class="kpi-label">Impacto ano seguinte</p>
+        <p class="kpi-label">Impacto ano seguinte (Base)</p>
         <p class="kpi-value"><?= e($formatMoney((float) ($simulationResult['cost_next_year'] ?? 0))) ?></p>
       </article>
       <article class="card kpi-card">
-        <p class="kpi-label">Capacidade maxima (antes)</p>
+        <p class="kpi-label">Capacidade maxima (Base)</p>
         <p class="kpi-value"><?= e((string) (int) ($simulationResult['max_capacity_before'] ?? 0)) ?></p>
       </article>
     </div>
 
     <p class="muted">
       Disponivel antes: <?= e($formatMoney((float) ($simulationResult['available_before'] ?? 0))) ?> ·
-      Saldo apos simulacao: <strong class="<?= (float) ($simulationResult['remaining_after_current_year'] ?? 0) < 0 ? 'text-danger' : 'text-success' ?>"><?= e($formatMoney((float) ($simulationResult['remaining_after_current_year'] ?? 0))) ?></strong>
+      Saldo apos simulacao Base:
+      <strong class="<?= (float) ($simulationResult['remaining_after_current_year'] ?? 0) < 0 ? 'text-danger' : 'text-success' ?>">
+        <?= e($formatMoney((float) ($simulationResult['remaining_after_current_year'] ?? 0))) ?>
+      </strong>
       · Fonte do custo medio: <?= e((string) ($simulationResult['avg_source'] ?? 'informado')) ?>
     </p>
+
+    <?php if ($simulationMatrix !== []): ?>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Cenario</th>
+              <th>Variacao</th>
+              <th>Custo medio mensal</th>
+              <th>Impacto ano corrente</th>
+              <th>Impacto ano seguinte</th>
+              <th>Capacidade maxima</th>
+              <th>Saldo apos simulacao</th>
+              <th>Risco</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($simulationMatrix as $matrixItem): ?>
+              <?php $matrixRisk = (string) ($matrixItem['risk_level'] ?? 'baixo'); ?>
+              <tr>
+                <td><?= e((string) ($matrixItem['label'] ?? '-')) ?></td>
+                <td><?= e($formatPercent((float) ($matrixItem['variation_percent'] ?? 0))) ?></td>
+                <td><?= e($formatMoney((float) ($matrixItem['avg_monthly_cost'] ?? 0))) ?></td>
+                <td><?= e($formatMoney((float) ($matrixItem['cost_current_year'] ?? 0))) ?></td>
+                <td><?= e($formatMoney((float) ($matrixItem['cost_next_year'] ?? 0))) ?></td>
+                <td><?= e((string) (int) ($matrixItem['max_capacity_before'] ?? 0)) ?></td>
+                <td class="<?= (float) ($matrixItem['remaining_after_current_year'] ?? 0) < 0 ? 'text-danger' : 'text-success' ?>">
+                  <?= e($formatMoney((float) ($matrixItem['remaining_after_current_year'] ?? 0))) ?>
+                </td>
+                <td><span class="badge <?= e($riskBadgeClass($matrixRisk)) ?>"><?= e($riskLabel($matrixRisk)) ?></span></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
   </div>
 <?php endif; ?>
 
@@ -314,6 +589,7 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
           <tr>
             <th>Cenario</th>
             <th>Orgao</th>
+            <th>Modalidade</th>
             <th>Entrada</th>
             <th>Qtd.</th>
             <th>Custo ano corrente</th>
@@ -334,6 +610,7 @@ $projectedBalance = (float) ($summary['projected_balance_next_year'] ?? 0);
                 <?php endif; ?>
               </td>
               <td><?= e((string) ($scenario['organ_name'] ?? '-')) ?></td>
+              <td><?= e($modalityLabel((string) ($scenario['modality'] ?? 'geral'))) ?></td>
               <td><?= e($formatDate((string) ($scenario['entry_date'] ?? ''))) ?></td>
               <td><?= e((string) (int) ($scenario['quantity'] ?? 0)) ?></td>
               <td><?= e($formatMoney((float) ($scenario['cost_current_year'] ?? 0))) ?></td>

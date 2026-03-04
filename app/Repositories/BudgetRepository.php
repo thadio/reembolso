@@ -158,6 +158,19 @@ final class BudgetRepository
         return $stmt->fetchAll();
     }
 
+    /** @return array<int, array<string, mixed>> */
+    public function activeModalities(): array
+    {
+        $stmt = $this->db->query(
+            'SELECT id, name
+             FROM modalities
+             WHERE is_active = 1
+             ORDER BY name ASC'
+        );
+
+        return $stmt->fetchAll();
+    }
+
     public function organExists(int $organId): bool
     {
         $stmt = $this->db->prepare(
@@ -257,6 +270,177 @@ final class BudgetRepository
         ]);
 
         $row = $this->findOrgParameterByOrgan($organId);
+
+        return (int) ($row['id'] ?? 0);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function scenarioParameters(int $cycleId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.id,
+                p.budget_cycle_id,
+                p.organ_id,
+                p.modality,
+                p.base_variation_percent,
+                p.updated_variation_percent,
+                p.worst_variation_percent,
+                p.notes,
+                p.updated_by,
+                p.created_at,
+                p.updated_at,
+                o.name AS organ_name,
+                u.name AS updated_by_name
+             FROM budget_scenario_parameters p
+             INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
+             LEFT JOIN users u ON u.id = p.updated_by
+             WHERE p.budget_cycle_id = :budget_cycle_id
+               AND p.deleted_at IS NULL
+             ORDER BY o.name ASC, p.modality ASC'
+        );
+        $stmt->execute(['budget_cycle_id' => $cycleId]);
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findScenarioParameterExact(int $cycleId, int $organId, string $modality): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.id,
+                p.budget_cycle_id,
+                p.organ_id,
+                p.modality,
+                p.base_variation_percent,
+                p.updated_variation_percent,
+                p.worst_variation_percent,
+                p.notes,
+                p.updated_by,
+                p.created_at,
+                p.updated_at,
+                o.name AS organ_name
+             FROM budget_scenario_parameters p
+             INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
+             WHERE p.budget_cycle_id = :budget_cycle_id
+               AND p.organ_id = :organ_id
+               AND p.modality = :modality
+               AND p.deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'budget_cycle_id' => $cycleId,
+            'organ_id' => $organId,
+            'modality' => $modality,
+        ]);
+
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findScenarioParameter(int $cycleId, int $organId, string $modality): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.id,
+                p.budget_cycle_id,
+                p.organ_id,
+                p.modality,
+                p.base_variation_percent,
+                p.updated_variation_percent,
+                p.worst_variation_percent,
+                p.notes,
+                p.updated_by,
+                p.created_at,
+                p.updated_at,
+                o.name AS organ_name
+             FROM budget_scenario_parameters p
+             INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
+             WHERE p.budget_cycle_id = :budget_cycle_id
+               AND p.organ_id = :organ_id
+               AND p.deleted_at IS NULL
+               AND (p.modality = :modality_exact OR p.modality = "geral")
+             ORDER BY
+                CASE
+                    WHEN p.modality = :modality_priority THEN 0
+                    ELSE 1
+                END,
+                p.id DESC
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'budget_cycle_id' => $cycleId,
+            'organ_id' => $organId,
+            'modality_exact' => $modality,
+            'modality_priority' => $modality,
+        ]);
+
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    public function upsertScenarioParameter(
+        int $cycleId,
+        int $organId,
+        string $modality,
+        string $baseVariation,
+        string $updatedVariation,
+        string $worstVariation,
+        ?string $notes,
+        ?int $updatedBy
+    ): int {
+        $stmt = $this->db->prepare(
+            'INSERT INTO budget_scenario_parameters (
+                budget_cycle_id,
+                organ_id,
+                modality,
+                base_variation_percent,
+                updated_variation_percent,
+                worst_variation_percent,
+                notes,
+                updated_by,
+                created_at,
+                updated_at,
+                deleted_at
+            ) VALUES (
+                :budget_cycle_id,
+                :organ_id,
+                :modality,
+                :base_variation_percent,
+                :updated_variation_percent,
+                :worst_variation_percent,
+                :notes,
+                :updated_by,
+                NOW(),
+                NOW(),
+                NULL
+            )
+            ON DUPLICATE KEY UPDATE
+                base_variation_percent = VALUES(base_variation_percent),
+                updated_variation_percent = VALUES(updated_variation_percent),
+                worst_variation_percent = VALUES(worst_variation_percent),
+                notes = VALUES(notes),
+                updated_by = VALUES(updated_by),
+                updated_at = NOW(),
+                deleted_at = NULL'
+        );
+
+        $stmt->execute([
+            'budget_cycle_id' => $cycleId,
+            'organ_id' => $organId,
+            'modality' => $modality,
+            'base_variation_percent' => $baseVariation,
+            'updated_variation_percent' => $updatedVariation,
+            'worst_variation_percent' => $worstVariation,
+            'notes' => $notes,
+            'updated_by' => $updatedBy,
+        ]);
+
+        $row = $this->findScenarioParameterExact($cycleId, $organId, $modality);
 
         return (int) ($row['id'] ?? 0);
     }
@@ -366,6 +550,101 @@ final class BudgetRepository
         return is_array($row) ? $row : [];
     }
 
+    /** @return array<int, array<string, mixed>> */
+    public function monthlyProjectionSeries(int $year): array
+    {
+        $monthsSql = $this->monthsSql();
+
+        $stmt = $this->db->prepare(
+            'SELECT
+                m.month_number,
+                IFNULL(exec_tot.total, 0) AS executed_amount,
+                IFNULL(comm_tot.total, 0) AS committed_amount,
+                IFNULL(base_tot.total, 0) AS projected_base_amount
+             FROM (' . $monthsSql . ') m
+             LEFT JOIN (
+                SELECT src.month_number, SUM(src.amount) AS total
+                FROM (
+                    SELECT MONTH(p.payment_date) AS month_number, SUM(p.amount) AS amount
+                    FROM payments p
+                    INNER JOIN invoices i ON i.id = p.invoice_id AND i.deleted_at IS NULL
+                    WHERE p.deleted_at IS NULL
+                      AND YEAR(p.payment_date) = :projection_year_exec_payments
+                    GROUP BY MONTH(p.payment_date)
+
+                    UNION ALL
+
+                    SELECT MONTH(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at))) AS month_number, SUM(r.amount) AS amount
+                    FROM reimbursement_entries r
+                    INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
+                    WHERE r.deleted_at IS NULL
+                      AND r.status = "pago"
+                      AND YEAR(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at))) = :projection_year_exec_reimbursement
+                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)))
+                ) src
+                GROUP BY src.month_number
+             ) exec_tot ON exec_tot.month_number = m.month_number
+             LEFT JOIN (
+                SELECT src.month_number, SUM(src.amount) AS total
+                FROM (
+                    SELECT MONTH(i.reference_month) AS month_number, SUM(GREATEST(i.total_amount - i.paid_amount, 0)) AS amount
+                    FROM invoices i
+                    WHERE i.deleted_at IS NULL
+                      AND i.status <> "cancelado"
+                      AND YEAR(i.reference_month) = :projection_year_committed_invoices
+                    GROUP BY MONTH(i.reference_month)
+
+                    UNION ALL
+
+                    SELECT MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) AS month_number, SUM(r.amount) AS amount
+                    FROM reimbursement_entries r
+                    INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
+                    WHERE r.deleted_at IS NULL
+                      AND r.status = "pendente"
+                      AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :projection_year_committed_reimbursement
+                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at)))
+                ) src
+                GROUP BY src.month_number
+             ) comm_tot ON comm_tot.month_number = m.month_number
+             LEFT JOIN (
+                SELECT
+                    mm.month_number,
+                    IFNULL(SUM(
+                        CASE
+                            WHEN cpi.cost_type = "mensal"
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                            THEN cpi.amount
+                            WHEN cpi.cost_type = "anual"
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                            THEN cpi.amount / 12
+                            WHEN cpi.cost_type = "unico"
+                                 AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(STR_TO_DATE(CONCAT(:projection_year_base, "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"), "%Y-%m")
+                            THEN cpi.amount
+                            ELSE 0
+                        END
+                    ), 0) AS total
+                FROM (' . $monthsSql . ') mm
+                LEFT JOIN cost_plans cp ON cp.deleted_at IS NULL AND cp.is_active = 1
+                LEFT JOIN people p ON p.id = cp.person_id AND p.deleted_at IS NULL
+                LEFT JOIN cost_plan_items cpi ON cpi.cost_plan_id = cp.id AND cpi.deleted_at IS NULL
+                GROUP BY mm.month_number
+             ) base_tot ON base_tot.month_number = m.month_number
+             ORDER BY m.month_number ASC'
+        );
+
+        $stmt->execute([
+            'projection_year_exec_payments' => $year,
+            'projection_year_exec_reimbursement' => $year,
+            'projection_year_committed_invoices' => $year,
+            'projection_year_committed_reimbursement' => $year,
+            'projection_year_base' => $year,
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
     /** @param array<string, mixed> $data */
     public function createScenario(array $data): int
     {
@@ -373,6 +652,7 @@ final class BudgetRepository
             'INSERT INTO hiring_scenarios (
                 budget_cycle_id,
                 organ_id,
+                modality,
                 scenario_name,
                 entry_date,
                 quantity,
@@ -392,6 +672,7 @@ final class BudgetRepository
             ) VALUES (
                 :budget_cycle_id,
                 :organ_id,
+                :modality,
                 :scenario_name,
                 :entry_date,
                 :quantity,
@@ -414,6 +695,7 @@ final class BudgetRepository
         $stmt->execute([
             'budget_cycle_id' => $data['budget_cycle_id'],
             'organ_id' => $data['organ_id'],
+            'modality' => $data['modality'],
             'scenario_name' => $data['scenario_name'],
             'entry_date' => $data['entry_date'],
             'quantity' => $data['quantity'],
@@ -439,6 +721,8 @@ final class BudgetRepository
             'INSERT INTO hiring_scenario_items (
                 hiring_scenario_id,
                 item_label,
+                scenario_code,
+                variation_percent,
                 quantity,
                 avg_monthly_cost,
                 cost_current_year,
@@ -449,6 +733,8 @@ final class BudgetRepository
             ) VALUES (
                 :hiring_scenario_id,
                 :item_label,
+                :scenario_code,
+                :variation_percent,
                 :quantity,
                 :avg_monthly_cost,
                 :cost_current_year,
@@ -462,6 +748,8 @@ final class BudgetRepository
         $stmt->execute([
             'hiring_scenario_id' => $data['hiring_scenario_id'],
             'item_label' => $data['item_label'],
+            'scenario_code' => $data['scenario_code'],
+            'variation_percent' => $data['variation_percent'],
             'quantity' => $data['quantity'],
             'avg_monthly_cost' => $data['avg_monthly_cost'],
             'cost_current_year' => $data['cost_current_year'],
@@ -481,6 +769,7 @@ final class BudgetRepository
                 hs.id,
                 hs.budget_cycle_id,
                 hs.organ_id,
+                hs.modality,
                 hs.scenario_name,
                 hs.entry_date,
                 hs.quantity,
@@ -511,6 +800,7 @@ final class BudgetRepository
                 hs.id,
                 hs.budget_cycle_id,
                 hs.organ_id,
+                hs.modality,
                 hs.scenario_name,
                 hs.entry_date,
                 hs.quantity,
@@ -536,5 +826,21 @@ final class BudgetRepository
         $stmt->execute();
 
         return $stmt->fetchAll();
+    }
+
+    private function monthsSql(): string
+    {
+        return 'SELECT 1 AS month_number
+                UNION ALL SELECT 2
+                UNION ALL SELECT 3
+                UNION ALL SELECT 4
+                UNION ALL SELECT 5
+                UNION ALL SELECT 6
+                UNION ALL SELECT 7
+                UNION ALL SELECT 8
+                UNION ALL SELECT 9
+                UNION ALL SELECT 10
+                UNION ALL SELECT 11
+                UNION ALL SELECT 12';
     }
 }
