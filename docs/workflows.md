@@ -1,4 +1,4 @@
-# Workflows (Fases 0, 1.1, 1.2 e 1.3)
+# Workflows (Fases 0, 1.1, 1.2, 1.3 e 1.4)
 
 ## Fluxo de acesso
 1. Usuário acessa `/login`.
@@ -37,6 +37,16 @@
    - grava `audit_log`
    - grava `system_events`
 5. No status final (`ativo`), registra data efetiva de início.
+
+## Workflow de Timeline Completa (Etapa 1.4)
+1. No Perfil 360, usuário com `people.manage` registra evento manual na timeline.
+2. Sistema valida tipo de evento, título e data, grava em `timeline_events` e registra auditoria/evento de sistema.
+3. Se houver anexos, sistema valida extensão/MIME/tamanho e grava em `timeline_event_attachments`.
+4. Timeline exibe itens em ordem cronológica reversa, com paginação e links de download protegidos.
+5. Quando necessário corrigir histórico, usuário executa retificação:
+   - evento original é preservado
+   - novo evento `retificacao` é criado com referência ao evento original
+6. Usuário com `people.view` pode abrir versão de impressão em `/people/timeline/print?id={id}`.
 
 ## Health check
 - `GET /health` verifica:

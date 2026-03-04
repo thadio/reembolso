@@ -1,0 +1,22 @@
+Options -Indexes
+
+RewriteEngine On
+
+# Mantem desafios ACME (Let's Encrypt) acessiveis.
+RewriteRule ^\.well-known/ - [L]
+
+# Bloqueia acesso direto a codigo interno e arquivos sensiveis.
+RewriteRule ^(?:app|db|routes|scripts|storage)(?:/|$) - [F,L,NC]
+RewriteRule ^(?:\.env(?:\..*)?|README\.md|CHANGELOG\.md|serverconfig\.md|\.ftpignore|bootstrap\.php)$ - [F,L,NC]
+RewriteCond %{REQUEST_URI} !^/public/
+RewriteRule \.php$ - [F,L,NC]
+
+# Serve arquivos existentes da pasta public/.
+RewriteCond %{REQUEST_URI} !^/public/
+RewriteCond %{DOCUMENT_ROOT}/public/$1 -f [OR]
+RewriteCond %{DOCUMENT_ROOT}/public/$1 -d
+RewriteRule ^(.*)$ public/$1 [L]
+
+# Front controller da aplicacao.
+RewriteCond %{REQUEST_URI} !^/public/
+RewriteRule ^ public/index.php [QSA,L]

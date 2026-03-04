@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-03-04 — Fase 1.4 concluída (Timeline completa)
+- Criada migration `005_phase1_timeline_attachments.sql` com tabela `timeline_event_attachments`
+- `PipelineRepository` expandido com:
+  - paginação de timeline com anexos
+  - consulta completa para exportação/impressão
+  - persistência e consulta de anexos por evento
+- `PipelineService` expandido com:
+  - criação de evento manual (`addManualEvent`)
+  - retificação não destrutiva (`rectifyEvent`)
+  - upload seguro de anexos (PDF/JPG/PNG até 10MB)
+  - download protegido de anexo por pessoa
+- `PeopleController` e rotas atualizados com:
+  - `POST /people/timeline/store`
+  - `POST /people/timeline/rectify`
+  - `GET /people/timeline/attachment`
+  - `GET /people/timeline/print`
+- Perfil 360 atualizado com:
+  - formulário de evento manual
+  - anexos por evento com download
+  - retificação por evento (sem apagar histórico)
+  - paginação da timeline
+  - botão de impressão/exportação HTML print-friendly
+- Novos templates:
+  - `app/Views/print_layout.php`
+  - `app/Views/people/timeline_print.php`
+- Checklist de testes adicionado em `tests/checklist-etapa-1.4.md`
+
 ## 2026-03-04 — Fase 1.3 concluída (Movimentação + Pipeline)
 - Criada migration `004_phase1_pipeline_assignments.sql` com:
   - `assignment_statuses`

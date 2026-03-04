@@ -14,10 +14,16 @@
 - `organs.view`: acesso à lista e detalhe
 - `organs.manage`: criar, editar e excluir
 
-### Pessoas (Fases 1.2 e 1.3)
+### Pessoas (Fases 1.2, 1.3 e 1.4)
 - `people.view`: acesso à lista e Perfil 360
-- `people.manage`: criar, editar, excluir e avançar pipeline
+- `people.manage`: criar, editar, excluir, avançar pipeline e registrar/retificar eventos da timeline
 - `people.cpf.full`: visualizar CPF completo (sem essa permissão, CPF aparece mascarado)
+
+### Endpoints da timeline (Etapa 1.4)
+- `POST /people/timeline/store`: exige `auth`, `permission:people.manage` e `csrf`
+- `POST /people/timeline/rectify`: exige `auth`, `permission:people.manage` e `csrf`
+- `GET /people/timeline/attachment`: exige `auth` e `permission:people.view`
+- `GET /people/timeline/print`: exige `auth` e `permission:people.view`
 
 ## Rastreabilidade
 - Mudanças de status no pipeline registram:
@@ -28,6 +34,10 @@
 ## Uploads
 - Diretório `storage/uploads/` fora de `public/`
 - `.htaccess` bloqueando execução de scripts
+- Upload de anexos da timeline com whitelist:
+  - extensões: `pdf`, `jpg`, `jpeg`, `png`
+  - MIME: `application/pdf`, `image/jpeg`, `image/png`
+  - tamanho máximo: `10MB` por arquivo
 
 ## LGPD (base)
 - Mascaramento de CPF em listagens para perfis sem permissão sensível

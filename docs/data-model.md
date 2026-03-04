@@ -1,4 +1,4 @@
-# Modelo de Dados (Fases 0, 1.1, 1.2 e 1.3)
+# Modelo de Dados (Fases 0, 1.1, 1.2, 1.3 e 1.4)
 
 ## Tabelas
 - `users`
@@ -18,6 +18,7 @@
 - `assignment_statuses`
 - `assignments`
 - `timeline_events`
+- `timeline_event_attachments`
 
 ## Observações
 - Charset/collation: `utf8mb4` / `utf8mb4_unicode_ci`
@@ -27,3 +28,4 @@
 - `people` usa soft delete (`deleted_at`) e vínculo obrigatório ao órgão
 - `assignments` guarda o status atual do pipeline por pessoa
 - `timeline_events` registra eventos cronológicos da pessoa e movimentação
+- `timeline_event_attachments` guarda anexos por evento da timeline, com vínculo a pessoa e trilha de upload

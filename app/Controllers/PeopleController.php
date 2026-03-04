@@ -105,6 +105,7 @@ final class PeopleController extends Controller
     public function show(Request $request): void
     {
         $id = (int) $request->input('id', '0');
+        $timelinePage = max(1, (int) $request->input('timeline_page', '1'));
         if ($id <= 0) {
             flash('error', 'Pessoa inválida.');
             $this->redirect('/people');
@@ -125,7 +126,7 @@ final class PeopleController extends Controller
         );
 
         $person = $this->service()->find($id) ?? $person;
-        $pipeline = $this->pipelineService()->profileData($id);
+        $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
 
         $this->view('people/show', [
             'title' => 'Perfil 360',
@@ -243,6 +244,140 @@ final class PeopleController extends Controller
         $this->redirect('/people/show?id=' . $id);
     }
 
+    public function storeTimelineEvent(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa inválida para registro de evento.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $pipeline = $this->pipelineService()->profileData($personId, 1, 1);
+        $assignment = $pipeline['assignment'] ?? null;
+        $assignmentId = $assignment !== null ? (int) ($assignment['id'] ?? 0) : null;
+        if ($assignmentId !== null && $assignmentId <= 0) {
+            $assignmentId = null;
+        }
+
+        $result = $this->pipelineService()->addManualEvent(
+            personId: $personId,
+            assignmentId: $assignmentId,
+            input: $request->all(),
+            files: $_FILES,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function rectifyTimelineEvent(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $sourceEventId = (int) $request->input('source_event_id', '0');
+        $note = (string) $request->input('rectification_note', '');
+
+        if ($personId <= 0 || $sourceEventId <= 0) {
+            flash('error', 'Dados inválidos para retificação.');
+            $this->redirect('/people');
+        }
+
+        $pipeline = $this->pipelineService()->profileData($personId, 1, 1);
+        $assignment = $pipeline['assignment'] ?? null;
+        $assignmentId = $assignment !== null ? (int) ($assignment['id'] ?? 0) : null;
+        if ($assignmentId !== null && $assignmentId <= 0) {
+            $assignmentId = null;
+        }
+
+        $result = $this->pipelineService()->rectifyEvent(
+            personId: $personId,
+            assignmentId: $assignmentId,
+            sourceEventId: $sourceEventId,
+            note: $note,
+            files: $_FILES,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function downloadTimelineAttachment(Request $request): void
+    {
+        $attachmentId = (int) $request->input('id', '0');
+        $personId = (int) $request->input('person_id', '0');
+
+        if ($attachmentId <= 0 || $personId <= 0) {
+            flash('error', 'Anexo inválido.');
+            $this->redirect('/people');
+        }
+
+        $file = $this->pipelineService()->attachmentForDownload($attachmentId, $personId);
+        if ($file === null) {
+            flash('error', 'Anexo não encontrado ou acesso não autorizado.');
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        header('Content-Type: ' . $file['mime_type']);
+        header('Content-Length: ' . (string) filesize($file['path']));
+        header('Content-Disposition: attachment; filename="' . rawurlencode($file['original_name']) . '"');
+        readfile($file['path']);
+        exit;
+    }
+
+    public function timelinePrint(Request $request): void
+    {
+        $personId = (int) $request->input('id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa inválida.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $timeline = $this->pipelineService()->fullTimeline($personId, 400);
+
+        $this->app->view()->render('people/timeline_print', [
+            'title' => 'Timeline',
+            'person' => $person,
+            'timeline' => $timeline,
+            'authUser' => $this->app->auth()->user(),
+            'currentPath' => '/people/timeline/print',
+        ], 'print_layout');
+    }
+
     /** @return array<string, mixed> */
     private function emptyPerson(): array
     {
@@ -276,7 +411,8 @@ final class PeopleController extends Controller
         return new PipelineService(
             new PipelineRepository($this->app->db()),
             $this->app->audit(),
-            $this->app->events()
+            $this->app->events(),
+            $this->app->config()
         );
     }
 }

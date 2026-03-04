@@ -3,13 +3,14 @@
 Aplicação web em PHP para gestão de movimentação de força de trabalho, orçamento (CDO) e reembolsos.
 
 ## Status
-- Fases implementadas: **Fase 0 + Fase 1.1 + Fase 1.2 + Fase 1.3**
+- Fases implementadas: **Fase 0 + Fase 1.1 + Fase 1.2 + Fase 1.3 + Fase 1.4**
 - Módulos navegáveis:
   - login
   - dashboard
   - órgãos (CRUD)
   - pessoas (CRUD + Perfil 360)
-  - pipeline de movimentação com avanço de status e timeline
+  - pipeline de movimentação com avanço de status
+  - timeline completa por pessoa (evento manual, anexos, retificação, paginação e impressão)
 
 ## Requisitos
 - PHP 8.1+
@@ -60,6 +61,10 @@ php -S localhost:8000 -t public
 - `POST /people/update`
 - `POST /people/delete`
 - `POST /people/pipeline/advance`
+- `POST /people/timeline/store`
+- `POST /people/timeline/rectify`
+- `GET /people/timeline/attachment?id={attachmentId}&person_id={personId}`
+- `GET /people/timeline/print?id={personId}`
 
 ## Estrutura
 - `public/`: front controller e assets

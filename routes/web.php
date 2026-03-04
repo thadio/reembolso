@@ -27,6 +27,10 @@ $router->get('/people/edit', [PeopleController::class, 'edit'], ['auth', 'permis
 $router->post('/people/update', [PeopleController::class, 'update'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/delete', [PeopleController::class, 'destroy'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/pipeline/advance', [PeopleController::class, 'advancePipeline'], ['auth', 'permission:people.manage', 'csrf']);
+$router->post('/people/timeline/store', [PeopleController::class, 'storeTimelineEvent'], ['auth', 'permission:people.manage', 'csrf']);
+$router->post('/people/timeline/rectify', [PeopleController::class, 'rectifyTimelineEvent'], ['auth', 'permission:people.manage', 'csrf']);
+$router->get('/people/timeline/attachment', [PeopleController::class, 'downloadTimelineAttachment'], ['auth', 'permission:people.view']);
+$router->get('/people/timeline/print', [PeopleController::class, 'timelinePrint'], ['auth', 'permission:people.view']);
 $router->get('/organs', [OrgansController::class, 'index'], ['auth', 'permission:organs.view']);
 $router->get('/organs/create', [OrgansController::class, 'create'], ['auth', 'permission:organs.manage']);
 $router->post('/organs/store', [OrgansController::class, 'store'], ['auth', 'permission:organs.manage', 'csrf']);
