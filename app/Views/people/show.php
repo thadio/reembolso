@@ -14,6 +14,20 @@ $pipeline = $pipeline ?? [
         'pages' => 1,
     ],
     'event_types' => [],
+    'queue_priorities' => [],
+    'queue_users' => [],
+    'checklist' => [
+        'case_type' => 'geral',
+        'case_type_label' => 'Geral',
+        'items' => [],
+        'summary' => [
+            'total' => 0,
+            'completed' => 0,
+            'required_total' => 0,
+            'required_completed' => 0,
+            'percent' => 0,
+        ],
+    ],
 ];
 
 $assignment = $pipeline['assignment'] ?? null;
@@ -22,6 +36,23 @@ $nextStatus = $pipeline['next_status'] ?? null;
 $timeline = $pipeline['timeline'] ?? [];
 $timelinePagination = $pipeline['timeline_pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $eventTypes = $pipeline['event_types'] ?? [];
+$queuePriorities = $pipeline['queue_priorities'] ?? [];
+$queueUsers = $pipeline['queue_users'] ?? [];
+$checklist = is_array($pipeline['checklist'] ?? null) ? $pipeline['checklist'] : [];
+$checklistItems = is_array($checklist['items'] ?? null) ? $checklist['items'] : [];
+$checklistSummary = is_array($checklist['summary'] ?? null) ? $checklist['summary'] : [];
+$checklistCaseTypeLabel = (string) ($checklist['case_type_label'] ?? 'Geral');
+$checklistRequiredDone = (int) ($checklistSummary['required_completed'] ?? 0);
+$checklistRequiredTotal = (int) ($checklistSummary['required_total'] ?? 0);
+$checklistPercent = max(0, min(100, (int) ($checklistSummary['percent'] ?? 0)));
+if ($queuePriorities === []) {
+    $queuePriorities = [
+        ['value' => 'low', 'label' => 'Baixa'],
+        ['value' => 'normal', 'label' => 'Normal'],
+        ['value' => 'high', 'label' => 'Alta'],
+        ['value' => 'urgent', 'label' => 'Urgente'],
+    ];
+}
 $documents = $documents ?? [
     'items' => [],
     'pagination' => [
@@ -318,10 +349,34 @@ $documentSensitivityBadgeClass = static function (string $sensitivity): string {
     };
 };
 
+$queuePriorityLabel = static function (string $priority): string {
+    return match ($priority) {
+        'low' => 'Baixa',
+        'high' => 'Alta',
+        'urgent' => 'Urgente',
+        default => 'Normal',
+    };
+};
+
+$queuePriorityBadgeClass = static function (string $priority): string {
+    return match ($priority) {
+        'low' => 'badge-neutral',
+        'high' => 'badge-warning',
+        'urgent' => 'badge-danger',
+        default => 'badge-info',
+    };
+};
+
+$checklistItemBadgeClass = static function (bool $isDone): string {
+    return $isDone ? 'badge-success' : 'badge-neutral';
+};
+
 $auditEntityLabel = static function (string $entity): string {
     return match ($entity) {
         'person' => 'Pessoa',
         'assignment' => 'Movimentação',
+        'assignment_checklist' => 'Checklist da movimentacao',
+        'assignment_checklist_item' => 'Item de checklist',
         'timeline_event' => 'Timeline',
         'document' => 'Documento',
         'cost_plan' => 'Plano de custos',
@@ -486,8 +541,119 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
       <?php endforeach; ?>
     </div>
 
+    <?php
+      $currentAssignedUserId = (int) ($assignment['assigned_user_id'] ?? 0);
+      $currentPriority = mb_strtolower(trim((string) ($assignment['priority_level'] ?? 'normal')));
+    ?>
     <div class="summary-line"><strong>Status atual:</strong> <?= e((string) ($assignment['current_status_label'] ?? '-')) ?></div>
     <div class="summary-line"><strong>Próxima ação:</strong> <?= e((string) (($nextStatus['next_action_label'] ?? 'Sem próxima ação'))) ?></div>
+    <div class="summary-line"><strong>Responsável da fila:</strong> <?= e((string) ($assignment['assigned_user_name'] ?? 'Não definido')) ?></div>
+    <div class="summary-line">
+      <strong>Prioridade:</strong>
+      <span class="badge <?= e($queuePriorityBadgeClass($currentPriority)) ?>"><?= e($queuePriorityLabel($currentPriority)) ?></span>
+    </div>
+
+    <?php if (($canManage ?? false) === true): ?>
+      <form method="post" action="<?= e(url('/people/pipeline/queue/update')) ?>" class="form-grid">
+        <?= csrf_field() ?>
+        <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+        <input type="hidden" name="assignment_id" value="<?= e((string) ((int) ($assignment['id'] ?? 0))) ?>">
+        <div class="field">
+          <label for="queue_assigned_user_id">Responsável</label>
+          <select id="queue_assigned_user_id" name="assigned_user_id">
+            <option value="0">Não definido</option>
+            <?php foreach ($queueUsers as $queueUser): ?>
+              <?php $queueUserId = (int) ($queueUser['id'] ?? 0); ?>
+              <option value="<?= e((string) $queueUserId) ?>" <?= $currentAssignedUserId === $queueUserId ? 'selected' : '' ?>>
+                <?= e((string) ($queueUser['name'] ?? ('Usuário #' . $queueUserId))) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="queue_priority_level">Prioridade</label>
+          <select id="queue_priority_level" name="priority_level" required>
+            <?php foreach ($queuePriorities as $priorityOption): ?>
+              <?php $priorityValue = (string) ($priorityOption['value'] ?? 'normal'); ?>
+              <option value="<?= e($priorityValue) ?>" <?= $currentPriority === $priorityValue ? 'selected' : '' ?>>
+                <?= e((string) ($priorityOption['label'] ?? $priorityValue)) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-outline">Atualizar fila</button>
+        </div>
+      </form>
+    <?php endif; ?>
+
+    <div class="header-row">
+      <div>
+        <h4>Checklist automatico</h4>
+        <p class="muted">
+          Caso: <?= e($checklistCaseTypeLabel) ?> ·
+          Obrigatorios concluidos: <?= e((string) $checklistRequiredDone) ?>/<?= e((string) $checklistRequiredTotal) ?> ·
+          Progresso: <?= e((string) $checklistPercent) ?>%
+        </p>
+      </div>
+    </div>
+
+    <?php if ($checklistItems === []): ?>
+      <p class="muted">Nenhum item de checklist disponivel para este tipo de caso.</p>
+    <?php else: ?>
+      <div class="timeline-list">
+        <?php foreach ($checklistItems as $checklistItem): ?>
+          <?php
+            $checklistItemId = (int) ($checklistItem['id'] ?? 0);
+            $checklistIsDone = (int) ($checklistItem['is_done'] ?? 0) === 1;
+            $checklistIsRequired = (int) ($checklistItem['is_required'] ?? 1) === 1;
+          ?>
+          <article class="timeline-item">
+            <div class="timeline-item-header">
+              <div class="timeline-item-title">
+                <strong><?= e((string) ($checklistItem['item_label'] ?? 'Item')) ?></strong>
+                <span class="badge <?= e($checklistItemBadgeClass($checklistIsDone)) ?>">
+                  <?= $checklistIsDone ? 'Concluido' : 'Pendente' ?>
+                </span>
+                <?php if ($checklistIsRequired): ?>
+                  <span class="badge badge-warning">Obrigatorio</span>
+                <?php else: ?>
+                  <span class="badge badge-neutral">Opcional</span>
+                <?php endif; ?>
+              </div>
+              <span class="muted">
+                <?php if ($checklistIsDone): ?>
+                  <?= e($formatDateTime((string) ($checklistItem['done_at'] ?? ''))) ?>
+                <?php else: ?>
+                  -
+                <?php endif; ?>
+              </span>
+            </div>
+
+            <?php if (trim((string) ($checklistItem['item_description'] ?? '')) !== ''): ?>
+              <p class="timeline-item-description"><?= e((string) ($checklistItem['item_description'] ?? '')) ?></p>
+            <?php endif; ?>
+
+            <?php if ($checklistIsDone): ?>
+              <p class="muted">Concluido por: <?= e((string) ($checklistItem['done_by_name'] ?? 'Sistema')) ?></p>
+            <?php endif; ?>
+
+            <?php if (($canManage ?? false) === true && $checklistItemId > 0): ?>
+              <form method="post" action="<?= e(url('/people/pipeline/checklist/update')) ?>" class="actions-inline">
+                <?= csrf_field() ?>
+                <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+                <input type="hidden" name="assignment_id" value="<?= e((string) ((int) ($assignment['id'] ?? 0))) ?>">
+                <input type="hidden" name="checklist_item_id" value="<?= e((string) $checklistItemId) ?>">
+                <input type="hidden" name="is_done" value="<?= $checklistIsDone ? '0' : '1' ?>">
+                <button type="submit" class="btn btn-outline">
+                  <?= $checklistIsDone ? 'Marcar pendente' : 'Marcar concluido' ?>
+                </button>
+              </form>
+            <?php endif; ?>
+          </article>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
   <?php endif; ?>
 </div>
 

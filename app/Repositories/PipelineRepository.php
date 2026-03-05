@@ -79,10 +79,12 @@ final class PipelineRepository
                 a.id,
                 a.person_id,
                 a.modality_id,
+                a.assigned_user_id,
                 a.mte_unit,
                 a.target_start_date,
                 a.effective_start_date,
                 a.current_status_id,
+                a.priority_level,
                 a.created_at,
                 a.updated_at,
                 s.code AS current_status_code,
@@ -90,10 +92,12 @@ final class PipelineRepository
                 s.sort_order AS current_status_order,
                 s.next_action_label AS current_next_action_label,
                 s.event_type AS current_event_type,
-                m.name AS modality_name
+                m.name AS modality_name,
+                au.name AS assigned_user_name
              FROM assignments a
              INNER JOIN assignment_statuses s ON s.id = a.current_status_id
              LEFT JOIN modalities m ON m.id = a.modality_id
+             LEFT JOIN users au ON au.id = a.assigned_user_id AND au.deleted_at IS NULL
              WHERE a.person_id = :person_id AND a.deleted_at IS NULL
              LIMIT 1'
         );
@@ -103,25 +107,35 @@ final class PipelineRepository
         return $assignment === false ? null : $assignment;
     }
 
-    public function createAssignment(int $personId, ?int $modalityId, int $statusId): int
+    public function createAssignment(
+        int $personId,
+        ?int $modalityId,
+        int $statusId,
+        ?int $assignedUserId = null,
+        string $priorityLevel = 'normal'
+    ): int
     {
         $stmt = $this->db->prepare(
             'INSERT INTO assignments (
                 person_id,
                 modality_id,
+                assigned_user_id,
                 mte_unit,
                 target_start_date,
                 effective_start_date,
                 current_status_id,
+                priority_level,
                 created_at,
                 updated_at
             ) VALUES (
                 :person_id,
                 :modality_id,
+                :assigned_user_id,
                 NULL,
                 NULL,
                 NULL,
                 :current_status_id,
+                :priority_level,
                 NOW(),
                 NOW()
             )'
@@ -130,7 +144,9 @@ final class PipelineRepository
         $stmt->execute([
             'person_id' => $personId,
             'modality_id' => $modalityId,
+            'assigned_user_id' => $assignedUserId,
             'current_status_id' => $statusId,
+            'priority_level' => $priorityLevel,
         ]);
 
         return (int) $this->db->lastInsertId();
@@ -164,6 +180,219 @@ final class PipelineRepository
             'id' => $assignmentId,
             'status_id' => $statusId,
             'effective_start_date' => $effectiveStartDate,
+        ]);
+    }
+
+    public function updateAssignmentQueue(int $assignmentId, ?int $assignedUserId, string $priorityLevel): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE assignments
+             SET assigned_user_id = :assigned_user_id,
+                 priority_level = :priority_level,
+                 updated_at = NOW()
+             WHERE id = :id AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $assignmentId,
+            'assigned_user_id' => $assignedUserId,
+            'priority_level' => $priorityLevel,
+        ]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function activeAssignableUsers(int $limit = 400): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, name
+             FROM users
+             WHERE deleted_at IS NULL AND is_active = 1
+             ORDER BY name ASC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':limit', max(1, min(4000, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    public function userExists(int $userId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id
+             FROM users
+             WHERE id = :id AND deleted_at IS NULL AND is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $userId]);
+
+        return $stmt->fetch() !== false;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function activeChecklistTemplatesForCaseType(string $caseType): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                id,
+                case_type,
+                code,
+                label,
+                description,
+                is_required,
+                sort_order
+             FROM assignment_checklist_templates
+             WHERE is_active = 1
+               AND case_type IN ("geral", :case_type)
+             ORDER BY sort_order ASC, id ASC'
+        );
+        $stmt->execute(['case_type' => $caseType]);
+
+        return $stmt->fetchAll();
+    }
+
+    public function upsertChecklistItemFromTemplate(
+        int $assignmentId,
+        int $templateId,
+        string $caseType,
+        string $code,
+        string $label,
+        ?string $description,
+        int $isRequired
+    ): bool {
+        $stmt = $this->db->prepare(
+            'INSERT INTO assignment_checklist_items (
+                assignment_id,
+                template_id,
+                case_type,
+                item_code,
+                item_label,
+                item_description,
+                is_required,
+                created_at,
+                updated_at
+             ) VALUES (
+                :assignment_id,
+                :template_id,
+                :case_type,
+                :item_code,
+                :item_label,
+                :item_description,
+                :is_required,
+                NOW(),
+                NOW()
+             )
+             ON DUPLICATE KEY UPDATE
+                template_id = VALUES(template_id),
+                item_label = VALUES(item_label),
+                item_description = VALUES(item_description),
+                is_required = VALUES(is_required),
+                updated_at = NOW()'
+        );
+
+        return $stmt->execute([
+            'assignment_id' => $assignmentId,
+            'template_id' => $templateId,
+            'case_type' => $caseType,
+            'item_code' => $code,
+            'item_label' => $label,
+            'item_description' => $description,
+            'is_required' => $isRequired,
+        ]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function checklistItemsByAssignment(int $assignmentId, string $caseType): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                i.id,
+                i.assignment_id,
+                i.template_id,
+                i.case_type,
+                i.item_code,
+                i.item_label,
+                i.item_description,
+                i.is_required,
+                i.is_done,
+                i.done_at,
+                i.done_by,
+                i.notes,
+                i.created_at,
+                i.updated_at,
+                COALESCE(t.sort_order, 9999) AS template_sort_order,
+                u.name AS done_by_name
+             FROM assignment_checklist_items i
+             LEFT JOIN assignment_checklist_templates t ON t.id = i.template_id
+             LEFT JOIN users u ON u.id = i.done_by AND u.deleted_at IS NULL
+             WHERE i.assignment_id = :assignment_id
+               AND i.case_type IN ("geral", :case_type)
+             ORDER BY template_sort_order ASC, i.id ASC'
+        );
+        $stmt->execute([
+            'assignment_id' => $assignmentId,
+            'case_type' => $caseType,
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<string, mixed>|null */
+    public function checklistItemById(int $assignmentId, int $itemId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                i.id,
+                i.assignment_id,
+                i.template_id,
+                i.case_type,
+                i.item_code,
+                i.item_label,
+                i.item_description,
+                i.is_required,
+                i.is_done,
+                i.done_at,
+                i.done_by,
+                i.notes,
+                i.created_at,
+                i.updated_at,
+                u.name AS done_by_name
+             FROM assignment_checklist_items i
+             LEFT JOIN users u ON u.id = i.done_by AND u.deleted_at IS NULL
+             WHERE i.id = :id
+               AND i.assignment_id = :assignment_id
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'id' => $itemId,
+            'assignment_id' => $assignmentId,
+        ]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    public function updateChecklistItemStatus(
+        int $assignmentId,
+        int $itemId,
+        bool $isDone,
+        ?int $doneBy
+    ): bool {
+        $stmt = $this->db->prepare(
+            'UPDATE assignment_checklist_items
+             SET is_done = :is_done,
+                 done_at = CASE WHEN :is_done = 1 THEN NOW() ELSE NULL END,
+                 done_by = CASE WHEN :is_done = 1 THEN :done_by ELSE NULL END,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND assignment_id = :assignment_id'
+        );
+
+        return $stmt->execute([
+            'is_done' => $isDone ? 1 : 0,
+            'done_by' => $doneBy,
+            'id' => $itemId,
+            'assignment_id' => $assignmentId,
         ]);
     }
 

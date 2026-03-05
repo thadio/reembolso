@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-03-05 — Ciclo 9.4 concluido (Produtividade: checklist automatico por tipo de caso)
+- Criada migration `030_phase9_case_checklist_automation.sql` com:
+  - novas tabelas `assignment_checklist_templates` e `assignment_checklist_items`
+  - templates padrao por tipo de caso (`geral`, `cessao`, `cft`, `requisicao`)
+  - chaves/indices para consulta por assignment e controle de conclusao
+- Pipeline ampliado para checklist automatico:
+  - `PipelineRepository` com leitura de templates, upsert de itens e update de status dos itens
+  - `PipelineService` passou a gerar checklist automaticamente com base no tipo de caso (modalidade) e calcular progresso
+  - nova acao `PipelineService::updateChecklistItem` com validacao, auditoria (`assignment_checklist_item:status.update`) e evento (`pipeline.checklist_item_updated`)
+- Perfil 360 atualizado:
+  - card de pipeline exibe checklist automatico, progresso e itens obrigatorios/opcionais
+  - formulario por item para marcar concluido/pendente via `POST /people/pipeline/checklist/update`
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.4-checklist-automatico.md`.
+
+## 2026-03-05 — Ciclo 9.3 concluido (Produtividade: painel "Minha fila")
+- Criada migration `029_phase9_analyst_queue_productivity.sql` com:
+  - novas colunas em `assignments`: `assigned_user_id` e `priority_level` (`low|normal|high|urgent`)
+  - indices para consulta de fila por responsavel/prioridade
+  - normalizacao de dados legados de prioridade e responsavel
+- Pipeline ampliado para gestao de fila:
+  - `PipelineRepository` passou a expor responsavel/prioridade na consulta de assignment
+  - `PipelineService::updateQueue` com validacao, auditoria (`assignment:queue.update`) e evento (`pipeline.queue_updated`)
+  - novos metodos de apoio para opcoes de prioridade e usuarios atribuiveis
+- Pessoas (listagem e perfil):
+  - filtro "Minha fila" por `queue_scope`, `responsible_id` e `priority` em `/people`
+  - novas colunas de listagem: `Responsável` e `Prioridade`
+  - card de pipeline no Perfil 360 com formulario `POST /people/pipeline/queue/update`
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.3-fila.md`.
+
 ## 2026-03-05 — Ciclo 9.2 concluido (RF-04: importacao CSV em massa de pessoas)
 - Entregue fluxo de importacao no modulo de pessoas:
   - nova rota protegida `POST /people/import-csv` (`people.manage` + CSRF)

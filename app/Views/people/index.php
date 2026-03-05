@@ -8,6 +8,9 @@ $filters = $filters ?? [
     'organ_id' => 0,
     'modality_id' => 0,
     'tag' => '',
+    'queue_scope' => 'all',
+    'priority' => '',
+    'responsible_id' => 0,
     'sort' => 'name',
     'dir' => 'asc',
 ];
@@ -17,6 +20,9 @@ $statuses = $statuses ?? [];
 $organs = $organs ?? [];
 $modalities = $modalities ?? [];
 $previewPerson = $previewPerson ?? null;
+$queuePriorities = $queuePriorities ?? [];
+$queueUsers = $queueUsers ?? [];
+$authUserId = (int) ($authUserId ?? 0);
 
 $sort = (string) ($filters['sort'] ?? 'name');
 $dir = (string) ($filters['dir'] ?? 'asc');
@@ -28,6 +34,9 @@ $buildUrl = static function (array $replace = []) use ($filters, $pagination): s
         'organ_id' => (string) ($filters['organ_id'] ?? 0),
         'modality_id' => (string) ($filters['modality_id'] ?? 0),
         'tag' => (string) ($filters['tag'] ?? ''),
+        'queue_scope' => (string) ($filters['queue_scope'] ?? 'all'),
+        'priority' => (string) ($filters['priority'] ?? ''),
+        'responsible_id' => (string) ($filters['responsible_id'] ?? 0),
         'sort' => (string) ($filters['sort'] ?? 'name'),
         'dir' => (string) ($filters['dir'] ?? 'asc'),
         'per_page' => (string) ($pagination['per_page'] ?? 10),
@@ -63,6 +72,24 @@ $statusLabel = static function (string $value): string {
         default => ucfirst(str_replace('_', ' ', $value)),
     };
 };
+
+$priorityLabel = static function (string $value): string {
+    return match ($value) {
+        'low' => 'Baixa',
+        'high' => 'Alta',
+        'urgent' => 'Urgente',
+        default => 'Normal',
+    };
+};
+
+$priorityBadgeClass = static function (string $value): string {
+    return match ($value) {
+        'low' => 'badge-neutral',
+        'high' => 'badge-warning',
+        'urgent' => 'badge-danger',
+        default => 'badge-info',
+    };
+};
 ?>
 <div class="card">
   <div class="header-row">
@@ -71,6 +98,9 @@ $statusLabel = static function (string $value): string {
       <p class="muted">Filtros por status, modalidade, órgão e tags.</p>
     </div>
     <div class="actions-inline">
+      <?php if ($authUserId > 0): ?>
+        <a class="btn btn-outline" href="<?= e($buildUrl(['queue_scope' => 'mine', 'responsible_id' => (string) $authUserId, 'page' => 1])) ?>">Minha fila</a>
+      <?php endif; ?>
       <?php if (($canManage ?? false) === true): ?>
         <a class="btn btn-primary" href="<?= e(url('/people/create')) ?>">Nova pessoa</a>
       <?php endif; ?>
@@ -116,10 +146,40 @@ $statusLabel = static function (string $value): string {
 
     <input type="text" name="tag" value="<?= e((string) ($filters['tag'] ?? '')) ?>" placeholder="Tag">
 
+    <select name="queue_scope">
+      <?php $queueScope = (string) ($filters['queue_scope'] ?? 'all'); ?>
+      <option value="all" <?= $queueScope === 'all' ? 'selected' : '' ?>>Fila (todas)</option>
+      <option value="mine" <?= $queueScope === 'mine' ? 'selected' : '' ?>>Minha fila</option>
+      <option value="unassigned" <?= $queueScope === 'unassigned' ? 'selected' : '' ?>>Sem responsável</option>
+    </select>
+
+    <select name="priority">
+      <option value="">Prioridade (todas)</option>
+      <?php foreach ($queuePriorities as $priority): ?>
+        <?php $priorityValue = (string) ($priority['value'] ?? ''); ?>
+        <option value="<?= e($priorityValue) ?>" <?= (string) ($filters['priority'] ?? '') === $priorityValue ? 'selected' : '' ?>>
+          <?= e((string) ($priority['label'] ?? $priorityValue)) ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+
+    <select name="responsible_id">
+      <option value="0">Responsável (todos)</option>
+      <?php foreach ($queueUsers as $user): ?>
+        <?php $userId = (int) ($user['id'] ?? 0); ?>
+        <option value="<?= e((string) $userId) ?>" <?= (int) ($filters['responsible_id'] ?? 0) === $userId ? 'selected' : '' ?>>
+          <?= e((string) ($user['name'] ?? ('Usuário #' . $userId))) ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+
     <select name="sort">
       <option value="name" <?= $sort === 'name' ? 'selected' : '' ?>>Ordenar por nome</option>
       <option value="status" <?= $sort === 'status' ? 'selected' : '' ?>>Ordenar por status</option>
       <option value="organ" <?= $sort === 'organ' ? 'selected' : '' ?>>Ordenar por órgão</option>
+      <option value="responsible" <?= $sort === 'responsible' ? 'selected' : '' ?>>Ordenar por responsável</option>
+      <option value="priority" <?= $sort === 'priority' ? 'selected' : '' ?>>Ordenar por prioridade</option>
+      <option value="assignment_updated_at" <?= $sort === 'assignment_updated_at' ? 'selected' : '' ?>>Ordenar por atualização da fila</option>
       <option value="created_at" <?= $sort === 'created_at' ? 'selected' : '' ?>>Ordenar por cadastro</option>
     </select>
 
@@ -153,6 +213,8 @@ $statusLabel = static function (string $value): string {
               <th><a href="<?= e($buildUrl(['sort' => 'status', 'dir' => $nextDir('status'), 'page' => 1])) ?>">Status</a></th>
               <th><a href="<?= e($buildUrl(['sort' => 'organ', 'dir' => $nextDir('organ'), 'page' => 1])) ?>">Órgão</a></th>
               <th>Modalidade</th>
+              <th><a href="<?= e($buildUrl(['sort' => 'responsible', 'dir' => $nextDir('responsible'), 'page' => 1])) ?>">Responsável</a></th>
+              <th><a href="<?= e($buildUrl(['sort' => 'priority', 'dir' => $nextDir('priority'), 'page' => 1])) ?>">Prioridade</a></th>
               <th>Ações</th>
             </tr>
           </thead>
@@ -175,6 +237,11 @@ $statusLabel = static function (string $value): string {
                 <td><span class="badge badge-neutral"><?= e($statusLabel((string) ($person['status'] ?? ''))) ?></span></td>
                 <td><?= e((string) ($person['organ_name'] ?? '-')) ?></td>
                 <td><?= e((string) ($person['modality_name'] ?? '-')) ?></td>
+                <td><?= e((string) ($person['assigned_user_name'] ?? 'Não definido')) ?></td>
+                <td>
+                  <?php $priority = mb_strtolower((string) ($person['assignment_priority'] ?? 'normal')); ?>
+                  <span class="badge <?= e($priorityBadgeClass($priority)) ?>"><?= e($priorityLabel($priority)) ?></span>
+                </td>
                 <td class="actions-cell">
                   <a class="btn btn-ghost" href="<?= e($buildUrl(['preview_id' => (int) $person['id']])) ?>">Resumo</a>
                   <a class="btn btn-ghost" href="<?= e(url('/people/show?id=' . (int) $person['id'])) ?>">Perfil 360</a>
@@ -209,6 +276,8 @@ $statusLabel = static function (string $value): string {
           <div class="summary-line"><strong>Status:</strong> <?= e($statusLabel((string) ($previewPerson['status'] ?? ''))) ?></div>
           <div class="summary-line"><strong>Órgão:</strong> <?= e((string) ($previewPerson['organ_name'] ?? '-')) ?></div>
           <div class="summary-line"><strong>Modalidade:</strong> <?= e((string) ($previewPerson['modality_name'] ?? '-')) ?></div>
+          <div class="summary-line"><strong>Responsável:</strong> <?= e((string) ($previewPerson['assigned_user_name'] ?? 'Não definido')) ?></div>
+          <div class="summary-line"><strong>Prioridade:</strong> <?= e($priorityLabel((string) ($previewPerson['assignment_priority'] ?? 'normal'))) ?></div>
           <div class="summary-line"><strong>SEI:</strong> <?= e((string) ($previewPerson['sei_process_number'] ?? '-')) ?></div>
           <div class="summary-line"><strong>Lotação MTE:</strong> <?= e((string) ($previewPerson['mte_destination'] ?? '-')) ?></div>
           <div class="summary-line"><strong>Tags:</strong> <?= e((string) ($previewPerson['tags'] ?? '-')) ?></div>

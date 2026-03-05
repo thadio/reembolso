@@ -44,6 +44,8 @@ Se segredo entrou no historico do Git:
   - validacao de extensao + MIME + assinatura binaria real (PDF/PNG/JPEG)
   - armazenamento com nome aleatorio e `move_uploaded_file` (sem fallback por `rename`)
 - Endpoints sensiveis:
+  - `POST /people/pipeline/queue/update` exige `people.manage`
+  - `POST /people/pipeline/checklist/update` exige `people.manage`
   - `POST /people/timeline/store` e `POST /people/timeline/rectify` exigem `people.manage`
   - `POST /people/documents/store` exige `people.manage`; classificacao `restricted/sensitive` exige `people.documents.sensitive`
   - `POST /people/import-csv` exige `people.manage` e validacao CSRF

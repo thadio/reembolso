@@ -26,7 +26,7 @@ Esta versao reorganiza a v2.0 com foco em:
 ### 0.2 Evidencias tecnicas consideradas
 
 - Rotas e controle de acesso: `routes/web.php`
-- Migrations: `db/migrations/001` a `028`
+- Migrations: `db/migrations/001` a `030`
 - Servicos e repositorios: `app/Services`, `app/Repositories`
 - Changelog tecnico: `CHANGELOG.md`
 - Estado documentado: `README.md`, `docs/02-architecture.md`
@@ -474,8 +474,8 @@ Integracao com entidades existentes:
 
 ### 6.1 Produtividade do analista
 
-- `[ ]` Painel "Minha fila" por responsavel e prioridade
-- `[ ]` Checklist automatico por tipo de caso
+- `[x]` Painel "Minha fila" por responsavel e prioridade
+- `[x]` Checklist automatico por tipo de caso
 - `[ ]` Calculadora automatica de reembolso com memoria de calculo
 - `[ ]` Central de pendencias (documentos, divergencias, retornos)
 - `[ ]` Comentarios internos por processo
@@ -534,7 +534,7 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 1. `[x]` Enderecar lacunas remanescentes de compliance avancado com foco em dossie e monitoramento de acesso sensivel (RF-22 concluido em 2026-03-05).
 2. `[x]` Planejar entrega incremental de importacao CSV em massa (RF-04) com validacao e rollback operacional (ciclo 9.2: pessoas concluido).
-3. Evoluir backlog de produtividade do analista (fila, checklist automatico e central de pendencias).
+3. `[~]` Evoluir backlog de produtividade do analista (fila, checklist automatico e central de pendencias) — "Minha fila" (9.3) e checklist automatico (9.4) concluidos; central de pendencias permanece pendente.
 
 ---
 

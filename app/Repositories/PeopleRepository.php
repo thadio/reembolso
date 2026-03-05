@@ -43,6 +43,15 @@ final class PeopleRepository
             'name' => 'p.name',
             'status' => 'p.status',
             'organ' => 'o.name',
+            'responsible' => 'au.name',
+            'priority' => "CASE COALESCE(NULLIF(a.priority_level, ''), 'normal')
+                WHEN 'urgent' THEN 1
+                WHEN 'high' THEN 2
+                WHEN 'normal' THEN 3
+                WHEN 'low' THEN 4
+                ELSE 5
+            END",
+            'assignment_updated_at' => 'a.updated_at',
             'created_at' => 'p.created_at',
         ];
 
@@ -89,11 +98,36 @@ final class PeopleRepository
             $params['tag'] = '%' . $tag . '%';
         }
 
+        $queueScope = mb_strtolower(trim((string) ($filters['queue_scope'] ?? 'all')));
+        $responsibleId = max(0, (int) ($filters['responsible_id'] ?? 0));
+        $assignedUserId = max(0, (int) ($filters['assigned_user_id'] ?? 0));
+        if ($assignedUserId > 0) {
+            $responsibleId = $assignedUserId;
+        }
+
+        if ($queueScope === 'mine' && $responsibleId > 0) {
+            $where .= ' AND a.assigned_user_id = :responsible_id';
+            $params['responsible_id'] = $responsibleId;
+        } elseif ($queueScope === 'unassigned') {
+            $where .= ' AND a.assigned_user_id IS NULL';
+        } elseif ($responsibleId > 0) {
+            $where .= ' AND a.assigned_user_id = :responsible_id';
+            $params['responsible_id'] = $responsibleId;
+        }
+
+        $priority = mb_strtolower(trim((string) ($filters['priority'] ?? '')));
+        if (in_array($priority, ['low', 'normal', 'high', 'urgent'], true)) {
+            $where .= " AND COALESCE(NULLIF(a.priority_level, ''), 'normal') = :priority";
+            $params['priority'] = $priority;
+        }
+
         $countSql = "
             SELECT COUNT(*) AS total
             FROM people p
             INNER JOIN organs o ON o.id = p.organ_id
             LEFT JOIN modalities m ON m.id = p.desired_modality_id
+            LEFT JOIN assignments a ON a.person_id = p.id AND a.deleted_at IS NULL
+            LEFT JOIN users au ON au.id = a.assigned_user_id AND au.deleted_at IS NULL
             {$where}
         ";
 
@@ -118,10 +152,17 @@ final class PeopleRepository
                 o.id AS organ_id,
                 o.name AS organ_name,
                 m.id AS modality_id,
-                m.name AS modality_name
+                m.name AS modality_name,
+                a.id AS assignment_id,
+                a.assigned_user_id,
+                COALESCE(NULLIF(a.priority_level, ''), 'normal') AS assignment_priority,
+                a.updated_at AS assignment_updated_at,
+                au.name AS assigned_user_name
             FROM people p
             INNER JOIN organs o ON o.id = p.organ_id
             LEFT JOIN modalities m ON m.id = p.desired_modality_id
+            LEFT JOIN assignments a ON a.person_id = p.id AND a.deleted_at IS NULL
+            LEFT JOIN users au ON au.id = a.assigned_user_id AND au.deleted_at IS NULL
             {$where}
             ORDER BY {$sortColumn} {$direction}, p.id ASC
             LIMIT :limit OFFSET :offset

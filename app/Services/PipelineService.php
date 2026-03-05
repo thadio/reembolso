@@ -12,6 +12,13 @@ final class PipelineService
     private const ALLOWED_ATTACHMENT_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
     private const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'image/jpeg', 'image/png'];
     private const MAX_ATTACHMENT_SIZE = 10485760; // 10MB
+    private const ALLOWED_QUEUE_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+    private const CHECKLIST_CASE_LABELS = [
+        'geral' => 'Geral',
+        'cessao' => 'Cessao',
+        'cft' => 'Composicao de Forca de Trabalho',
+        'requisicao' => 'Requisicao',
+    ];
 
     public function __construct(
         private PipelineRepository $pipeline,
@@ -34,6 +41,10 @@ final class PipelineService
                 $assignment = $this->pipeline->assignmentByPersonId($personId);
             }
 
+            if ($assignment !== null) {
+                $this->ensureChecklistForAssignment($assignment, $userId > 0 ? $userId : null, $ip, $userAgent);
+            }
+
             return $assignment;
         }
 
@@ -45,7 +56,9 @@ final class PipelineService
         $assignmentId = $this->pipeline->createAssignment(
             personId: $personId,
             modalityId: ($modalityId !== null && $modalityId > 0) ? $modalityId : null,
-            statusId: (int) $initial['id']
+            statusId: (int) $initial['id'],
+            assignedUserId: $userId > 0 ? $userId : null,
+            priorityLevel: 'normal'
         );
 
         $this->pipeline->updatePersonStatus($personId, (string) $initial['code']);
@@ -91,8 +104,12 @@ final class PipelineService
             entityId: $personId,
             userId: $userId
         );
+        $createdAssignment = $this->pipeline->assignmentByPersonId($personId);
+        if ($createdAssignment !== null) {
+            $this->ensureChecklistForAssignment($createdAssignment, $userId > 0 ? $userId : null, $ip, $userAgent);
+        }
 
-        return $this->pipeline->assignmentByPersonId($personId);
+        return $createdAssignment;
     }
 
     /**
@@ -188,6 +205,246 @@ final class PipelineService
             'message' => 'Status atualizado para ' . (string) $next['label'] . '.',
             'assignment' => $updatedAssignment,
             'next_status' => $next,
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, message: string, errors: array<int, string>, assignment?: array<string, mixed>}
+     */
+    public function updateQueue(
+        int $personId,
+        int $assignmentId,
+        ?int $assignedUserId,
+        string $priorityLevel,
+        int $userId,
+        string $ip,
+        string $userAgent
+    ): array {
+        $assignment = $this->pipeline->assignmentByPersonId($personId);
+        if ($assignment === null) {
+            return [
+                'ok' => false,
+                'message' => 'Pipeline nao inicializado para esta pessoa.',
+                'errors' => ['Pipeline nao inicializado para esta pessoa.'],
+            ];
+        }
+
+        if ((int) ($assignment['id'] ?? 0) !== $assignmentId) {
+            return [
+                'ok' => false,
+                'message' => 'Movimentacao invalida para atualizacao da fila.',
+                'errors' => ['Movimentacao invalida para atualizacao da fila.'],
+            ];
+        }
+
+        $normalizedPriority = $this->normalizeQueuePriority($priorityLevel);
+        if ($normalizedPriority === null) {
+            return [
+                'ok' => false,
+                'message' => 'Prioridade invalida.',
+                'errors' => ['Prioridade invalida.'],
+            ];
+        }
+
+        if ($assignedUserId !== null && $assignedUserId > 0 && !$this->pipeline->userExists($assignedUserId)) {
+            return [
+                'ok' => false,
+                'message' => 'Responsavel informado nao foi encontrado.',
+                'errors' => ['Responsavel informado nao foi encontrado.'],
+            ];
+        }
+
+        $normalizedAssignedUserId = ($assignedUserId !== null && $assignedUserId > 0) ? $assignedUserId : null;
+        $currentAssignedUserId = isset($assignment['assigned_user_id']) ? (int) $assignment['assigned_user_id'] : 0;
+        $currentPriority = (string) ($assignment['priority_level'] ?? 'normal');
+
+        if ($currentAssignedUserId === (int) ($normalizedAssignedUserId ?? 0) && $currentPriority === $normalizedPriority) {
+            return [
+                'ok' => true,
+                'message' => 'Fila mantida sem alteracoes.',
+                'errors' => [],
+                'assignment' => $assignment,
+            ];
+        }
+
+        $updated = $this->pipeline->updateAssignmentQueue($assignmentId, $normalizedAssignedUserId, $normalizedPriority);
+        if (!$updated) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel atualizar a fila.',
+                'errors' => ['Nao foi possivel atualizar a fila.'],
+            ];
+        }
+
+        $after = $this->pipeline->assignmentByPersonId($personId) ?? $assignment;
+
+        $this->audit->log(
+            entity: 'assignment',
+            entityId: $assignmentId,
+            action: 'queue.update',
+            beforeData: [
+                'assigned_user_id' => $assignment['assigned_user_id'] ?? null,
+                'priority_level' => $assignment['priority_level'] ?? 'normal',
+            ],
+            afterData: [
+                'assigned_user_id' => $after['assigned_user_id'] ?? null,
+                'priority_level' => $after['priority_level'] ?? 'normal',
+            ],
+            metadata: [
+                'person_id' => $personId,
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'person',
+            type: 'pipeline.queue_updated',
+            payload: [
+                'assignment_id' => $assignmentId,
+                'assigned_user_id' => $after['assigned_user_id'] ?? null,
+                'priority_level' => $after['priority_level'] ?? 'normal',
+            ],
+            entityId: $personId,
+            userId: $userId
+        );
+
+        return [
+            'ok' => true,
+            'message' => 'Fila atualizada com sucesso.',
+            'errors' => [],
+            'assignment' => $after,
+        ];
+    }
+
+    /**
+     * @return array{
+     *   ok: bool,
+     *   message: string,
+     *   errors: array<int, string>,
+     *   checklist?: array{
+     *     case_type: string,
+     *     case_type_label: string,
+     *     items: array<int, array<string, mixed>>,
+     *     summary: array{total: int, completed: int, required_total: int, required_completed: int, percent: int}
+     *   }
+     * }
+     */
+    public function updateChecklistItem(
+        int $personId,
+        int $assignmentId,
+        int $itemId,
+        bool $isDone,
+        int $userId,
+        string $ip,
+        string $userAgent
+    ): array {
+        $assignment = $this->pipeline->assignmentByPersonId($personId);
+        if ($assignment === null) {
+            return [
+                'ok' => false,
+                'message' => 'Pipeline nao inicializado para esta pessoa.',
+                'errors' => ['Pipeline nao inicializado para esta pessoa.'],
+            ];
+        }
+
+        if ((int) ($assignment['id'] ?? 0) !== $assignmentId) {
+            return [
+                'ok' => false,
+                'message' => 'Movimentacao invalida para checklist.',
+                'errors' => ['Movimentacao invalida para checklist.'],
+            ];
+        }
+
+        $checklist = $this->ensureChecklistForAssignment($assignment, $userId > 0 ? $userId : null, $ip, $userAgent);
+        $item = $this->pipeline->checklistItemById($assignmentId, $itemId);
+        if ($item === null) {
+            return [
+                'ok' => false,
+                'message' => 'Item de checklist nao encontrado.',
+                'errors' => ['Item de checklist nao encontrado.'],
+                'checklist' => $checklist,
+            ];
+        }
+
+        $currentDone = (int) ($item['is_done'] ?? 0) === 1;
+        if ($currentDone === $isDone) {
+            return [
+                'ok' => true,
+                'message' => 'Checklist mantido sem alteracoes.',
+                'errors' => [],
+                'checklist' => $checklist,
+            ];
+        }
+
+        $updated = $this->pipeline->updateChecklistItemStatus(
+            assignmentId: $assignmentId,
+            itemId: $itemId,
+            isDone: $isDone,
+            doneBy: $isDone && $userId > 0 ? $userId : null
+        );
+
+        if (!$updated) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel atualizar o checklist.',
+                'errors' => ['Nao foi possivel atualizar o checklist.'],
+                'checklist' => $checklist,
+            ];
+        }
+
+        $afterItem = $this->pipeline->checklistItemById($assignmentId, $itemId) ?? $item;
+
+        $this->audit->log(
+            entity: 'assignment_checklist_item',
+            entityId: $itemId,
+            action: 'status.update',
+            beforeData: [
+                'item_code' => (string) ($item['item_code'] ?? ''),
+                'item_label' => (string) ($item['item_label'] ?? ''),
+                'is_done' => (int) ($item['is_done'] ?? 0),
+                'done_by' => $item['done_by'] ?? null,
+            ],
+            afterData: [
+                'item_code' => (string) ($afterItem['item_code'] ?? ''),
+                'item_label' => (string) ($afterItem['item_label'] ?? ''),
+                'is_done' => (int) ($afterItem['is_done'] ?? 0),
+                'done_by' => $afterItem['done_by'] ?? null,
+            ],
+            metadata: [
+                'person_id' => $personId,
+                'assignment_id' => $assignmentId,
+                'case_type' => (string) ($afterItem['case_type'] ?? ''),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'person',
+            type: 'pipeline.checklist_item_updated',
+            payload: [
+                'assignment_id' => $assignmentId,
+                'item_id' => $itemId,
+                'item_code' => (string) ($afterItem['item_code'] ?? ''),
+                'is_done' => (int) ($afterItem['is_done'] ?? 0),
+            ],
+            entityId: $personId,
+            userId: $userId
+        );
+
+        $refreshedAssignment = $this->pipeline->assignmentByPersonId($personId) ?? $assignment;
+        $refreshedChecklist = $this->ensureChecklistForAssignment($refreshedAssignment, null, null, null);
+
+        return [
+            'ok' => true,
+            'message' => $isDone
+                ? 'Item do checklist marcado como concluido.'
+                : 'Item do checklist marcado como pendente.',
+            'errors' => [],
+            'checklist' => $refreshedChecklist,
         ];
     }
 
@@ -372,16 +629,40 @@ final class PipelineService
     }
 
     /**
-     * @return array{assignment: array<string, mixed>|null, statuses: array<int, array<string, mixed>>, next_status: array<string, mixed>|null, timeline: array<int, array<string, mixed>>, timeline_pagination: array<string, int>, event_types: array<int, array<string, mixed>>}
+     * @return array{
+     *   assignment: array<string, mixed>|null,
+     *   statuses: array<int, array<string, mixed>>,
+     *   next_status: array<string, mixed>|null,
+     *   timeline: array<int, array<string, mixed>>,
+     *   timeline_pagination: array<string, int>,
+     *   event_types: array<int, array<string, mixed>>,
+     *   queue_priorities: array<int, array{value: string, label: string}>,
+     *   queue_users: array<int, array<string, mixed>>,
+     *   checklist: array{
+     *     case_type: string,
+     *     case_type_label: string,
+     *     items: array<int, array<string, mixed>>,
+     *     summary: array{total: int, completed: int, required_total: int, required_completed: int, percent: int}
+     *   }
+     * }
      */
-    public function profileData(int $personId, int $timelinePage = 1, int $timelinePerPage = 10): array
+    public function profileData(
+        int $personId,
+        int $timelinePage = 1,
+        int $timelinePerPage = 10,
+        ?int $actorUserId = null,
+        ?string $ip = null,
+        ?string $userAgent = null
+    ): array
     {
         $assignment = $this->pipeline->assignmentByPersonId($personId);
         $statuses = $this->pipeline->allStatuses();
+        $checklist = $this->emptyChecklist();
 
         $nextStatus = null;
         if ($assignment !== null) {
             $nextStatus = $this->pipeline->nextStatus((int) ($assignment['current_status_order'] ?? 0));
+            $checklist = $this->ensureChecklistForAssignment($assignment, $actorUserId, $ip, $userAgent);
         }
 
         $timelinePageResult = $this->pipeline->timelinePaginateByPerson($personId, $timelinePage, $timelinePerPage);
@@ -398,7 +679,238 @@ final class PipelineService
                 'pages' => $timelinePageResult['pages'],
             ],
             'event_types' => $this->pipeline->activeTimelineEventTypes(),
+            'queue_priorities' => $this->queuePriorities(),
+            'queue_users' => $this->queueUsers(),
+            'checklist' => $checklist,
         ];
+    }
+
+    /** @return array<int, array{value: string, label: string}> */
+    public function queuePriorities(): array
+    {
+        return [
+            ['value' => 'low', 'label' => 'Baixa'],
+            ['value' => 'normal', 'label' => 'Normal'],
+            ['value' => 'high', 'label' => 'Alta'],
+            ['value' => 'urgent', 'label' => 'Urgente'],
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function queueUsers(int $limit = 300): array
+    {
+        return $this->pipeline->activeAssignableUsers($limit);
+    }
+
+    /**
+     * @return array{
+     *   case_type: string,
+     *   case_type_label: string,
+     *   items: array<int, array<string, mixed>>,
+     *   summary: array{total: int, completed: int, required_total: int, required_completed: int, percent: int}
+     * }
+     */
+    private function emptyChecklist(): array
+    {
+        return [
+            'case_type' => 'geral',
+            'case_type_label' => $this->checklistCaseTypeLabel('geral'),
+            'items' => [],
+            'summary' => [
+                'total' => 0,
+                'completed' => 0,
+                'required_total' => 0,
+                'required_completed' => 0,
+                'percent' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{
+     *   case_type: string,
+     *   case_type_label: string,
+     *   items: array<int, array<string, mixed>>,
+     *   summary: array{total: int, completed: int, required_total: int, required_completed: int, percent: int}
+     * }
+     */
+    private function ensureChecklistForAssignment(
+        array $assignment,
+        ?int $actorUserId,
+        ?string $ip,
+        ?string $userAgent
+    ): array {
+        $assignmentId = (int) ($assignment['id'] ?? 0);
+        if ($assignmentId <= 0) {
+            return $this->emptyChecklist();
+        }
+
+        $caseType = $this->checklistCaseTypeFromAssignment($assignment);
+        $caseLabel = $this->checklistCaseTypeLabel($caseType);
+
+        try {
+            $templates = $this->pipeline->activeChecklistTemplatesForCaseType($caseType);
+            $existingItems = $this->pipeline->checklistItemsByAssignment($assignmentId, $caseType);
+            $existingKeys = [];
+            foreach ($existingItems as $existingItem) {
+                $existingKeys[] = mb_strtolower(
+                    trim((string) ($existingItem['case_type'] ?? 'geral')) . '|' . trim((string) ($existingItem['item_code'] ?? ''))
+                );
+            }
+
+            $generatedItems = [];
+            foreach ($templates as $template) {
+                $templateCaseType = mb_strtolower(trim((string) ($template['case_type'] ?? 'geral')));
+                if ($templateCaseType === '') {
+                    $templateCaseType = 'geral';
+                }
+
+                $code = trim((string) ($template['code'] ?? ''));
+                if ($code === '') {
+                    continue;
+                }
+
+                $key = mb_strtolower($templateCaseType . '|' . $code);
+                if (!in_array($key, $existingKeys, true)) {
+                    $generatedItems[] = $templateCaseType . ':' . $code;
+                }
+
+                $this->pipeline->upsertChecklistItemFromTemplate(
+                    assignmentId: $assignmentId,
+                    templateId: (int) ($template['id'] ?? 0),
+                    caseType: $templateCaseType,
+                    code: $code,
+                    label: (string) ($template['label'] ?? $code),
+                    description: ($template['description'] ?? null) !== null
+                        ? (string) $template['description']
+                        : null,
+                    isRequired: (int) ($template['is_required'] ?? 1) === 1 ? 1 : 0
+                );
+            }
+
+            $items = $this->pipeline->checklistItemsByAssignment($assignmentId, $caseType);
+            $summary = $this->checklistSummary($items);
+
+            if ($generatedItems !== [] && $actorUserId !== null && $actorUserId > 0 && $ip !== null && $userAgent !== null) {
+                $this->audit->log(
+                    entity: 'assignment_checklist',
+                    entityId: $assignmentId,
+                    action: 'auto.generate',
+                    beforeData: null,
+                    afterData: [
+                        'case_type' => $caseType,
+                        'generated_items' => $generatedItems,
+                    ],
+                    metadata: [
+                        'person_id' => (int) ($assignment['person_id'] ?? 0),
+                    ],
+                    userId: $actorUserId,
+                    ip: $ip,
+                    userAgent: $userAgent
+                );
+
+                $this->events->recordEvent(
+                    entity: 'person',
+                    type: 'pipeline.checklist_generated',
+                    payload: [
+                        'assignment_id' => $assignmentId,
+                        'case_type' => $caseType,
+                        'generated_count' => count($generatedItems),
+                    ],
+                    entityId: (int) ($assignment['person_id'] ?? 0),
+                    userId: $actorUserId
+                );
+            }
+
+            return [
+                'case_type' => $caseType,
+                'case_type_label' => $caseLabel,
+                'items' => $items,
+                'summary' => $summary,
+            ];
+        } catch (\Throwable) {
+            return $this->emptyChecklist();
+        }
+    }
+
+    /** @param array<int, array<string, mixed>> $items */
+    private function checklistSummary(array $items): array
+    {
+        $total = count($items);
+        $completed = 0;
+        $requiredTotal = 0;
+        $requiredCompleted = 0;
+
+        foreach ($items as $item) {
+            $isRequired = (int) ($item['is_required'] ?? 1) === 1;
+            $isDone = (int) ($item['is_done'] ?? 0) === 1;
+
+            if ($isDone) {
+                $completed++;
+            }
+
+            if ($isRequired) {
+                $requiredTotal++;
+                if ($isDone) {
+                    $requiredCompleted++;
+                }
+            }
+        }
+
+        $baseTotal = $requiredTotal > 0 ? $requiredTotal : $total;
+        $baseCompleted = $requiredTotal > 0 ? $requiredCompleted : $completed;
+        $percent = $baseTotal > 0 ? (int) round(($baseCompleted / $baseTotal) * 100) : 0;
+
+        return [
+            'total' => $total,
+            'completed' => $completed,
+            'required_total' => $requiredTotal,
+            'required_completed' => $requiredCompleted,
+            'percent' => max(0, min(100, $percent)),
+        ];
+    }
+
+    /** @param array<string, mixed> $assignment */
+    private function checklistCaseTypeFromAssignment(array $assignment): string
+    {
+        $raw = mb_strtolower(trim((string) ($assignment['modality_name'] ?? '')));
+        if ($raw === '') {
+            return 'geral';
+        }
+
+        $normalized = strtr($raw, [
+            'ã' => 'a',
+            'á' => 'a',
+            'à' => 'a',
+            'â' => 'a',
+            'é' => 'e',
+            'ê' => 'e',
+            'í' => 'i',
+            'õ' => 'o',
+            'ó' => 'o',
+            'ô' => 'o',
+            'ú' => 'u',
+            'ç' => 'c',
+        ]);
+
+        if (str_contains($normalized, 'cess')) {
+            return 'cessao';
+        }
+
+        if (str_contains($normalized, 'forca') || str_contains($normalized, 'cft')) {
+            return 'cft';
+        }
+
+        if (str_contains($normalized, 'requis')) {
+            return 'requisicao';
+        }
+
+        return 'geral';
+    }
+
+    private function checklistCaseTypeLabel(string $caseType): string
+    {
+        return self::CHECKLIST_CASE_LABELS[$caseType] ?? self::CHECKLIST_CASE_LABELS['geral'];
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -643,5 +1155,16 @@ final class PipelineService
         $globalLimit = max(1048576, $this->security->uploadMaxBytes());
 
         return min(self::MAX_ATTACHMENT_SIZE, $globalLimit);
+    }
+
+    private function normalizeQueuePriority(string $priority): ?string
+    {
+        $normalized = mb_strtolower(trim($priority));
+
+        if (!in_array($normalized, self::ALLOWED_QUEUE_PRIORITIES, true)) {
+            return null;
+        }
+
+        return $normalized;
     }
 }

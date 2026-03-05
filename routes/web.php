@@ -127,6 +127,8 @@ $router->get('/people/edit', [PeopleController::class, 'edit'], ['auth', 'permis
 $router->post('/people/update', [PeopleController::class, 'update'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/delete', [PeopleController::class, 'destroy'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/pipeline/advance', [PeopleController::class, 'advancePipeline'], ['auth', 'permission:people.manage', 'csrf']);
+$router->post('/people/pipeline/queue/update', [PeopleController::class, 'updatePipelineQueue'], ['auth', 'permission:people.manage', 'csrf']);
+$router->post('/people/pipeline/checklist/update', [PeopleController::class, 'updatePipelineChecklist'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/timeline/store', [PeopleController::class, 'storeTimelineEvent'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/timeline/rectify', [PeopleController::class, 'rectifyTimelineEvent'], ['auth', 'permission:people.manage', 'csrf']);
 $router->get('/people/timeline/attachment', [PeopleController::class, 'downloadTimelineAttachment'], ['auth', 'permission:people.view']);

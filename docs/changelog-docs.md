@@ -1,6 +1,15 @@
 # Changelog da Documentacao
 
 ## 2026-03-05
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.1 "Checklist automatico por tipo de caso" como concluido no ciclo 9.4
+- Atualizacao de `README.md` com rota `POST /people/pipeline/checklist/update` e status da entrega 9.4
+- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint de checklist de pipeline
+- Atualizacao de `docs/02-architecture.md` para incluir checklist automatico no `PipelineService` e novas tabelas de checklist
+- Adicionado checklist `tests/checklist-etapa-9.4-checklist-automatico.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.1 "Minha fila" como concluido no ciclo 9.3
+- Atualizacao de `README.md` com rota `POST /people/pipeline/queue/update` e status da entrega 9.3
+- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint de fila de pipeline
+- Adicionado checklist `tests/checklist-etapa-9.3-fila.md`
 - Atualizacao de `docs/__planodedesenvolvimento.md` para marcar RF-04 como concluido (importacao CSV de pessoas) e registrar pendencia de orgaos
 - Atualizacao de `README.md` com rota `POST /people/import-csv` e status da entrega 9.2
 - Atualizacao de `docs/07-security.md` com controle de acesso do endpoint de importacao CSV

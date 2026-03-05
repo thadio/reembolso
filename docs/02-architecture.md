@@ -24,7 +24,7 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `DashboardService`: consolidacao de metricas operacionais (pessoas, cobertura de dossie/custos e movimentacao recente), com reaproveitamento de snapshot KPI quando fresco
 - `AuditService`: trilha de auditoria
 - `EventService`: eventos de sistema
-- `PipelineService`: movimentacao/status/timeline da pessoa
+- `PipelineService`: movimentacao/status/timeline da pessoa, fila por responsavel/prioridade e checklist automatico por tipo de caso
 - `DocumentService`: dossie documental, upload seguro e download protegido
 - `CostPlanService`: custos previstos por pessoa com versionamento e comparacao entre versoes
 - `ReimbursementService`: controle de reembolso real (boletos/pagamentos) com baixa financeira
@@ -45,6 +45,7 @@ Tabelas principais:
 - `users`, `roles`, `permissions`, `role_permissions`, `user_roles`
 - `login_attempts`, `security_settings`
 - `organs`, `people`, `assignments`, `assignment_statuses`
+- `assignment_checklist_templates`, `assignment_checklist_items`
 - `timeline_events`, `timeline_event_attachments`, `documents`
 - `cost_plans`, `cost_plan_items`, `reimbursement_entries`
 - `cdos`, `cdo_people`

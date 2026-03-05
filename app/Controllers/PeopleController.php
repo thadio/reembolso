@@ -36,12 +36,21 @@ final class PeopleController extends Controller
             'organ_id' => max(0, (int) $request->input('organ_id', '0')),
             'modality_id' => max(0, (int) $request->input('modality_id', '0')),
             'tag' => (string) $request->input('tag', ''),
+            'queue_scope' => (string) $request->input('queue_scope', 'all'),
+            'priority' => (string) $request->input('priority', ''),
+            'responsible_id' => max(0, (int) $request->input('responsible_id', '0')),
             'sort' => (string) $request->input('sort', 'name'),
             'dir' => (string) $request->input('dir', 'asc'),
         ];
 
         $page = max(1, (int) $request->input('page', '1'));
         $perPage = max(5, min(50, (int) $request->input('per_page', '10')));
+        $authUserId = (int) ($this->app->auth()->id() ?? 0);
+
+        if (mb_strtolower((string) ($filters['queue_scope'] ?? 'all')) === 'mine' && $authUserId > 0) {
+            $filters['assigned_user_id'] = $authUserId;
+            $filters['responsible_id'] = $authUserId;
+        }
 
         $result = $this->service()->paginate($filters, $page, $perPage);
         $previewPerson = null;
@@ -98,6 +107,9 @@ final class PeopleController extends Controller
             'modalities' => $this->service()->activeModalities(),
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $canViewCpfFull,
+            'queuePriorities' => $this->pipelineService()->queuePriorities(),
+            'queueUsers' => $this->pipelineService()->queueUsers(300),
+            'authUserId' => $authUserId,
         ]);
     }
 
@@ -209,7 +221,14 @@ final class PeopleController extends Controller
         );
 
         $person = $this->service()->find($id) ?? $person;
-        $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
+        $pipeline = $this->pipelineService()->profileData(
+            personId: $id,
+            timelinePage: $timelinePage,
+            timelinePerPage: 8,
+            actorUserId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
         $canViewAudit = $this->app->auth()->hasPermission('audit.view');
         $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
         $canViewSensitiveDocuments = $this->app->auth()->hasPermission('people.documents.sensitive');
@@ -391,6 +410,68 @@ final class PeopleController extends Controller
 
         flash('success', $result['message']);
         $this->redirect('/people/show?id=' . $id);
+    }
+
+    public function updatePipelineQueue(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $assignmentId = (int) $request->input('assignment_id', '0');
+        $assignedUserId = max(0, (int) $request->input('assigned_user_id', '0'));
+        $priorityLevel = (string) $request->input('priority_level', 'normal');
+
+        if ($personId <= 0 || $assignmentId <= 0) {
+            flash('error', 'Dados invalidos para atualizar a fila.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->pipelineService()->updateQueue(
+            personId: $personId,
+            assignmentId: $assignmentId,
+            assignedUserId: $assignedUserId > 0 ? $assignedUserId : null,
+            priorityLevel: $priorityLevel,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function updatePipelineChecklist(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $assignmentId = (int) $request->input('assignment_id', '0');
+        $itemId = (int) $request->input('checklist_item_id', '0');
+        $isDone = (int) $request->input('is_done', '0') === 1;
+
+        if ($personId <= 0 || $assignmentId <= 0 || $itemId <= 0) {
+            flash('error', 'Dados invalidos para atualizar checklist.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->pipelineService()->updateChecklistItem(
+            personId: $personId,
+            assignmentId: $assignmentId,
+            itemId: $itemId,
+            isDone: $isDone,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        $this->redirect('/people/show?id=' . $personId);
     }
 
     public function storeTimelineEvent(Request $request): void
