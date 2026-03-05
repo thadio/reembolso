@@ -8,6 +8,18 @@ use App\Repositories\OrganRepository;
 
 final class OrganService
 {
+    private const CSV_ALLOWED_EXTENSIONS = ['csv', 'txt'];
+    private const CSV_ALLOWED_MIME = [
+        'text/plain',
+        'text/csv',
+        'application/csv',
+        'application/vnd.ms-excel',
+        'text/comma-separated-values',
+        'application/octet-stream',
+    ];
+    private const MAX_CSV_SIZE = 5242880; // 5MB
+    private const REQUIRED_IMPORT_COLUMNS = ['name'];
+
     public function __construct(
         private OrganRepository $organs,
         private AuditService $audit,
@@ -27,6 +39,185 @@ final class OrganService
     public function find(int $id): ?array
     {
         return $this->organs->findById($id);
+    }
+
+    /**
+     * @param array<string, mixed>|null $file
+     * @return array{
+     *   ok: bool,
+     *   message: string,
+     *   errors: array<int, string>,
+     *   warnings: array<int, string>,
+     *   processed_rows: int,
+     *   created_count: int
+     * }
+     */
+    public function importCsv(
+        ?array $file,
+        int $userId,
+        string $ip,
+        string $userAgent,
+        bool $validateOnly = false
+    ): array {
+        $parsed = $this->readCsvFile($file);
+        if (!$parsed['ok']) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel processar o CSV.',
+                'errors' => [$parsed['error']],
+                'warnings' => [],
+                'processed_rows' => 0,
+                'created_count' => 0,
+            ];
+        }
+
+        $headerMap = $this->buildHeaderMap($parsed['headers']);
+        $missingColumns = [];
+        foreach (self::REQUIRED_IMPORT_COLUMNS as $required) {
+            if (!isset($headerMap[$required])) {
+                $missingColumns[] = $required;
+            }
+        }
+
+        if ($missingColumns !== []) {
+            return [
+                'ok' => false,
+                'message' => 'CSV rejeitado por cabecalho incompleto.',
+                'errors' => ['Cabecalho obrigatorio ausente: ' . implode(', ', $missingColumns) . '.'],
+                'warnings' => [],
+                'processed_rows' => 0,
+                'created_count' => 0,
+            ];
+        }
+
+        $errors = [];
+        $warnings = [];
+        $candidates = [];
+        $seenCnpjs = [];
+        $processedRows = 0;
+        $lineNumber = 1;
+
+        foreach ($parsed['rows'] as $row) {
+            $lineNumber++;
+            $mapped = $this->mapRowByHeader($row, $headerMap);
+            if ($this->isCsvRowEmpty($mapped)) {
+                continue;
+            }
+
+            $processedRows++;
+
+            $input = [
+                'name' => (string) ($mapped['name'] ?? ''),
+                'acronym' => (string) ($mapped['acronym'] ?? ''),
+                'cnpj' => (string) ($mapped['cnpj'] ?? ''),
+                'contact_name' => (string) ($mapped['contact_name'] ?? ''),
+                'contact_email' => (string) ($mapped['contact_email'] ?? ''),
+                'contact_phone' => (string) ($mapped['contact_phone'] ?? ''),
+                'address_line' => (string) ($mapped['address_line'] ?? ''),
+                'city' => (string) ($mapped['city'] ?? ''),
+                'state' => (string) ($mapped['state'] ?? ''),
+                'zip_code' => (string) ($mapped['zip_code'] ?? ''),
+                'notes' => (string) ($mapped['notes'] ?? ''),
+            ];
+
+            $validation = $this->validate($input);
+            $rowErrors = $validation['errors'];
+
+            $normalizedCnpj = (string) ($validation['data']['cnpj'] ?? '');
+            if ($normalizedCnpj !== '') {
+                if (isset($seenCnpjs[$normalizedCnpj])) {
+                    $rowErrors[] = 'CNPJ duplicado no CSV (linha ' . $seenCnpjs[$normalizedCnpj] . ').';
+                } else {
+                    $seenCnpjs[$normalizedCnpj] = $lineNumber;
+                }
+
+                if ($this->organs->cnpjExists($normalizedCnpj)) {
+                    $rowErrors[] = 'Ja existe orgao cadastrado com este CNPJ.';
+                }
+            }
+
+            if ($rowErrors !== []) {
+                $errors[] = sprintf('Linha %d: %s', $lineNumber, implode(' ', array_values(array_unique($rowErrors))));
+                continue;
+            }
+
+            $candidates[] = [
+                'line' => $lineNumber,
+                'input' => $input,
+            ];
+        }
+
+        if ($errors !== []) {
+            return [
+                'ok' => false,
+                'message' => 'CSV rejeitado por erros de validacao.',
+                'errors' => $errors,
+                'warnings' => $warnings,
+                'processed_rows' => $processedRows,
+                'created_count' => 0,
+            ];
+        }
+
+        if ($candidates === []) {
+            return [
+                'ok' => false,
+                'message' => 'CSV sem linhas validas para importacao.',
+                'errors' => ['Nenhuma linha valida encontrada no CSV.'],
+                'warnings' => [],
+                'processed_rows' => $processedRows,
+                'created_count' => 0,
+            ];
+        }
+
+        if ($validateOnly) {
+            return [
+                'ok' => true,
+                'message' => sprintf('Validacao concluida com sucesso: %d linha(s) apta(s) para importacao.', count($candidates)),
+                'errors' => [],
+                'warnings' => [],
+                'processed_rows' => $processedRows,
+                'created_count' => 0,
+            ];
+        }
+
+        $createdCount = 0;
+
+        try {
+            $this->organs->beginTransaction();
+
+            foreach ($candidates as $candidate) {
+                $result = $this->create($candidate['input'], $userId, $ip, $userAgent);
+                if (!$result['ok'] || !isset($result['id'])) {
+                    $line = (int) ($candidate['line'] ?? 0);
+                    $lineErrors = $result['errors'] ?? ['Falha ao cadastrar orgao.'];
+                    throw new \RuntimeException('Linha ' . $line . ': ' . implode(' ', $lineErrors));
+                }
+
+                $createdCount++;
+            }
+
+            $this->organs->commit();
+        } catch (\Throwable $exception) {
+            $this->organs->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel concluir a importacao em massa.',
+                'errors' => ['Importacao cancelada com rollback completo. ' . $exception->getMessage()],
+                'warnings' => [],
+                'processed_rows' => $processedRows,
+                'created_count' => 0,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'message' => sprintf('%d orgao(s) importado(s) com sucesso.', $createdCount),
+            'errors' => [],
+            'warnings' => [],
+            'processed_rows' => $processedRows,
+            'created_count' => $createdCount,
+        ];
     }
 
     /**
@@ -233,6 +424,256 @@ final class OrganService
             'errors' => $errors,
             'data' => $data,
         ];
+    }
+
+    /**
+     * @param array<string, mixed>|null $file
+     * @return array{ok: bool, error: string, headers: array<int, string>, rows: array<int, array<int, string>>}
+     */
+    private function readCsvFile(?array $file): array
+    {
+        if ($file === null || !isset($file['error'])) {
+            return [
+                'ok' => false,
+                'error' => 'Arquivo CSV nao enviado.',
+                'headers' => [],
+                'rows' => [],
+            ];
+        }
+
+        $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE) {
+            return [
+                'ok' => false,
+                'error' => 'Selecione um arquivo CSV para importacao.',
+                'headers' => [],
+                'rows' => [],
+            ];
+        }
+
+        if ($error !== UPLOAD_ERR_OK) {
+            return [
+                'ok' => false,
+                'error' => 'Falha no upload do CSV.',
+                'headers' => [],
+                'rows' => [],
+            ];
+        }
+
+        $tmpName = (string) ($file['tmp_name'] ?? '');
+        $originalName = (string) ($file['name'] ?? '');
+        $size = (int) ($file['size'] ?? 0);
+
+        if ($size <= 0 || $size > self::MAX_CSV_SIZE) {
+            return [
+                'ok' => false,
+                'error' => 'CSV fora do limite permitido (5MB).',
+                'headers' => [],
+                'rows' => [],
+            ];
+        }
+
+        $ext = mb_strtolower((string) pathinfo($originalName, PATHINFO_EXTENSION));
+        if (!in_array($ext, self::CSV_ALLOWED_EXTENSIONS, true)) {
+            return [
+                'ok' => false,
+                'error' => 'Extensao invalida. Envie arquivo CSV.',
+                'headers' => [],
+                'rows' => [],
+            ];
+        }
+
+        $mime = '';
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $mime = (string) finfo_file($finfo, $tmpName);
+            finfo_close($finfo);
+        }
+        if ($mime !== '' && !in_array($mime, self::CSV_ALLOWED_MIME, true)) {
+            return [
+                'ok' => false,
+                'error' => 'Tipo de arquivo invalido para importacao CSV.',
+                'headers' => [],
+                'rows' => [],
+            ];
+        }
+
+        $handle = fopen($tmpName, 'rb');
+        if ($handle === false) {
+            return [
+                'ok' => false,
+                'error' => 'Nao foi possivel ler o CSV enviado.',
+                'headers' => [],
+                'rows' => [],
+            ];
+        }
+
+        try {
+            $firstLine = fgets($handle);
+            if ($firstLine === false) {
+                return [
+                    'ok' => false,
+                    'error' => 'CSV vazio.',
+                    'headers' => [],
+                    'rows' => [],
+                ];
+            }
+
+            $delimiter = $this->detectCsvDelimiter($firstLine);
+            rewind($handle);
+
+            $headerRow = fgetcsv($handle, 0, $delimiter, '"', '\\');
+            if (!is_array($headerRow) || $headerRow === []) {
+                return [
+                    'ok' => false,
+                    'error' => 'CSV sem cabecalho valido.',
+                    'headers' => [],
+                    'rows' => [],
+                ];
+            }
+
+            $headers = [];
+            foreach ($headerRow as $index => $header) {
+                $value = trim((string) $header);
+                if ($index === 0) {
+                    $value = $this->stripUtf8Bom($value);
+                }
+
+                $headers[] = $value;
+            }
+
+            $rows = [];
+            while (($row = fgetcsv($handle, 0, $delimiter, '"', '\\')) !== false) {
+                if ($row === [null]) {
+                    continue;
+                }
+
+                $rows[] = array_map(static fn (mixed $value): string => trim((string) $value), $row);
+            }
+
+            return [
+                'ok' => true,
+                'error' => '',
+                'headers' => $headers,
+                'rows' => $rows,
+            ];
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
+     * @param array<int, string> $headers
+     * @return array<string, int>
+     */
+    private function buildHeaderMap(array $headers): array
+    {
+        $aliases = [
+            'name' => ['name', 'nome', 'orgao', 'orgao_nome'],
+            'acronym' => ['acronym', 'sigla'],
+            'cnpj' => ['cnpj'],
+            'contact_name' => ['contact_name', 'contato', 'contato_nome', 'nome_contato'],
+            'contact_email' => ['contact_email', 'email', 'email_contato'],
+            'contact_phone' => ['contact_phone', 'telefone', 'telefone_contato', 'fone'],
+            'address_line' => ['address_line', 'endereco', 'logradouro'],
+            'city' => ['city', 'cidade'],
+            'state' => ['state', 'uf'],
+            'zip_code' => ['zip_code', 'cep'],
+            'notes' => ['notes', 'observacoes', 'observacao', 'notas'],
+        ];
+
+        $lookup = [];
+        foreach ($aliases as $canonical => $values) {
+            foreach ($values as $value) {
+                $lookup[$this->normalizeCsvHeader($value)] = $canonical;
+            }
+        }
+
+        $map = [];
+        foreach ($headers as $index => $header) {
+            $normalized = $this->normalizeCsvHeader($header);
+            if ($normalized === '') {
+                continue;
+            }
+
+            $canonical = $lookup[$normalized] ?? null;
+            if ($canonical === null || isset($map[$canonical])) {
+                continue;
+            }
+
+            $map[$canonical] = $index;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<int, string> $row
+     * @param array<string, int> $headerMap
+     * @return array<string, string>
+     */
+    private function mapRowByHeader(array $row, array $headerMap): array
+    {
+        $mapped = [];
+        foreach ($headerMap as $key => $index) {
+            $mapped[$key] = trim((string) ($row[$index] ?? ''));
+        }
+
+        return $mapped;
+    }
+
+    /** @param array<string, string> $row */
+    private function isCsvRowEmpty(array $row): bool
+    {
+        foreach ($row as $value) {
+            if (trim($value) !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function detectCsvDelimiter(string $sample): string
+    {
+        $candidate = str_replace(["\r", "\n"], '', $sample);
+
+        $semicolonCount = substr_count($candidate, ';');
+        $commaCount = substr_count($candidate, ',');
+        $tabCount = substr_count($candidate, "\t");
+
+        if ($semicolonCount >= $commaCount && $semicolonCount >= $tabCount) {
+            return ';';
+        }
+
+        if ($tabCount > $commaCount) {
+            return "\t";
+        }
+
+        return ',';
+    }
+
+    private function stripUtf8Bom(string $value): string
+    {
+        return preg_replace('/^\xEF\xBB\xBF/', '', $value) ?? $value;
+    }
+
+    private function normalizeCsvHeader(string $header): string
+    {
+        $header = mb_strtolower(trim($header));
+        if ($header === '') {
+            return '';
+        }
+
+        $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $header);
+        if (is_string($ascii) && trim($ascii) !== '') {
+            $header = $ascii;
+        }
+
+        $header = preg_replace('/[^a-z0-9]+/', '_', $header) ?? $header;
+        $header = trim($header, '_');
+
+        return $header;
     }
 
     private function clean(mixed $value): ?string

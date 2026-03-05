@@ -10,6 +10,14 @@ final class ReimbursementService
 {
     private const ALLOWED_TYPES = ['boleto', 'pagamento', 'ajuste'];
     private const ALLOWED_STATUSES = ['pendente', 'pago', 'cancelado'];
+    private const CALCULATOR_COMPONENTS = [
+        'calc_base_amount' => 'Base',
+        'calc_transport_amount' => 'Transporte',
+        'calc_lodging_amount' => 'Hospedagem',
+        'calc_food_amount' => 'Alimentacao',
+        'calc_other_amount' => 'Outros',
+        'calc_discount_amount' => 'Desconto',
+    ];
 
     public function __construct(
         private ReimbursementRepository $entries,
@@ -19,13 +27,18 @@ final class ReimbursementService
     }
 
     /**
-     * @return array{summary: array<string, int|float>, items: array<int, array<string, mixed>>}
+     * @return array{
+     *   summary: array<string, int|float>,
+     *   items: array<int, array<string, mixed>>,
+     *   calculation_memories: array<int, array<string, mixed>>
+     * }
      */
     public function profileData(int $personId, int $limit = 80): array
     {
         return [
             'summary' => $this->normalizeSummary($this->entries->summaryByPerson($personId)),
             'items' => $this->entries->listByPerson($personId, $limit),
+            'calculation_memories' => $this->entries->recentCalculationMemoriesByPerson($personId, 8),
         ];
     }
 
@@ -37,7 +50,9 @@ final class ReimbursementService
     {
         $entryType = mb_strtolower(trim((string) ($input['entry_type'] ?? 'boleto')));
         $title = trim((string) ($input['title'] ?? ''));
-        $amount = $this->parseMoney($input['amount'] ?? null);
+        $manualAmount = $this->parseMoney($input['amount'] ?? null);
+        $calculation = $this->resolveCalculation($input, $manualAmount);
+        $amount = $calculation['enabled'] ? $calculation['amount'] : $manualAmount;
         $referenceMonthRaw = $this->clean($input['reference_month'] ?? null);
         $dueDateRaw = $this->clean($input['due_date'] ?? null);
         $paidAtRaw = $this->clean($input['paid_at'] ?? null);
@@ -45,6 +60,8 @@ final class ReimbursementService
         $dueDate = $this->normalizeDate($dueDateRaw);
         $paidAt = $this->normalizeDateTime($paidAtRaw);
         $notes = $this->clean($input['notes'] ?? null);
+        $calculationMemoryJson = $calculation['memory_json'];
+        $warnings = $calculation['warnings'];
 
         $statusInput = $this->clean($input['status'] ?? null);
         $status = $statusInput !== null
@@ -65,7 +82,7 @@ final class ReimbursementService
             $paidAt = null;
         }
 
-        $errors = [];
+        $errors = $calculation['errors'];
 
         if (!in_array($entryType, self::ALLOWED_TYPES, true)) {
             $errors[] = 'Tipo de lançamento inválido.';
@@ -100,7 +117,7 @@ final class ReimbursementService
                 'ok' => false,
                 'message' => 'Não foi possível registrar lançamento financeiro.',
                 'errors' => $errors,
-                'warnings' => [],
+                'warnings' => $warnings,
             ];
         }
 
@@ -120,6 +137,7 @@ final class ReimbursementService
                 dueDate: $dueDate,
                 paidAt: $paidAt,
                 notes: $notes,
+                calculationMemory: $calculationMemoryJson,
                 createdBy: $userId
             );
 
@@ -133,6 +151,7 @@ final class ReimbursementService
                 'reference_month' => $referenceMonth,
                 'due_date' => $dueDate,
                 'paid_at' => $paidAt,
+                'calculated' => $calculation['enabled'] ? 1 : 0,
             ];
 
             $this->audit->log(
@@ -141,7 +160,11 @@ final class ReimbursementService
                 action: 'create',
                 beforeData: null,
                 afterData: $afterData,
-                metadata: ['notes' => $notes],
+                metadata: [
+                    'notes' => $notes,
+                    'calculated' => $calculation['enabled'],
+                    'formula' => $calculation['formula_label'],
+                ],
                 userId: $userId,
                 ip: $ip,
                 userAgent: $userAgent
@@ -157,6 +180,7 @@ final class ReimbursementService
                     'amount' => $amount,
                     'due_date' => $dueDate,
                     'paid_at' => $paidAt,
+                    'calculated' => $calculation['enabled'],
                 ],
                 entityId: $personId,
                 userId: $userId
@@ -170,15 +194,17 @@ final class ReimbursementService
                 'ok' => false,
                 'message' => 'Não foi possível registrar lançamento financeiro.',
                 'errors' => ['Falha ao persistir o lançamento. Tente novamente.'],
-                'warnings' => [],
+                'warnings' => $warnings,
             ];
         }
 
         return [
             'ok' => true,
-            'message' => 'Lançamento financeiro registrado com sucesso.',
+            'message' => $calculation['enabled']
+                ? 'Lançamento financeiro registrado com cálculo automático.'
+                : 'Lançamento financeiro registrado com sucesso.',
             'errors' => [],
-            'warnings' => [],
+            'warnings' => $warnings,
         ];
     }
 
@@ -319,6 +345,208 @@ final class ReimbursementService
         }
 
         return number_format((float) $normalized, 2, '.', '');
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{
+     *   enabled: bool,
+     *   amount: ?string,
+     *   memory_json: ?string,
+     *   formula_label: ?string,
+     *   warnings: array<int, string>,
+     *   errors: array<int, string>
+     * }
+     */
+    private function resolveCalculation(array $input, ?string $manualAmount): array
+    {
+        $isCalculatorEnabled = $this->isTruthy($input['use_calculator'] ?? null);
+        $hasCalculatorInput = false;
+
+        foreach (array_keys(self::CALCULATOR_COMPONENTS) as $field) {
+            if ($this->clean($input[$field] ?? null) !== null) {
+                $hasCalculatorInput = true;
+                break;
+            }
+        }
+
+        if (!$hasCalculatorInput && $this->clean($input['calc_adjustment_percent'] ?? null) !== null) {
+            $hasCalculatorInput = true;
+        }
+
+        if (!$isCalculatorEnabled && !$hasCalculatorInput) {
+            return [
+                'enabled' => false,
+                'amount' => null,
+                'memory_json' => null,
+                'formula_label' => null,
+                'warnings' => [],
+                'errors' => [],
+            ];
+        }
+
+        $errors = [];
+        $warnings = [];
+        $components = [];
+
+        foreach (self::CALCULATOR_COMPONENTS as $field => $label) {
+            $raw = $this->clean($input[$field] ?? null);
+            if ($raw === null) {
+                $components[$field] = 0.0;
+                continue;
+            }
+
+            $parsed = $this->parseMoney($raw);
+            if ($parsed === null) {
+                $errors[] = sprintf('Valor invalido para %s na calculadora.', $label);
+                continue;
+            }
+
+            $numeric = (float) $parsed;
+            if ($numeric < 0) {
+                $errors[] = sprintf('Valor de %s nao pode ser negativo.', $label);
+                continue;
+            }
+
+            $components[$field] = $numeric;
+        }
+
+        $percentInput = $this->clean($input['calc_adjustment_percent'] ?? null);
+        $adjustmentPercent = 0.0;
+        if ($percentInput !== null) {
+            $parsedPercent = $this->parseDecimal($percentInput);
+            if ($parsedPercent === null) {
+                $errors[] = 'Percentual de ajuste invalido na calculadora.';
+            } else {
+                $adjustmentPercent = $parsedPercent;
+            }
+        }
+
+        if ($adjustmentPercent < -100.0 || $adjustmentPercent > 300.0) {
+            $errors[] = 'Percentual de ajuste deve estar entre -100 e 300.';
+        }
+
+        if ($errors !== []) {
+            return [
+                'enabled' => true,
+                'amount' => null,
+                'memory_json' => null,
+                'formula_label' => null,
+                'warnings' => [],
+                'errors' => $errors,
+            ];
+        }
+
+        $subtotal = ($components['calc_base_amount'] ?? 0.0)
+            + ($components['calc_transport_amount'] ?? 0.0)
+            + ($components['calc_lodging_amount'] ?? 0.0)
+            + ($components['calc_food_amount'] ?? 0.0)
+            + ($components['calc_other_amount'] ?? 0.0);
+
+        $discount = $components['calc_discount_amount'] ?? 0.0;
+
+        if ($subtotal <= 0.0) {
+            return [
+                'enabled' => true,
+                'amount' => null,
+                'memory_json' => null,
+                'formula_label' => null,
+                'warnings' => [],
+                'errors' => ['Informe ao menos um componente maior que zero na calculadora.'],
+            ];
+        }
+
+        $adjustmentAmount = round($subtotal * ($adjustmentPercent / 100), 2);
+        $calculatedTotal = round($subtotal + $adjustmentAmount - $discount, 2);
+
+        if ($calculatedTotal <= 0.0) {
+            return [
+                'enabled' => true,
+                'amount' => null,
+                'memory_json' => null,
+                'formula_label' => null,
+                'warnings' => [],
+                'errors' => ['Total calculado deve ser maior que zero.'],
+            ];
+        }
+
+        $amount = number_format($calculatedTotal, 2, '.', '');
+        $formulaLabel = 'Total = (Base + Transporte + Hospedagem + Alimentacao + Outros) + Ajuste - Desconto';
+        $memory = [
+            'version' => 1,
+            'formula' => '(base + transporte + hospedagem + alimentacao + outros) + ajuste - desconto',
+            'components' => [
+                'base' => number_format((float) ($components['calc_base_amount'] ?? 0.0), 2, '.', ''),
+                'transporte' => number_format((float) ($components['calc_transport_amount'] ?? 0.0), 2, '.', ''),
+                'hospedagem' => number_format((float) ($components['calc_lodging_amount'] ?? 0.0), 2, '.', ''),
+                'alimentacao' => number_format((float) ($components['calc_food_amount'] ?? 0.0), 2, '.', ''),
+                'outros' => number_format((float) ($components['calc_other_amount'] ?? 0.0), 2, '.', ''),
+                'desconto' => number_format($discount, 2, '.', ''),
+            ],
+            'subtotal' => number_format($subtotal, 2, '.', ''),
+            'adjustment_percent' => number_format($adjustmentPercent, 2, '.', ''),
+            'adjustment_amount' => number_format($adjustmentAmount, 2, '.', ''),
+            'total' => $amount,
+            'generated_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $encoded = json_encode($memory, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($encoded)) {
+            return [
+                'enabled' => true,
+                'amount' => null,
+                'memory_json' => null,
+                'formula_label' => null,
+                'warnings' => [],
+                'errors' => ['Falha ao gerar memoria de calculo.'],
+            ];
+        }
+
+        if ($manualAmount !== null && abs((float) $manualAmount - (float) $amount) > 0.009) {
+            $warnings[] = 'Valor informado manualmente foi substituido pelo total calculado.';
+        }
+
+        return [
+            'enabled' => true,
+            'amount' => $amount,
+            'memory_json' => $encoded,
+            'formula_label' => $formulaLabel,
+            'warnings' => $warnings,
+            'errors' => [],
+        ];
+    }
+
+    private function parseDecimal(mixed $value): ?float
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $normalized = str_replace('%', '', $raw);
+        if (str_contains($normalized, ',') && str_contains($normalized, '.')) {
+            $normalized = str_replace('.', '', $normalized);
+            $normalized = str_replace(',', '.', $normalized);
+        } elseif (str_contains($normalized, ',')) {
+            $normalized = str_replace(',', '.', $normalized);
+        }
+
+        if (!is_numeric($normalized)) {
+            return null;
+        }
+
+        return (float) $normalized;
+    }
+
+    private function isTruthy(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $normalized = mb_strtolower(trim((string) $value));
+
+        return in_array($normalized, ['1', 'true', 'on', 'yes', 'sim'], true);
     }
 
     private function normalizeReferenceMonth(?string $value): ?string

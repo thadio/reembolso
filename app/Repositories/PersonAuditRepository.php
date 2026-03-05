@@ -177,9 +177,18 @@ final class PersonAuditRepository
         $params['person_id_cost_plan'] = $personId;
         $params['person_id_cost_item'] = $personId;
         $params['person_id_reimbursement'] = $personId;
+        $params['person_id_process_comment'] = $personId;
+        $params['person_id_process_admin_timeline'] = $personId;
+        $params['person_id_pending_item'] = $personId;
+        $params['person_id_organ'] = $personId;
 
         return '(
             (a.entity = "person" AND a.entity_id = :person_id_person)
+            OR (a.entity = "organ" AND EXISTS (
+                SELECT 1 FROM people p
+                WHERE p.id = :person_id_organ
+                  AND p.organ_id = a.entity_id
+            ))
             OR (a.entity = "assignment" AND EXISTS (
                 SELECT 1 FROM assignments ass
                 WHERE ass.id = a.entity_id
@@ -209,6 +218,21 @@ final class PersonAuditRepository
                 SELECT 1 FROM reimbursement_entries re
                 WHERE re.id = a.entity_id
                   AND re.person_id = :person_id_reimbursement
+            ))
+            OR (a.entity = "process_comment" AND EXISTS (
+                SELECT 1 FROM process_comments pc
+                WHERE pc.id = a.entity_id
+                  AND pc.person_id = :person_id_process_comment
+            ))
+            OR (a.entity = "process_admin_timeline_note" AND EXISTS (
+                SELECT 1 FROM process_admin_timeline_notes patn
+                WHERE patn.id = a.entity_id
+                  AND patn.person_id = :person_id_process_admin_timeline
+            ))
+            OR (a.entity = "analyst_pending_item" AND EXISTS (
+                SELECT 1 FROM analyst_pending_items api
+                WHERE api.id = a.entity_id
+                  AND api.person_id = :person_id_pending_item
             ))
         )';
     }

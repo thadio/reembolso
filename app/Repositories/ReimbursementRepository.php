@@ -76,6 +76,7 @@ final class ReimbursementRepository
                 r.due_date,
                 r.paid_at,
                 r.notes,
+                r.calculation_memory,
                 r.created_by,
                 r.created_at,
                 r.updated_at,
@@ -115,6 +116,7 @@ final class ReimbursementRepository
                 r.due_date,
                 r.paid_at,
                 r.notes,
+                r.calculation_memory,
                 r.created_by,
                 r.created_at,
                 r.updated_at,
@@ -147,6 +149,7 @@ final class ReimbursementRepository
         ?string $dueDate,
         ?string $paidAt,
         ?string $notes,
+        ?string $calculationMemory,
         ?int $createdBy
     ): int {
         $stmt = $this->db->prepare(
@@ -161,6 +164,7 @@ final class ReimbursementRepository
                 due_date,
                 paid_at,
                 notes,
+                calculation_memory,
                 created_by,
                 created_at,
                 updated_at,
@@ -176,6 +180,7 @@ final class ReimbursementRepository
                 :due_date,
                 :paid_at,
                 :notes,
+                :calculation_memory,
                 :created_by,
                 NOW(),
                 NOW(),
@@ -194,10 +199,41 @@ final class ReimbursementRepository
             'due_date' => $dueDate,
             'paid_at' => $paidAt,
             'notes' => $notes,
+            'calculation_memory' => $calculationMemory,
             'created_by' => $createdBy,
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function recentCalculationMemoriesByPerson(int $personId, int $limit = 8): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                r.id,
+                r.entry_type,
+                r.status,
+                r.title,
+                r.amount,
+                r.reference_month,
+                r.calculation_memory,
+                r.created_at,
+                u.name AS created_by_name
+             FROM reimbursement_entries r
+             LEFT JOIN users u ON u.id = r.created_by
+             WHERE r.person_id = :person_id
+               AND r.deleted_at IS NULL
+               AND r.calculation_memory IS NOT NULL
+               AND r.calculation_memory <> ""
+             ORDER BY r.created_at DESC, r.id DESC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':person_id', $personId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', max(1, min(30, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
     }
 
     public function markAsPaid(int $entryId, string $paidAt): bool

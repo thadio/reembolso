@@ -35,6 +35,7 @@ final class ReportService
         $operationalBottlenecks = $this->reports->operationalBottlenecks($filters, 8);
         $operationalList = $this->reports->paginateOperationalRows($filters, $page, $perPage);
         $financial = $this->reports->financialDataset($filters);
+        $financialStatus = $this->reports->financialStatusDataset($filters);
 
         return [
             'filters' => $filters,
@@ -49,7 +50,10 @@ final class ReportService
                     'pages' => $operationalList['pages'],
                 ],
             ],
-            'financial' => $financial,
+            'financial' => [
+                ...$financial,
+                'status_panel' => $financialStatus,
+            ],
             'organs' => $this->reports->activeOrgans(),
             'status_options' => $this->reports->activeStatusesForSla(),
             'severity_options' => $this->severityOptions(),
@@ -344,6 +348,151 @@ final class ReportService
         ];
     }
 
+    /**
+     * @param array<string, mixed> $inputFilters
+     * @return array{
+     *   ok: bool,
+     *   errors: array<int, string>,
+     *   file_name: string,
+     *   path: string,
+     *   stats: array<string, int>
+     * }
+     */
+    public function exportAuditZip(array $inputFilters, int $userId, string $ip, string $userAgent): array
+    {
+        if (!class_exists(ZipArchive::class)) {
+            return [
+                'ok' => false,
+                'errors' => ['Extensao ZipArchive nao disponivel no PHP do servidor.'],
+                'file_name' => '',
+                'path' => '',
+                'stats' => [],
+            ];
+        }
+
+        $filters = $this->normalizeFilters($inputFilters);
+
+        $criticalRows = $this->reports->auditCriticalRows($filters, 8000);
+        $sensitiveRows = $this->reports->auditSensitiveAccessRows($filters, 8000);
+        $openPendingRows = $this->reports->auditOpenPendingRows($filters, 8000);
+        $unresolvedDivergenceRows = $this->reports->auditUnresolvedDivergenceRows($filters, 8000);
+
+        $zipPath = $this->createZipTempPath();
+        if ($zipPath === null) {
+            return [
+                'ok' => false,
+                'errors' => ['Nao foi possivel criar arquivo temporario para o pacote ZIP de auditoria.'],
+                'file_name' => '',
+                'path' => '',
+                'stats' => [],
+            ];
+        }
+
+        $fileName = sprintf('auditoria-cgu-tcu-%04d-%02d-%02d-%s.zip', (int) $filters['year'], (int) $filters['month_from'], (int) $filters['month_to'], date('Ymd_His'));
+
+        $zip = new ZipArchive();
+        $openResult = $zip->open($zipPath, ZipArchive::OVERWRITE);
+        if ($openResult !== true) {
+            @unlink($zipPath);
+
+            return [
+                'ok' => false,
+                'errors' => ['Falha ao abrir arquivo ZIP temporario para escrita.'],
+                'file_name' => '',
+                'path' => '',
+                'stats' => [],
+            ];
+        }
+
+        try {
+            $zip->addFromString('auditoria/trilha_critica_auditoria.csv', $this->csvString($this->buildAuditCriticalCsvRows($criticalRows)));
+            $zip->addFromString('auditoria/acessos_sensiveis.csv', $this->csvString($this->buildAuditSensitiveCsvRows($sensitiveRows)));
+            $zip->addFromString('auditoria/pendencias_abertas.csv', $this->csvString($this->buildAuditOpenPendingCsvRows($openPendingRows)));
+            $zip->addFromString('auditoria/divergencias_sem_justificativa.csv', $this->csvString($this->buildAuditUnresolvedDivergenceCsvRows($unresolvedDivergenceRows)));
+
+            $manifestLines = [
+                'Pacote de auditoria (CGU/TCU)',
+                'Gerado em: ' . date('Y-m-d H:i:s'),
+                'Periodo: ' . $this->periodLabel($filters),
+                'Orgao: ' . $this->organLabel((int) $filters['organ_id']),
+                'Filtro textual: ' . (string) ($filters['q'] !== '' ? $filters['q'] : 'n/a'),
+                '',
+                'Arquivos gerados:',
+                '- auditoria/trilha_critica_auditoria.csv',
+                '- auditoria/acessos_sensiveis.csv',
+                '- auditoria/pendencias_abertas.csv',
+                '- auditoria/divergencias_sem_justificativa.csv',
+                '',
+                'Contagens:',
+                '- trilha critica: ' . count($criticalRows),
+                '- acessos sensiveis: ' . count($sensitiveRows),
+                '- pendencias abertas: ' . count($openPendingRows),
+                '- divergencias sem justificativa: ' . count($unresolvedDivergenceRows),
+            ];
+            $zip->addFromString('manifesto_auditoria.txt', implode("\n", $manifestLines) . "\n");
+
+            $zip->close();
+        } catch (Throwable $throwable) {
+            if ($zip instanceof ZipArchive) {
+                $zip->close();
+            }
+            @unlink($zipPath);
+
+            return [
+                'ok' => false,
+                'errors' => ['Falha ao montar pacote de auditoria: ' . $throwable->getMessage()],
+                'file_name' => '',
+                'path' => '',
+                'stats' => [],
+            ];
+        }
+
+        $stats = [
+            'critical_rows' => count($criticalRows),
+            'sensitive_rows' => count($sensitiveRows),
+            'open_pending_rows' => count($openPendingRows),
+            'unresolved_divergence_rows' => count($unresolvedDivergenceRows),
+        ];
+
+        $this->audit->log(
+            entity: 'report',
+            entityId: null,
+            action: 'export_audit_zip',
+            beforeData: null,
+            afterData: [
+                'filters' => $filters,
+                'stats' => $stats,
+                'file_name' => $fileName,
+            ],
+            metadata: null,
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'report',
+            type: 'report.export_audit_zip',
+            payload: [
+                'year' => $filters['year'],
+                'month_from' => $filters['month_from'],
+                'month_to' => $filters['month_to'],
+                'organ_id' => $filters['organ_id'],
+                ...$stats,
+            ],
+            entityId: null,
+            userId: $userId,
+        );
+
+        return [
+            'ok' => true,
+            'errors' => [],
+            'file_name' => $fileName,
+            'path' => $zipPath,
+            'stats' => $stats,
+        ];
+    }
+
     /** @return array<int, array{value: string, label: string}> */
     public function severityOptions(): array
     {
@@ -374,7 +523,10 @@ final class ReportService
         $operationalSummary = $this->reports->operationalSummary($filters);
         $operationalBottlenecks = $this->reports->operationalBottlenecks($filters, 20);
         $operationalRows = $this->reports->operationalRowsForExport($filters, 5000);
-        $financial = $this->reports->financialDataset($filters);
+        $financial = [
+            ...$this->reports->financialDataset($filters),
+            'status_panel' => $this->reports->financialStatusDataset($filters),
+        ];
         $organLabel = $this->organLabel((int) $filters['organ_id']);
 
         $rows = [];
@@ -426,6 +578,9 @@ final class ReportService
 
         $financialSummary = is_array($financial['summary'] ?? null) ? $financial['summary'] : [];
         $financialMonths = is_array($financial['months'] ?? null) ? $financial['months'] : [];
+        $financialStatus = is_array($financial['status_panel'] ?? null) ? $financial['status_panel'] : [];
+        $financialStatusSummary = is_array($financialStatus['summary'] ?? null) ? $financialStatus['summary'] : [];
+        $financialStatusMonths = is_array($financialStatus['months'] ?? null) ? $financialStatus['months'] : [];
 
         $rows[] = ['Resumo financeiro'];
         $rows[] = ['previsto_total', number_format((float) ($financialSummary['forecast_total'] ?? 0), 2, '.', '')];
@@ -437,6 +592,18 @@ final class ReportService
         $rows[] = ['cobertura_pagamento_percentual', number_format((float) ($financialSummary['payment_coverage_percent'] ?? 0), 2, '.', '')];
         $rows[] = [];
 
+        $rows[] = ['Resumo financeiro por status'];
+        $rows[] = ['abertos_qtd', (string) (int) ($financialStatusSummary['open_count'] ?? 0)];
+        $rows[] = ['abertos_valor', number_format((float) ($financialStatusSummary['open_amount'] ?? 0), 2, '.', '')];
+        $rows[] = ['vencidos_qtd', (string) (int) ($financialStatusSummary['overdue_count'] ?? 0)];
+        $rows[] = ['vencidos_valor', number_format((float) ($financialStatusSummary['overdue_amount'] ?? 0), 2, '.', '')];
+        $rows[] = ['pagos_qtd', (string) (int) ($financialStatusSummary['paid_count'] ?? 0)];
+        $rows[] = ['pagos_valor', number_format((float) ($financialStatusSummary['paid_amount'] ?? 0), 2, '.', '')];
+        $rows[] = ['conciliados_qtd', (string) (int) ($financialStatusSummary['reconciled_count'] ?? 0)];
+        $rows[] = ['conciliados_valor', number_format((float) ($financialStatusSummary['reconciled_amount'] ?? 0), 2, '.', '')];
+        $rows[] = ['cobertura_conciliacao_percentual', number_format((float) ($financialStatusSummary['reconciled_coverage_percent'] ?? 0), 2, '.', '')];
+        $rows[] = [];
+
         $rows[] = ['Financeiro mensal'];
         $rows[] = ['mes', 'previsto', 'efetivo', 'pago', 'a_pagar'];
         foreach ($financialMonths as $month) {
@@ -446,6 +613,33 @@ final class ReportService
                 number_format((float) ($month['effective_amount'] ?? 0), 2, '.', ''),
                 number_format((float) ($month['paid_amount'] ?? 0), 2, '.', ''),
                 number_format((float) ($month['payable_amount'] ?? 0), 2, '.', ''),
+            ];
+        }
+        $rows[] = [];
+
+        $rows[] = ['Status financeiro mensal'];
+        $rows[] = [
+            'mes',
+            'abertos_qtd',
+            'abertos_valor',
+            'vencidos_qtd',
+            'vencidos_valor',
+            'pagos_qtd',
+            'pagos_valor',
+            'conciliados_qtd',
+            'conciliados_valor',
+        ];
+        foreach ($financialStatusMonths as $month) {
+            $rows[] = [
+                (string) ($month['month_label'] ?? ''),
+                (string) (int) ($month['open_count'] ?? 0),
+                number_format((float) ($month['open_amount'] ?? 0), 2, '.', ''),
+                (string) (int) ($month['overdue_count'] ?? 0),
+                number_format((float) ($month['overdue_amount'] ?? 0), 2, '.', ''),
+                (string) (int) ($month['paid_count'] ?? 0),
+                number_format((float) ($month['paid_amount'] ?? 0), 2, '.', ''),
+                (string) (int) ($month['reconciled_count'] ?? 0),
+                number_format((float) ($month['reconciled_amount'] ?? 0), 2, '.', ''),
             ];
         }
 
@@ -467,7 +661,10 @@ final class ReportService
         $operationalSummary = $this->reports->operationalSummary($filters);
         $operationalBottlenecks = $this->reports->operationalBottlenecks($filters, 10);
         $operationalRows = $this->reports->operationalRowsForExport($filters, 220);
-        $financial = $this->reports->financialDataset($filters);
+        $financial = [
+            ...$this->reports->financialDataset($filters),
+            'status_panel' => $this->reports->financialStatusDataset($filters),
+        ];
         $organLabel = $this->organLabel((int) $filters['organ_id']);
 
         $lines = [];
@@ -517,6 +714,20 @@ final class ReportService
         $lines[] = 'Cobertura de pagamento: ' . number_format((float) ($financialSummary['payment_coverage_percent'] ?? 0), 2, ',', '.') . '%';
         $lines[] = '';
 
+        $financialStatus = is_array($financial['status_panel'] ?? null) ? $financial['status_panel'] : [];
+        $financialStatusSummary = is_array($financialStatus['summary'] ?? null) ? $financialStatus['summary'] : [];
+        $lines[] = '[FINANCEIRO POR STATUS]';
+        $lines[] = 'Abertos: ' . (string) (int) ($financialStatusSummary['open_count'] ?? 0)
+            . ' | ' . $this->money((float) ($financialStatusSummary['open_amount'] ?? 0));
+        $lines[] = 'Vencidos: ' . (string) (int) ($financialStatusSummary['overdue_count'] ?? 0)
+            . ' | ' . $this->money((float) ($financialStatusSummary['overdue_amount'] ?? 0));
+        $lines[] = 'Pagos: ' . (string) (int) ($financialStatusSummary['paid_count'] ?? 0)
+            . ' | ' . $this->money((float) ($financialStatusSummary['paid_amount'] ?? 0));
+        $lines[] = 'Conciliados: ' . (string) (int) ($financialStatusSummary['reconciled_count'] ?? 0)
+            . ' | ' . $this->money((float) ($financialStatusSummary['reconciled_amount'] ?? 0));
+        $lines[] = 'Cobertura de conciliacao: ' . number_format((float) ($financialStatusSummary['reconciled_coverage_percent'] ?? 0), 2, ',', '.') . '%';
+        $lines[] = '';
+
         $lines[] = '[FINANCEIRO MENSAL]';
         $financialMonths = is_array($financial['months'] ?? null) ? $financial['months'] : [];
         foreach ($financialMonths as $month) {
@@ -527,6 +738,24 @@ final class ReportService
                 $this->money((float) ($month['effective_amount'] ?? 0)),
                 $this->money((float) ($month['paid_amount'] ?? 0)),
                 $this->money((float) ($month['payable_amount'] ?? 0)),
+            );
+        }
+        $lines[] = '';
+
+        $lines[] = '[STATUS FINANCEIRO MENSAL]';
+        $financialStatusMonths = is_array($financialStatus['months'] ?? null) ? $financialStatus['months'] : [];
+        foreach ($financialStatusMonths as $month) {
+            $lines[] = sprintf(
+                '%s | Abertos: %d (%s) | Vencidos: %d (%s) | Pagos: %d (%s) | Conciliados: %d (%s)',
+                (string) ($month['month_label'] ?? ''),
+                (int) ($month['open_count'] ?? 0),
+                $this->money((float) ($month['open_amount'] ?? 0)),
+                (int) ($month['overdue_count'] ?? 0),
+                $this->money((float) ($month['overdue_amount'] ?? 0)),
+                (int) ($month['paid_count'] ?? 0),
+                $this->money((float) ($month['paid_amount'] ?? 0)),
+                (int) ($month['reconciled_count'] ?? 0),
+                $this->money((float) ($month['reconciled_amount'] ?? 0)),
             );
         }
         $lines[] = '';
@@ -637,6 +866,154 @@ final class ReportService
         }
 
         return $rows;
+    }
+
+    /** @param array<int, array<string, mixed>> $rows
+     *  @return array<int, array<int, string|int|float>>
+     */
+    private function buildAuditCriticalCsvRows(array $rows): array
+    {
+        $payload = [[
+            'audit_id',
+            'data_hora',
+            'entidade',
+            'entidade_id',
+            'acao',
+            'usuario',
+            'ip',
+            'user_agent',
+        ]];
+
+        foreach ($rows as $row) {
+            $payload[] = [
+                (int) ($row['id'] ?? 0),
+                (string) ($row['created_at'] ?? ''),
+                (string) ($row['entity'] ?? ''),
+                isset($row['entity_id']) ? (string) $row['entity_id'] : '',
+                (string) ($row['action'] ?? ''),
+                (string) ($row['user_name'] ?? 'Sistema'),
+                (string) ($row['ip'] ?? ''),
+                (string) ($row['user_agent'] ?? ''),
+            ];
+        }
+
+        return $payload;
+    }
+
+    /** @param array<int, array<string, mixed>> $rows
+     *  @return array<int, array<int, string|int|float>>
+     */
+    private function buildAuditSensitiveCsvRows(array $rows): array
+    {
+        $payload = [[
+            'access_id',
+            'data_hora',
+            'acao',
+            'sensibilidade',
+            'entidade',
+            'entidade_id',
+            'subject_person_id',
+            'subject_label',
+            'usuario',
+            'ip',
+            'context_path',
+        ]];
+
+        foreach ($rows as $row) {
+            $payload[] = [
+                (int) ($row['id'] ?? 0),
+                (string) ($row['created_at'] ?? ''),
+                (string) ($row['action'] ?? ''),
+                (string) ($row['sensitivity'] ?? ''),
+                (string) ($row['entity'] ?? ''),
+                isset($row['entity_id']) ? (string) $row['entity_id'] : '',
+                isset($row['subject_person_id']) ? (string) $row['subject_person_id'] : '',
+                (string) ($row['subject_label'] ?? ''),
+                (string) ($row['user_name'] ?? 'Sistema'),
+                (string) ($row['ip'] ?? ''),
+                (string) ($row['context_path'] ?? ''),
+            ];
+        }
+
+        return $payload;
+    }
+
+    /** @param array<int, array<string, mixed>> $rows
+     *  @return array<int, array<int, string|int|float>>
+     */
+    private function buildAuditOpenPendingCsvRows(array $rows): array
+    {
+        $payload = [[
+            'pending_id',
+            'orgao',
+            'pessoa',
+            'sei',
+            'tipo',
+            'titulo',
+            'severidade',
+            'status',
+            'vencimento',
+            'criado_em',
+        ]];
+
+        foreach ($rows as $row) {
+            $payload[] = [
+                (int) ($row['id'] ?? 0),
+                (string) ($row['organ_name'] ?? ''),
+                (string) ($row['person_name'] ?? ''),
+                (string) ($row['sei_process_number'] ?? ''),
+                (string) ($row['pending_type'] ?? ''),
+                (string) ($row['title'] ?? ''),
+                (string) ($row['severity'] ?? ''),
+                (string) ($row['status'] ?? ''),
+                (string) ($row['due_date'] ?? ''),
+                (string) ($row['created_at'] ?? ''),
+            ];
+        }
+
+        return $payload;
+    }
+
+    /** @param array<int, array<string, mixed>> $rows
+     *  @return array<int, array<int, string|int|float>>
+     */
+    private function buildAuditUnresolvedDivergenceCsvRows(array $rows): array
+    {
+        $payload = [[
+            'divergence_id',
+            'orgao',
+            'pessoa',
+            'sei',
+            'competencia',
+            'tipo',
+            'severidade',
+            'valor_previsto',
+            'valor_real',
+            'diferenca',
+            'limiar',
+            'status_conciliacao',
+            'criado_em',
+        ]];
+
+        foreach ($rows as $row) {
+            $payload[] = [
+                (int) ($row['id'] ?? 0),
+                (string) ($row['organ_name'] ?? ''),
+                (string) ($row['person_name'] ?? ''),
+                (string) ($row['sei_process_number'] ?? ''),
+                (string) ($row['reference_month'] ?? ''),
+                (string) ($row['divergence_type'] ?? ''),
+                (string) ($row['severity'] ?? ''),
+                number_format((float) ($row['expected_amount'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['actual_amount'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['difference_amount'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['threshold_amount'] ?? 0), 2, '.', ''),
+                (string) ($row['reconciliation_status'] ?? ''),
+                (string) ($row['created_at'] ?? ''),
+            ];
+        }
+
+        return $payload;
     }
 
     /**

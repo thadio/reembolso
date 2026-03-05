@@ -59,6 +59,8 @@ final class Config
                 'kpi_snapshot_dir' => Env::get('OPS_KPI_SNAPSHOT_DIR', 'storage/ops/kpi_snapshots'),
                 'kpi_snapshot_retention_days' => (int) Env::get('OPS_KPI_SNAPSHOT_RETENTION_DAYS', '30'),
                 'kpi_snapshot_max_age_minutes' => (int) Env::get('OPS_KPI_SNAPSHOT_MAX_AGE_MINUTES', '240'),
+                'health_panel_snapshot_dir' => Env::get('OPS_HEALTH_PANEL_SNAPSHOT_DIR', 'storage/ops/health-panel'),
+                'log_severity_snapshot_dir' => Env::get('OPS_LOG_SEVERITY_SNAPSHOT_DIR', 'storage/ops/log-severity'),
             ],
             'seed' => [
                 'admin_name' => Env::get('SEED_ADMIN_NAME', 'Administrador Sistema'),

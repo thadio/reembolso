@@ -100,9 +100,12 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
       <h2>Boletos estruturados</h2>
       <p class="muted">Controle por orgao, competencia, metadados e rateio por pessoa.</p>
     </div>
-    <?php if (($canManage ?? false) === true): ?>
-      <a class="btn btn-primary" href="<?= e(url('/invoices/create')) ?>">Novo boleto</a>
-    <?php endif; ?>
+    <div class="actions-inline">
+      <a class="btn btn-outline" href="<?= e(url('/invoices/payment-batches')) ?>">Lotes de pagamento</a>
+      <?php if (($canManage ?? false) === true): ?>
+        <a class="btn btn-primary" href="<?= e(url('/invoices/create')) ?>">Novo boleto</a>
+      <?php endif; ?>
+    </div>
   </div>
 
   <form method="get" action="<?= e(url('/invoices')) ?>" class="filters-row filters-invoice">

@@ -12,6 +12,27 @@ final class OrganRepository
     {
     }
 
+    public function beginTransaction(): void
+    {
+        if (!$this->db->inTransaction()) {
+            $this->db->beginTransaction();
+        }
+    }
+
+    public function commit(): void
+    {
+        if ($this->db->inTransaction()) {
+            $this->db->commit();
+        }
+    }
+
+    public function rollBack(): void
+    {
+        if ($this->db->inTransaction()) {
+            $this->db->rollBack();
+        }
+    }
+
     /**
      * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int, pages: int}
      */

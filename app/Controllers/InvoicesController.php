@@ -60,6 +60,162 @@ final class InvoicesController extends Controller
         ]);
     }
 
+    public function paymentBatches(Request $request): void
+    {
+        $filters = [
+            'q' => (string) $request->input('q', ''),
+            'status' => (string) $request->input('status', ''),
+            'organ_id' => max(0, (int) $request->input('organ_id', '0')),
+            'reference_month' => (string) $request->input('reference_month', ''),
+            'payment_date_from' => (string) $request->input('payment_date_from', ''),
+            'payment_date_to' => (string) $request->input('payment_date_to', ''),
+            'sort' => (string) $request->input('sort', 'created_at'),
+            'dir' => (string) $request->input('dir', 'desc'),
+        ];
+
+        $page = max(1, (int) $request->input('page', '1'));
+        $perPage = max(5, min(50, (int) $request->input('per_page', '10')));
+        $canManage = $this->app->auth()->hasPermission('invoice.manage');
+
+        $result = $this->service()->paginatePaymentBatches($filters, $page, $perPage);
+        $candidates = $canManage
+            ? $this->service()->paymentBatchCandidates($filters, 220)
+            : [];
+
+        $oldInput = Session::getFlash('_old', []);
+        $selectedPaymentIds = [];
+        if (is_array($oldInput) && isset($oldInput['payment_ids'])) {
+            $selectedPaymentIds = array_values(array_filter(
+                array_map(static fn (mixed $value): int => (int) $value, (array) $oldInput['payment_ids']),
+                static fn (int $value): bool => $value > 0
+            ));
+        }
+
+        $this->view('invoices/payment_batches/index', [
+            'title' => 'Lotes de pagamento',
+            'filters' => [
+                ...$filters,
+                'per_page' => $perPage,
+            ],
+            'pagination' => [
+                'total' => $result['total'],
+                'page' => $result['page'],
+                'per_page' => $result['per_page'],
+                'pages' => $result['pages'],
+            ],
+            'batches' => $result['items'],
+            'candidates' => $candidates,
+            'selectedPaymentIds' => $selectedPaymentIds,
+            'statusOptions' => $this->service()->paymentBatchStatusOptions(),
+            'organs' => $this->service()->activeOrgans(),
+            'canManage' => $canManage,
+        ]);
+    }
+
+    public function showPaymentBatch(Request $request): void
+    {
+        $batchId = (int) $request->input('id', '0');
+        if ($batchId <= 0) {
+            flash('error', 'Lote de pagamento invalido.');
+            $this->redirect('/invoices/payment-batches');
+        }
+
+        $detail = $this->service()->paymentBatchDetail($batchId);
+        if ($detail === null) {
+            flash('error', 'Lote de pagamento nao encontrado.');
+            $this->redirect('/invoices/payment-batches');
+        }
+
+        $this->view('invoices/payment_batches/show', [
+            'title' => 'Detalhe do lote de pagamento',
+            'batch' => $detail['batch'],
+            'items' => $detail['items'],
+            'statusOptions' => $this->service()->paymentBatchStatusOptions(),
+            'canManage' => $this->app->auth()->hasPermission('invoice.manage'),
+            'finalApprovalSimulation' => $this->currentFinalApprovalSimulationForBatch($batchId),
+        ]);
+    }
+
+    public function storePaymentBatch(Request $request): void
+    {
+        $input = $request->all();
+        Session::flashInput($input);
+
+        $result = $this->service()->createPaymentBatch(
+            input: $input,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/invoices/payment-batches');
+        }
+
+        flash('success', $result['message']);
+        $this->redirect('/invoices/payment-batches/show?id=' . (int) ($result['id'] ?? 0));
+    }
+
+    public function simulatePaymentBatchFinalApproval(Request $request): void
+    {
+        $batchId = (int) $request->input('batch_id', '0');
+        if ($batchId <= 0) {
+            flash('error', 'Lote de pagamento invalido.');
+            $this->redirect('/invoices/payment-batches');
+        }
+
+        $result = $this->service()->simulatePaymentBatchFinalApproval(
+            batchId: $batchId,
+            targetStatus: (string) $request->input('target_status', ''),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/invoices/payment-batches/show?id=' . $batchId);
+        }
+
+        $simulation = is_array($result['simulation'] ?? null) ? $result['simulation'] : null;
+        if ($simulation !== null) {
+            Session::set('payment_batch_final_approval_simulation', $simulation);
+        }
+
+        flash('success', $result['message']);
+        $this->redirect('/invoices/payment-batches/show?id=' . $batchId);
+    }
+
+    public function updatePaymentBatchStatus(Request $request): void
+    {
+        $batchId = (int) $request->input('batch_id', '0');
+        if ($batchId <= 0) {
+            flash('error', 'Lote de pagamento invalido.');
+            $this->redirect('/invoices/payment-batches');
+        }
+
+        $result = $this->service()->updatePaymentBatchStatus(
+            batchId: $batchId,
+            status: (string) $request->input('status', ''),
+            note: (string) $request->input('note', ''),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+            simulationToken: (string) $request->input('simulation_token', ''),
+            finalApprovalSimulation: $this->currentFinalApprovalSimulationForBatch($batchId)
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/invoices/payment-batches/show?id=' . $batchId);
+        }
+
+        Session::remove('payment_batch_final_approval_simulation');
+        flash('success', $result['message']);
+        $this->redirect('/invoices/payment-batches/show?id=' . $batchId);
+    }
+
     public function store(Request $request): void
     {
         $input = $request->all();
@@ -382,5 +538,27 @@ final class InvoicesController extends Controller
                 $this->app->events()
             )
         );
+    }
+
+    /** @return array<string, mixed>|null */
+    private function currentFinalApprovalSimulationForBatch(int $batchId): ?array
+    {
+        $payload = Session::get('payment_batch_final_approval_simulation');
+        if (!is_array($payload)) {
+            return null;
+        }
+
+        if ((int) ($payload['batch_id'] ?? 0) !== $batchId) {
+            return null;
+        }
+
+        $expiresAt = (int) ($payload['expires_at'] ?? 0);
+        if ($expiresAt <= time()) {
+            Session::remove('payment_batch_final_approval_simulation');
+
+            return null;
+        }
+
+        return $payload;
     }
 }

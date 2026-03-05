@@ -329,6 +329,353 @@ final class InvoiceRepository
         return $stmt->fetchAll();
     }
 
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int, pages: int}
+     */
+    public function paginatePaymentBatches(array $filters, int $page, int $perPage): array
+    {
+        $sortMap = [
+            'batch_code' => 'pb.batch_code',
+            'status' => 'pb.status',
+            'scheduled_payment_date' => 'pb.scheduled_payment_date',
+            'payments_count' => 'pb.payments_count',
+            'total_amount' => 'pb.total_amount',
+            'created_at' => 'pb.created_at',
+        ];
+
+        $sort = (string) ($filters['sort'] ?? 'created_at');
+        $dir = (string) ($filters['dir'] ?? 'desc');
+        $sortColumn = $sortMap[$sort] ?? 'pb.created_at';
+        $direction = strtoupper($dir) === 'ASC' ? 'ASC' : 'DESC';
+
+        $where = 'WHERE pb.deleted_at IS NULL';
+        $params = [];
+
+        $query = trim((string) ($filters['q'] ?? ''));
+        if ($query !== '') {
+            $where .= ' AND (
+                pb.batch_code LIKE :q_code
+                OR pb.title LIKE :q_title
+                OR pb.notes LIKE :q_notes
+            )';
+            $search = '%' . $query . '%';
+            $params['q_code'] = $search;
+            $params['q_title'] = $search;
+            $params['q_notes'] = $search;
+        }
+
+        $status = trim((string) ($filters['status'] ?? ''));
+        if ($status !== '') {
+            $where .= ' AND pb.status = :status';
+            $params['status'] = $status;
+        }
+
+        $referenceMonth = trim((string) ($filters['reference_month'] ?? ''));
+        if ($referenceMonth !== '') {
+            $where .= ' AND DATE_FORMAT(pb.reference_month, "%Y-%m") = :reference_month';
+            $params['reference_month'] = $referenceMonth;
+        }
+
+        $organId = (int) ($filters['organ_id'] ?? 0);
+        if ($organId > 0) {
+            $where .= ' AND EXISTS (
+                SELECT 1
+                FROM payment_batch_items pbi_filter
+                INNER JOIN invoices i_filter ON i_filter.id = pbi_filter.invoice_id AND i_filter.deleted_at IS NULL
+                WHERE pbi_filter.batch_id = pb.id
+                  AND i_filter.organ_id = :organ_id
+            )';
+            $params['organ_id'] = $organId;
+        }
+
+        $countStmt = $this->db->prepare(
+            "SELECT COUNT(*) AS total
+             FROM payment_batches pb
+             {$where}"
+        );
+        $countStmt->execute($params);
+        $total = (int) ($countStmt->fetch()['total'] ?? 0);
+
+        $pages = max(1, (int) ceil($total / $perPage));
+        $page = min(max(1, $page), $pages);
+        $offset = ($page - 1) * $perPage;
+
+        $listStmt = $this->db->prepare(
+            "SELECT
+                pb.id,
+                pb.batch_code,
+                pb.title,
+                pb.status,
+                pb.reference_month,
+                pb.scheduled_payment_date,
+                pb.total_amount,
+                pb.payments_count,
+                pb.notes,
+                pb.created_by,
+                pb.closed_by,
+                pb.closed_at,
+                pb.created_at,
+                pb.updated_at,
+                u1.name AS created_by_name,
+                u2.name AS closed_by_name,
+                (
+                    SELECT COUNT(DISTINCT i_scope.organ_id)
+                    FROM payment_batch_items pbi_scope
+                    INNER JOIN invoices i_scope ON i_scope.id = pbi_scope.invoice_id AND i_scope.deleted_at IS NULL
+                    WHERE pbi_scope.batch_id = pb.id
+                ) AS organs_count,
+                (
+                    SELECT MIN(p_scope.payment_date)
+                    FROM payment_batch_items pbi_scope
+                    INNER JOIN payments p_scope ON p_scope.id = pbi_scope.payment_id AND p_scope.deleted_at IS NULL
+                    WHERE pbi_scope.batch_id = pb.id
+                ) AS payment_date_from,
+                (
+                    SELECT MAX(p_scope.payment_date)
+                    FROM payment_batch_items pbi_scope
+                    INNER JOIN payments p_scope ON p_scope.id = pbi_scope.payment_id AND p_scope.deleted_at IS NULL
+                    WHERE pbi_scope.batch_id = pb.id
+                ) AS payment_date_to
+             FROM payment_batches pb
+             LEFT JOIN users u1 ON u1.id = pb.created_by
+             LEFT JOIN users u2 ON u2.id = pb.closed_by
+             {$where}
+             ORDER BY {$sortColumn} {$direction}, pb.id DESC
+             LIMIT :limit OFFSET :offset"
+        );
+        foreach ($params as $key => $value) {
+            $listStmt->bindValue(':' . $key, $value);
+        }
+        $listStmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+        $listStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $listStmt->execute();
+
+        return [
+            'items' => $listStmt->fetchAll(),
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $perPage,
+            'pages' => $pages,
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findPaymentBatchById(int $batchId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                pb.id,
+                pb.batch_code,
+                pb.title,
+                pb.status,
+                pb.reference_month,
+                pb.scheduled_payment_date,
+                pb.total_amount,
+                pb.payments_count,
+                pb.notes,
+                pb.created_by,
+                pb.closed_by,
+                pb.closed_at,
+                pb.created_at,
+                pb.updated_at,
+                u1.name AS created_by_name,
+                u2.name AS closed_by_name,
+                (
+                    SELECT COUNT(DISTINCT i_scope.organ_id)
+                    FROM payment_batch_items pbi_scope
+                    INNER JOIN invoices i_scope ON i_scope.id = pbi_scope.invoice_id AND i_scope.deleted_at IS NULL
+                    WHERE pbi_scope.batch_id = pb.id
+                ) AS organs_count,
+                (
+                    SELECT MIN(p_scope.payment_date)
+                    FROM payment_batch_items pbi_scope
+                    INNER JOIN payments p_scope ON p_scope.id = pbi_scope.payment_id AND p_scope.deleted_at IS NULL
+                    WHERE pbi_scope.batch_id = pb.id
+                ) AS payment_date_from,
+                (
+                    SELECT MAX(p_scope.payment_date)
+                    FROM payment_batch_items pbi_scope
+                    INNER JOIN payments p_scope ON p_scope.id = pbi_scope.payment_id AND p_scope.deleted_at IS NULL
+                    WHERE pbi_scope.batch_id = pb.id
+                ) AS payment_date_to
+             FROM payment_batches pb
+             LEFT JOIN users u1 ON u1.id = pb.created_by
+             LEFT JOIN users u2 ON u2.id = pb.closed_by
+             WHERE pb.id = :id
+               AND pb.deleted_at IS NULL
+             LIMIT 1"
+        );
+        $stmt->execute(['id' => $batchId]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function paymentBatchItems(int $batchId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                pbi.id,
+                pbi.batch_id,
+                pbi.payment_id,
+                pbi.invoice_id,
+                pbi.amount,
+                pbi.payment_date,
+                p.id AS payment_internal_id,
+                p.process_reference,
+                p.proof_original_name,
+                p.proof_storage_path,
+                p.notes AS payment_notes,
+                p.created_at AS payment_created_at,
+                i.invoice_number,
+                i.reference_month AS invoice_reference_month,
+                o.name AS organ_name
+             FROM payment_batch_items pbi
+             INNER JOIN payments p ON p.id = pbi.payment_id AND p.deleted_at IS NULL
+             INNER JOIN invoices i ON i.id = pbi.invoice_id AND i.deleted_at IS NULL
+             INNER JOIN organs o ON o.id = i.organ_id
+             WHERE pbi.batch_id = :batch_id
+             ORDER BY pbi.payment_date ASC, pbi.id ASC'
+        );
+        $stmt->execute(['batch_id' => $batchId]);
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array<int, array<string, mixed>>
+     */
+    public function paymentBatchCandidates(array $filters, int $limit = 220): array
+    {
+        $where = 'WHERE p.deleted_at IS NULL
+            AND i.deleted_at IS NULL
+            AND NOT EXISTS (
+                SELECT 1
+                FROM payment_batch_items pbi
+                WHERE pbi.payment_id = p.id
+            )';
+        $params = [];
+
+        $query = trim((string) ($filters['q'] ?? ''));
+        if ($query !== '') {
+            $where .= ' AND (
+                i.invoice_number LIKE :q_invoice
+                OR i.title LIKE :q_title
+                OR o.name LIKE :q_organ
+                OR p.process_reference LIKE :q_process
+            )';
+            $search = '%' . $query . '%';
+            $params['q_invoice'] = $search;
+            $params['q_title'] = $search;
+            $params['q_organ'] = $search;
+            $params['q_process'] = $search;
+        }
+
+        $organId = (int) ($filters['organ_id'] ?? 0);
+        if ($organId > 0) {
+            $where .= ' AND i.organ_id = :organ_id';
+            $params['organ_id'] = $organId;
+        }
+
+        $referenceMonth = trim((string) ($filters['reference_month'] ?? ''));
+        if ($referenceMonth !== '') {
+            $where .= ' AND DATE_FORMAT(i.reference_month, "%Y-%m") = :reference_month';
+            $params['reference_month'] = $referenceMonth;
+        }
+
+        $paymentDateFrom = trim((string) ($filters['payment_date_from'] ?? ''));
+        if ($paymentDateFrom !== '') {
+            $where .= ' AND p.payment_date >= :payment_date_from';
+            $params['payment_date_from'] = $paymentDateFrom;
+        }
+
+        $paymentDateTo = trim((string) ($filters['payment_date_to'] ?? ''));
+        if ($paymentDateTo !== '') {
+            $where .= ' AND p.payment_date <= :payment_date_to';
+            $params['payment_date_to'] = $paymentDateTo;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT
+                p.id AS payment_id,
+                p.invoice_id,
+                p.payment_date,
+                p.amount,
+                p.process_reference,
+                i.invoice_number,
+                i.reference_month AS invoice_reference_month,
+                o.id AS organ_id,
+                o.name AS organ_name
+             FROM payments p
+             INNER JOIN invoices i ON i.id = p.invoice_id
+             INNER JOIN organs o ON o.id = i.organ_id
+             {$where}
+             ORDER BY p.payment_date DESC, p.id DESC
+             LIMIT :limit"
+        );
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value);
+        }
+        $stmt->bindValue(':limit', max(1, min(1000, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * @param array<int, int> $paymentIds
+     * @return array<int, array<string, mixed>>
+     */
+    public function findEligiblePaymentsForBatchByIds(array $paymentIds): array
+    {
+        $ids = array_values(array_filter(array_map(
+            static fn (mixed $id): int => (int) $id,
+            $paymentIds
+        ), static fn (int $id): bool => $id > 0));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($ids as $index => $id) {
+            $key = ':payment_' . $index;
+            $placeholders[] = $key;
+            $params['payment_' . $index] = $id;
+        }
+
+        $sql = 'SELECT
+                    p.id AS payment_id,
+                    p.invoice_id,
+                    p.payment_date,
+                    p.amount,
+                    p.process_reference,
+                    i.invoice_number,
+                    i.reference_month AS invoice_reference_month,
+                    o.id AS organ_id,
+                    o.name AS organ_name
+                FROM payments p
+                INNER JOIN invoices i ON i.id = p.invoice_id AND i.deleted_at IS NULL
+                INNER JOIN organs o ON o.id = i.organ_id
+                LEFT JOIN payment_batch_items pbi ON pbi.payment_id = p.id
+                WHERE p.deleted_at IS NULL
+                  AND pbi.id IS NULL
+                  AND p.id IN (' . implode(', ', $placeholders) . ')
+                ORDER BY p.id ASC';
+
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
     /** @return array<int, array<string, mixed>> */
     public function availablePeopleForLinking(int $invoiceId, int $limit = 300): array
     {
@@ -633,6 +980,120 @@ final class InvoiceRepository
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    /** @param array<string, mixed> $data */
+    public function createPaymentBatch(array $data): int
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO payment_batches (
+                batch_code,
+                title,
+                status,
+                reference_month,
+                scheduled_payment_date,
+                total_amount,
+                payments_count,
+                notes,
+                created_by,
+                closed_by,
+                closed_at,
+                created_at,
+                updated_at,
+                deleted_at
+            ) VALUES (
+                :batch_code,
+                :title,
+                :status,
+                :reference_month,
+                :scheduled_payment_date,
+                :total_amount,
+                :payments_count,
+                :notes,
+                :created_by,
+                :closed_by,
+                :closed_at,
+                NOW(),
+                NOW(),
+                NULL
+            )'
+        );
+
+        $stmt->execute([
+            'batch_code' => $data['batch_code'],
+            'title' => $data['title'],
+            'status' => $data['status'],
+            'reference_month' => $data['reference_month'],
+            'scheduled_payment_date' => $data['scheduled_payment_date'],
+            'total_amount' => $data['total_amount'],
+            'payments_count' => $data['payments_count'],
+            'notes' => $data['notes'],
+            'created_by' => $data['created_by'],
+            'closed_by' => $data['closed_by'],
+            'closed_at' => $data['closed_at'],
+        ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function addPaymentToBatch(int $batchId, int $paymentId, int $invoiceId, string $amount, string $paymentDate): int
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO payment_batch_items (
+                batch_id,
+                payment_id,
+                invoice_id,
+                amount,
+                payment_date,
+                created_at,
+                updated_at
+            ) VALUES (
+                :batch_id,
+                :payment_id,
+                :invoice_id,
+                :amount,
+                :payment_date,
+                NOW(),
+                NOW()
+            )'
+        );
+
+        $stmt->execute([
+            'batch_id' => $batchId,
+            'payment_id' => $paymentId,
+            'invoice_id' => $invoiceId,
+            'amount' => $amount,
+            'payment_date' => $paymentDate,
+        ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    public function updatePaymentBatchStatus(
+        int $batchId,
+        string $status,
+        ?string $notes,
+        ?int $closedBy,
+        ?string $closedAt
+    ): bool {
+        $stmt = $this->db->prepare(
+            'UPDATE payment_batches
+             SET status = :status,
+                 notes = :notes,
+                 closed_by = :closed_by,
+                 closed_at = :closed_at,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $batchId,
+            'status' => $status,
+            'notes' => $notes,
+            'closed_by' => $closedBy,
+            'closed_at' => $closedAt,
+        ]);
     }
 
     /** @return array<int, array<string, mixed>> */

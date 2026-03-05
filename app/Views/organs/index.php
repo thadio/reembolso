@@ -44,6 +44,19 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
     <?php endif; ?>
   </div>
 
+  <?php if (($canManage ?? false) === true): ?>
+    <form method="post" action="<?= e(url('/organs/import-csv')) ?>" enctype="multipart/form-data" class="filters-row">
+      <?= csrf_field() ?>
+      <input type="file" name="csv_file" accept=".csv,text/csv,text/plain" required>
+      <label class="muted" style="display:flex; align-items:center; gap:.35rem;">
+        <input type="checkbox" name="validate_only" value="1">
+        Apenas validar (sem gravar)
+      </label>
+      <button type="submit" class="btn btn-outline">Importar CSV</button>
+      <span class="muted">Cabecalho minimo: <code>name</code> (aceita aliases: <code>nome, orgao</code>).</span>
+    </form>
+  <?php endif; ?>
+
   <form method="get" action="<?= e(url('/organs')) ?>" class="filters-row">
     <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome, sigla ou CNPJ">
 

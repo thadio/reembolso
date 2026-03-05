@@ -156,4 +156,93 @@ final class DashboardRepository
 
         return $stmt->fetchAll();
     }
+
+    /** @return array<int, array<string, mixed>> */
+    public function executiveBottlenecks(int $limit = 8): array
+    {
+        $limit = max(1, min(20, $limit));
+
+        $stmt = $this->db->prepare(
+            'SELECT
+                s.code AS status_code,
+                s.label AS status_label,
+                s.sort_order,
+                COUNT(*) AS cases_count,
+                COUNT(DISTINCT p.organ_id) AS impacted_organs_count,
+                IFNULL(AVG(' . $this->daysInStatusExpression() . '), 0) AS avg_days_in_status,
+                IFNULL(MAX(' . $this->daysInStatusExpression() . '), 0) AS max_days_in_status,
+                SUM(CASE WHEN ' . $this->slaLevelExpression() . ' = "em_risco" THEN 1 ELSE 0 END) AS em_risco_count,
+                SUM(CASE WHEN ' . $this->slaLevelExpression() . ' = "vencido" THEN 1 ELSE 0 END) AS vencido_count
+             FROM assignments a
+             INNER JOIN people p ON p.id = a.person_id
+             INNER JOIN assignment_statuses s ON s.id = a.current_status_id
+             LEFT JOIN sla_rules sr ON sr.status_code = s.code AND sr.deleted_at IS NULL
+             WHERE a.deleted_at IS NULL
+               AND p.deleted_at IS NULL
+               AND s.is_active = 1
+               AND s.next_action_label IS NOT NULL
+               AND (sr.id IS NULL OR sr.is_active = 1)
+             GROUP BY s.code, s.label, s.sort_order
+             ORDER BY vencido_count DESC, em_risco_count DESC, avg_days_in_status DESC, cases_count DESC, s.sort_order ASC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function executiveOrganRanking(int $limit = 10): array
+    {
+        $limit = max(1, min(30, $limit));
+
+        $stmt = $this->db->prepare(
+            'SELECT
+                o.id AS organ_id,
+                o.name AS organ_name,
+                COUNT(*) AS cases_count,
+                IFNULL(AVG(' . $this->daysInStatusExpression() . '), 0) AS avg_days_in_status,
+                IFNULL(MAX(' . $this->daysInStatusExpression() . '), 0) AS max_days_in_status,
+                SUM(CASE WHEN ' . $this->slaLevelExpression() . ' = "no_prazo" THEN 1 ELSE 0 END) AS no_prazo_count,
+                SUM(CASE WHEN ' . $this->slaLevelExpression() . ' = "em_risco" THEN 1 ELSE 0 END) AS em_risco_count,
+                SUM(CASE WHEN ' . $this->slaLevelExpression() . ' = "vencido" THEN 1 ELSE 0 END) AS vencido_count
+             FROM assignments a
+             INNER JOIN people p ON p.id = a.person_id
+             INNER JOIN organs o ON o.id = p.organ_id
+             INNER JOIN assignment_statuses s ON s.id = a.current_status_id
+             LEFT JOIN sla_rules sr ON sr.status_code = s.code AND sr.deleted_at IS NULL
+             WHERE a.deleted_at IS NULL
+               AND p.deleted_at IS NULL
+               AND o.deleted_at IS NULL
+               AND s.is_active = 1
+               AND s.next_action_label IS NOT NULL
+               AND (sr.id IS NULL OR sr.is_active = 1)
+             GROUP BY o.id, o.name
+             ORDER BY vencido_count DESC, em_risco_count DESC, avg_days_in_status DESC, cases_count DESC, o.name ASC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    private function daysInStatusExpression(): string
+    {
+        return 'TIMESTAMPDIFF(DAY, a.updated_at, NOW())';
+    }
+
+    private function slaLevelExpression(): string
+    {
+        return sprintf(
+            'CASE
+                WHEN %s >= COALESCE(sr.overdue_days, 10) THEN "vencido"
+                WHEN %s >= COALESCE(sr.warning_days, 5) THEN "em_risco"
+                ELSE "no_prazo"
+             END',
+            $this->daysInStatusExpression(),
+            $this->daysInStatusExpression()
+        );
+    }
 }

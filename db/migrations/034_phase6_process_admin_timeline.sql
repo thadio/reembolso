@@ -1,0 +1,31 @@
+-- Fase 6.2 - Timeline administrativa completa por processo
+
+CREATE TABLE IF NOT EXISTS process_admin_timeline_notes (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  person_id BIGINT UNSIGNED NOT NULL,
+  assignment_id BIGINT UNSIGNED NULL,
+  title VARCHAR(190) NOT NULL,
+  description TEXT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'aberto',
+  severity VARCHAR(20) NOT NULL DEFAULT 'media',
+  is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+  event_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by BIGINT UNSIGNED NULL,
+  updated_by BIGINT UNSIGNED NULL,
+  deleted_by BIGINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at DATETIME NULL,
+  KEY idx_pat_notes_person_deleted_event (person_id, deleted_at, event_at),
+  KEY idx_pat_notes_assignment_deleted (assignment_id, deleted_at),
+  KEY idx_pat_notes_status_severity (status, severity, deleted_at),
+  KEY idx_pat_notes_pinned (is_pinned, deleted_at),
+  KEY idx_pat_notes_created_by (created_by),
+  KEY idx_pat_notes_updated_by (updated_by),
+  KEY idx_pat_notes_deleted_by (deleted_by),
+  CONSTRAINT fk_pat_notes_person FOREIGN KEY (person_id) REFERENCES people(id),
+  CONSTRAINT fk_pat_notes_assignment FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_pat_notes_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_pat_notes_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_pat_notes_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

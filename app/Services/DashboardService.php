@@ -18,6 +18,11 @@ final class DashboardService
      *   summary: array<string, int|float>,
      *   status_distribution: array<int, array<string, int|float|string>>,
      *   recent_timeline: array<int, array<string, mixed>>,
+     *   executive_panel: array{
+     *      summary: array<string, int|float>,
+     *      bottlenecks: array<int, array<string, int|float|string>>,
+     *      organ_ranking: array<int, array<string, int|float|string>>
+     *   },
      *   recommendation: array{title: string, description: string, label: string, path: string},
      *   generated_at: string,
      *   data_source: string
@@ -34,6 +39,9 @@ final class DashboardService
                 is_array($snapshot['status_distribution'] ?? null) ? $snapshot['status_distribution'] : [],
                 (int) $summary['total_people']
             );
+            $executivePanel = is_array($snapshot['executive_panel'] ?? null)
+                ? $this->normalizeExecutivePanel($snapshot['executive_panel'])
+                : $this->executivePanel();
             $recommendation = is_array($snapshot['recommendation'] ?? null)
                 ? $this->normalizeRecommendation($snapshot['recommendation'])
                 : $this->recommendation($summary);
@@ -42,6 +50,7 @@ final class DashboardService
                 'summary' => $summary,
                 'status_distribution' => $statusDistribution,
                 'recent_timeline' => $this->repository->recentTimeline($timelineLimit),
+                'executive_panel' => $executivePanel,
                 'recommendation' => $recommendation,
                 'generated_at' => (string) ($snapshot['captured_at'] ?? date('Y-m-d H:i:s')),
                 'data_source' => 'snapshot',
@@ -58,6 +67,7 @@ final class DashboardService
             'summary' => $summary,
             'status_distribution' => $statusDistribution,
             'recent_timeline' => $this->repository->recentTimeline($timelineLimit),
+            'executive_panel' => $this->executivePanel(),
             'recommendation' => $this->recommendation($summary),
             'generated_at' => date('Y-m-d H:i:s'),
             'data_source' => 'live',
@@ -252,6 +262,140 @@ final class DashboardService
             'description' => trim((string) ($payload['description'] ?? '')),
             'label' => trim((string) ($payload['label'] ?? '')),
             'path' => trim((string) ($payload['path'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{
+     *   summary: array<string, int|float>,
+     *   bottlenecks: array<int, array<string, int|float|string>>,
+     *   organ_ranking: array<int, array<string, int|float|string>>
+     * }
+     */
+    private function executivePanel(): array
+    {
+        return $this->normalizeExecutivePanel([
+            'bottlenecks' => $this->repository->executiveBottlenecks(8),
+            'organ_ranking' => $this->repository->executiveOrganRanking(10),
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array{
+     *   summary: array<string, int|float>,
+     *   bottlenecks: array<int, array<string, int|float|string>>,
+     *   organ_ranking: array<int, array<string, int|float|string>>
+     * }
+     */
+    private function normalizeExecutivePanel(array $payload): array
+    {
+        $rawBottlenecks = is_array($payload['bottlenecks'] ?? null) ? $payload['bottlenecks'] : [];
+        $rawOrganRanking = is_array($payload['organ_ranking'] ?? null) ? $payload['organ_ranking'] : [];
+
+        $bottlenecks = [];
+        foreach ($rawBottlenecks as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $casesCount = max(0, (int) ($row['cases_count'] ?? 0));
+            $riskCount = max(0, (int) ($row['em_risco_count'] ?? 0));
+            $overdueCount = max(0, (int) ($row['vencido_count'] ?? 0));
+            $criticalCount = $riskCount + $overdueCount;
+            $criticalShare = $casesCount > 0 ? round(($criticalCount / $casesCount) * 100, 1) : 0.0;
+
+            $bottlenecks[] = [
+                'status_code' => (string) ($row['status_code'] ?? ''),
+                'status_label' => (string) ($row['status_label'] ?? ''),
+                'sort_order' => max(0, (int) ($row['sort_order'] ?? 0)),
+                'cases_count' => $casesCount,
+                'impacted_organs_count' => max(0, (int) ($row['impacted_organs_count'] ?? 0)),
+                'avg_days_in_status' => round(max(0.0, (float) ($row['avg_days_in_status'] ?? 0.0)), 2),
+                'max_days_in_status' => max(0, (int) ($row['max_days_in_status'] ?? 0)),
+                'em_risco_count' => $riskCount,
+                'vencido_count' => $overdueCount,
+                'critical_count' => $criticalCount,
+                'critical_share_percent' => $criticalShare,
+            ];
+        }
+
+        $organRanking = [];
+        foreach ($rawOrganRanking as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $casesCount = max(0, (int) ($row['cases_count'] ?? 0));
+            $noPrazoCount = max(0, (int) ($row['no_prazo_count'] ?? 0));
+            $riskCount = max(0, (int) ($row['em_risco_count'] ?? 0));
+            $overdueCount = max(0, (int) ($row['vencido_count'] ?? 0));
+            $criticalCount = $riskCount + $overdueCount;
+            $criticalShare = $casesCount > 0 ? round(($criticalCount / $casesCount) * 100, 1) : 0.0;
+            $severityScore = ($overdueCount * 3) + ($riskCount * 2) + ($criticalShare / 10);
+
+            $organRanking[] = [
+                'organ_id' => max(0, (int) ($row['organ_id'] ?? 0)),
+                'organ_name' => (string) ($row['organ_name'] ?? ''),
+                'cases_count' => $casesCount,
+                'no_prazo_count' => $noPrazoCount,
+                'em_risco_count' => $riskCount,
+                'vencido_count' => $overdueCount,
+                'critical_count' => $criticalCount,
+                'critical_share_percent' => $criticalShare,
+                'avg_days_in_status' => round(max(0.0, (float) ($row['avg_days_in_status'] ?? 0.0)), 2),
+                'max_days_in_status' => max(0, (int) ($row['max_days_in_status'] ?? 0)),
+                'severity_score' => round($severityScore, 1),
+            ];
+        }
+
+        usort($organRanking, static function (array $left, array $right): int {
+            $scoreDiff = (float) ($right['severity_score'] ?? 0.0) <=> (float) ($left['severity_score'] ?? 0.0);
+            if ($scoreDiff !== 0) {
+                return $scoreDiff;
+            }
+
+            $casesDiff = (int) ($right['cases_count'] ?? 0) <=> (int) ($left['cases_count'] ?? 0);
+            if ($casesDiff !== 0) {
+                return $casesDiff;
+            }
+
+            return strcmp((string) ($left['organ_name'] ?? ''), (string) ($right['organ_name'] ?? ''));
+        });
+
+        $criticalCases = array_sum(array_map(
+            static fn (array $row): int => (int) ($row['critical_count'] ?? 0),
+            $organRanking
+        ));
+        $overdueCases = array_sum(array_map(
+            static fn (array $row): int => (int) ($row['vencido_count'] ?? 0),
+            $organRanking
+        ));
+        $riskCases = array_sum(array_map(
+            static fn (array $row): int => (int) ($row['em_risco_count'] ?? 0),
+            $organRanking
+        ));
+        $totalCases = array_sum(array_map(
+            static fn (array $row): int => (int) ($row['cases_count'] ?? 0),
+            $organRanking
+        ));
+        $organsWithCritical = count(array_filter(
+            $organRanking,
+            static fn (array $row): bool => ((int) ($row['critical_count'] ?? 0)) > 0
+        ));
+
+        return [
+            'summary' => [
+                'total_organs_monitored' => count($organRanking),
+                'organs_with_critical_cases' => $organsWithCritical,
+                'total_cases_monitored' => $totalCases,
+                'critical_cases' => $criticalCases,
+                'overdue_cases' => $overdueCases,
+                'risk_cases' => $riskCases,
+                'critical_share_percent' => $totalCases > 0 ? round(($criticalCases / $totalCases) * 100, 1) : 0.0,
+            ],
+            'bottlenecks' => $bottlenecks,
+            'organ_ranking' => $organRanking,
         ];
     }
 

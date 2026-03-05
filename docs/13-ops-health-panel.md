@@ -2,6 +2,9 @@
 
 Painel tecnico de saude operacional (fase 7.4) para consolidar checks criticos em um unico comando.
 
+Visualizacao web estruturada:
+- `GET /ops/health-panel` (requer `security.view`; consome snapshots gerados por este script e pelo `log-severity`)
+
 ## Objetivo
 - validar disponibilidade do endpoint de health;
 - consolidar severidade de logs da janela;

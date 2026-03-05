@@ -24,6 +24,7 @@ final class SlaAlertRepository
             'status_order' => 's.sort_order',
             'days_in_status' => $this->daysInStatusExpression(),
             'sla_level' => $this->slaLevelExpression(),
+            'control_status' => 'COALESCE(scc.control_status, "aberto")',
             'updated_at' => 'a.updated_at',
         ];
 
@@ -42,6 +43,7 @@ final class SlaAlertRepository
              INNER JOIN organs o ON o.id = p.organ_id
              INNER JOIN assignment_statuses s ON s.id = a.current_status_id
              LEFT JOIN sla_rules sr ON sr.status_code = s.code AND sr.deleted_at IS NULL
+             LEFT JOIN sla_case_controls scc ON scc.assignment_id = a.id AND scc.deleted_at IS NULL
              {$where}"
         );
         $countStmt->execute($params);
@@ -71,6 +73,14 @@ final class SlaAlertRepository
                 COALESCE(sr.notify_email, 0) AS notify_email,
                 COALESCE(sr.notify_recipients, '') AS notify_recipients,
                 COALESCE(sr.is_active, 1) AS rule_is_active,
+                CASE
+                    WHEN {$this->slaLevelExpression()} = 'vencido' THEN COALESCE(scc.control_status, 'aberto')
+                    ELSE 'nao_aplicavel'
+                END AS control_status,
+                COALESCE(scc.note, '') AS control_note,
+                scc.owner_user_id AS control_owner_user_id,
+                uo.name AS control_owner_name,
+                scc.updated_at AS control_updated_at,
                 {$this->daysInStatusExpression()} AS days_in_status,
                 {$this->slaLevelExpression()} AS sla_level
              FROM assignments a
@@ -78,6 +88,8 @@ final class SlaAlertRepository
              INNER JOIN organs o ON o.id = p.organ_id
              INNER JOIN assignment_statuses s ON s.id = a.current_status_id
              LEFT JOIN sla_rules sr ON sr.status_code = s.code AND sr.deleted_at IS NULL
+             LEFT JOIN sla_case_controls scc ON scc.assignment_id = a.id AND scc.deleted_at IS NULL
+             LEFT JOIN users uo ON uo.id = scc.owner_user_id
              {$where}
              ORDER BY {$sortColumn} {$direction}, a.id ASC
              LIMIT :limit OFFSET :offset"
@@ -102,7 +114,15 @@ final class SlaAlertRepository
 
     /**
      * @param array<string, mixed> $filters
-     * @return array{total: int, no_prazo: int, em_risco: int, vencido: int}
+     * @return array{
+     *    total: int,
+     *    no_prazo: int,
+     *    em_risco: int,
+     *    vencido: int,
+     *    overdue_open: int,
+     *    overdue_in_progress: int,
+     *    overdue_resolved: int
+     * }
      */
     public function summary(array $filters): array
     {
@@ -117,12 +137,16 @@ final class SlaAlertRepository
                 COUNT(*) AS total,
                 SUM(CASE WHEN {$this->slaLevelExpression()} = 'no_prazo' THEN 1 ELSE 0 END) AS no_prazo,
                 SUM(CASE WHEN {$this->slaLevelExpression()} = 'em_risco' THEN 1 ELSE 0 END) AS em_risco,
-                SUM(CASE WHEN {$this->slaLevelExpression()} = 'vencido' THEN 1 ELSE 0 END) AS vencido
+                SUM(CASE WHEN {$this->slaLevelExpression()} = 'vencido' THEN 1 ELSE 0 END) AS vencido,
+                SUM(CASE WHEN {$this->slaLevelExpression()} = 'vencido' AND (scc.id IS NULL OR scc.control_status = 'aberto') THEN 1 ELSE 0 END) AS overdue_open,
+                SUM(CASE WHEN {$this->slaLevelExpression()} = 'vencido' AND scc.control_status = 'em_tratamento' THEN 1 ELSE 0 END) AS overdue_in_progress,
+                SUM(CASE WHEN {$this->slaLevelExpression()} = 'vencido' AND scc.control_status = 'resolvido' THEN 1 ELSE 0 END) AS overdue_resolved
              FROM assignments a
              INNER JOIN people p ON p.id = a.person_id
              INNER JOIN organs o ON o.id = p.organ_id
              INNER JOIN assignment_statuses s ON s.id = a.current_status_id
              LEFT JOIN sla_rules sr ON sr.status_code = s.code AND sr.deleted_at IS NULL
+             LEFT JOIN sla_case_controls scc ON scc.assignment_id = a.id AND scc.deleted_at IS NULL
              {$where}"
         );
         $stmt->execute($params);
@@ -133,6 +157,9 @@ final class SlaAlertRepository
             'no_prazo' => (int) ($row['no_prazo'] ?? 0),
             'em_risco' => (int) ($row['em_risco'] ?? 0),
             'vencido' => (int) ($row['vencido'] ?? 0),
+            'overdue_open' => (int) ($row['overdue_open'] ?? 0),
+            'overdue_in_progress' => (int) ($row['overdue_in_progress'] ?? 0),
+            'overdue_resolved' => (int) ($row['overdue_resolved'] ?? 0),
         ];
     }
 
@@ -148,6 +175,37 @@ final class SlaAlertRepository
         );
 
         return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function activeAssignableUsers(int $limit = 300): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, name
+             FROM users
+             WHERE is_active = 1
+               AND deleted_at IS NULL
+             ORDER BY name ASC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':limit', max(1, min(1000, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    public function userExists(int $userId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id
+             FROM users
+             WHERE id = :id
+               AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $userId]);
+
+        return $stmt->fetch() !== false;
     }
 
     /** @return array<string, mixed>|null */
@@ -261,6 +319,116 @@ final class SlaAlertRepository
             'notify_recipients' => $data['notify_recipients'],
             'is_active' => $data['is_active'],
             'created_by' => $data['created_by'],
+        ]);
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findCaseForControl(int $assignmentId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT
+                a.id AS assignment_id,
+                a.person_id,
+                p.name AS person_name,
+                o.name AS organ_name,
+                s.code AS status_code,
+                s.label AS status_label,
+                {$this->daysInStatusExpression()} AS days_in_status,
+                {$this->slaLevelExpression()} AS sla_level
+             FROM assignments a
+             INNER JOIN people p ON p.id = a.person_id
+             INNER JOIN organs o ON o.id = p.organ_id
+             INNER JOIN assignment_statuses s ON s.id = a.current_status_id
+             LEFT JOIN sla_rules sr ON sr.status_code = s.code AND sr.deleted_at IS NULL
+             WHERE a.id = :assignment_id
+               AND a.deleted_at IS NULL
+               AND p.deleted_at IS NULL
+               AND s.is_active = 1
+               AND s.next_action_label IS NOT NULL
+               AND (sr.id IS NULL OR sr.is_active = 1)
+             LIMIT 1"
+        );
+        $stmt->execute(['assignment_id' => $assignmentId]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findControlByAssignment(int $assignmentId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                id,
+                assignment_id,
+                person_id,
+                control_status,
+                owner_user_id,
+                note,
+                last_action_at,
+                created_by,
+                updated_by,
+                created_at,
+                updated_at
+             FROM sla_case_controls
+             WHERE assignment_id = :assignment_id
+               AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['assignment_id' => $assignmentId]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @param array<string, mixed> $data */
+    public function upsertCaseControl(array $data): void
+    {
+        $stmt = $this->db->prepare(
+            'INSERT INTO sla_case_controls (
+                assignment_id,
+                person_id,
+                control_status,
+                owner_user_id,
+                note,
+                last_action_at,
+                created_by,
+                updated_by,
+                created_at,
+                updated_at,
+                deleted_at
+             ) VALUES (
+                :assignment_id,
+                :person_id,
+                :control_status,
+                :owner_user_id,
+                :note,
+                NOW(),
+                :created_by,
+                :updated_by,
+                NOW(),
+                NOW(),
+                NULL
+             )
+             ON DUPLICATE KEY UPDATE
+                person_id = VALUES(person_id),
+                control_status = VALUES(control_status),
+                owner_user_id = VALUES(owner_user_id),
+                note = VALUES(note),
+                last_action_at = NOW(),
+                updated_by = VALUES(updated_by),
+                updated_at = NOW(),
+                deleted_at = NULL'
+        );
+
+        $stmt->execute([
+            'assignment_id' => $data['assignment_id'],
+            'person_id' => $data['person_id'],
+            'control_status' => $data['control_status'],
+            'owner_user_id' => $data['owner_user_id'],
+            'note' => $data['note'],
+            'created_by' => $data['created_by'],
+            'updated_by' => $data['updated_by'],
         ]);
     }
 
@@ -450,6 +618,17 @@ final class SlaAlertRepository
                 $where .= ' AND ' . $this->slaLevelExpression() . ' = :severity';
                 $params['severity'] = $severity;
             }
+        }
+
+        $controlStatus = trim((string) ($filters['control_status'] ?? ''));
+        if (in_array($controlStatus, ['aberto', 'em_tratamento', 'resolvido'], true)) {
+            $where .= ' AND ' . $this->slaLevelExpression() . ' = "vencido"';
+            if ($controlStatus === 'aberto') {
+                $where .= ' AND (scc.id IS NULL OR scc.control_status = :control_status)';
+            } else {
+                $where .= ' AND scc.control_status = :control_status';
+            }
+            $params['control_status'] = $controlStatus;
         }
 
         return $where;

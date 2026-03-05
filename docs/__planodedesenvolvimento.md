@@ -26,7 +26,7 @@ Esta versao reorganiza a v2.0 com foco em:
 ### 0.2 Evidencias tecnicas consideradas
 
 - Rotas e controle de acesso: `routes/web.php`
-- Migrations: `db/migrations/001` a `030`
+- Migrations: `db/migrations/001` a `039`
 - Servicos e repositorios: `app/Services`, `app/Repositories`
 - Changelog tecnico: `CHANGELOG.md`
 - Estado documentado: `README.md`, `docs/02-architecture.md`
@@ -40,7 +40,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - cadastro e gestao de pessoas e orgaos de origem;
 - pipeline operacional por etapas de movimentacao;
 - timeline por pessoa com eventos e anexos;
-- dossie documental com upload/download seguro;
+- dossie documental com upload/download seguro e controle de versoes;
 - custos previstos por pessoa com versionamento;
 - reembolsos reais por pessoa (lancamento e baixa);
 - conciliacao previsto x real por competencia;
@@ -83,15 +83,16 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Boletos estruturados por orgao/competencia com PDF e rateio por pessoa
 - `[x]` Espelho de custo detalhado por pessoa/competencia com cadastro manual e importacao CSV
 
-### 2.3 Itens parciais relevantes
+### 2.3 Itens relevantes (lacunas resolvidas)
 
 - `[x]` RF-12 templates de oficio (catalogo/versionamento/merge/HTML print/PDF nativo)
 - `[x]` RF-13 metadados completos de oficio/SEI
 - `[x]` RF-14 metadados formais de DOU/entrada oficial
-- `[~]` RF-45 painel financeiro global (abertos/vencidos/pagos/conciliados)
+- `[x]` RF-45 painel financeiro global (abertos/vencidos/pagos/conciliados)
 - `[x]` RF-52 exportacoes executivas completas (CSV/PDF/ZIP no modulo premium)
 - `[x]` RNF-05 LGPD avancado (trilhas de visualizacao e retencao)
-- `[~]` RNF-07 observabilidade operacional estruturada
+- `[x]` RNF-07 observabilidade operacional estruturada
+- `[x]` Evolucao assistida por IA para conferencia documental e sugestao de justificativas (ciclo 9.19)
 
 ### 2.4 Lacunas criticas pendentes
 
@@ -99,7 +100,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Conciliacao item a item com justificativa e aprovacao
 - `[x]` Pagamentos completos com comprovante e conciliacao por titulo
 - `[x]` Geracao de oficios por templates versionados
-- `[~]` Importacao CSV em massa (pessoas e orgaos) (pessoas concluido no ciclo 9.2; orgaos pendente)
+- `[x]` Importacao CSV em massa (pessoas e orgaos) (pessoas no ciclo 9.2 e orgaos no ciclo 9.17, ambos com validacao e rollback)
 - `[x]` Gestao administrativa de usuarios/papeis via UI
 - `[x]` Relatorios executivos e financeiros (modulo premium com filtros e exportacao CSV/PDF/ZIP)
 
@@ -120,8 +121,8 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-12 | Geracao de oficios por template | `[x]` | Catalogo/versionamento/merge/HTML print/PDF nativo implementados |
 | RF-13 | Metadados de oficio/SEI/anexos | `[x]` | Modulo formal entregue com CRUD, validacoes, upload/download de anexo DOU e auditoria |
 | RF-14 | Registro DOU + entrada oficial no MTE | `[x]` | Metadados formais completos (edicao/data/link/anexo DOU + data oficial MTE) |
-| RF-20 | Dossie documental por pessoa/processo | `[x]` | Upload/download seguro e metadados |
-| RF-21 | Classificacao por tipo/tags + busca | `[~]` | Tipo/tags existem; busca dedicada limitada |
+| RF-20 | Dossie documental por pessoa/processo | `[x]` | Upload/download seguro, metadados e historico versionado por documento |
+| RF-21 | Classificacao por tipo/tags + busca | `[x]` | Busca global dedicada entregue com consulta por CPF/SEI/DOU/orgao/documento e suporte a tags/documentos |
 | RF-22 | Controle de acesso a docs sensiveis | `[x]` | Granularidade por `documents.sensitivity_level` com permissao dedicada e trilha de negacao/auditoria |
 | RF-30 | Cadastro de CDO | `[x]` | Implementado com `cdos`, CRUD e trilha auditavel |
 | RF-31 | Vinculo CDO x pessoas | `[x]` | Implementado com `cdo_people` e bloqueio por saldo |
@@ -132,9 +133,9 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-42 | Espelho por competencia e pessoa | `[x]` | Implementado com `cost_mirrors` + `cost_mirror_items`, cadastro manual e importacao CSV |
 | RF-43 | Conciliacao automatica item e total | `[x]` | Implementada conciliacao item a item com workflow de justificativa/aprovacao |
 | RF-44 | Registro de pagamento com comprovante/processo | `[x]` | Implementada baixa parcial/total com comprovante e vinculo por titulo |
-| RF-45 | Painel financeiro completo de status | `[~]` | KPI parcial; falta modulo financeiro consolidado |
+| RF-45 | Painel financeiro completo de status | `[x]` | Modulo `/reports` consolidado com painel por status (abertos/vencidos/pagos/conciliados) e visao mensal |
 | RF-50 | Dashboard executivo (KPIs + operacional) | `[x]` | Implementado |
-| RF-51 | Relatorios filtraveis por multiplos eixos | `[~]` | Modulo dedicado `/reports` com filtros por periodo/orgao/etapa/SLA e tabelas operacionais/financeiras |
+| RF-51 | Relatorios filtraveis por multiplos eixos | `[x]` | Modulo `/reports` com filtros por periodo/orgao/etapa/SLA, pacote CGU/TCU e busca global unificada por CPF/SEI/DOU/orgao/documento |
 | RF-52 | Exportacao CSV/PDF | `[x]` | Exportacoes CSV e PDF implementadas no modulo premium; pacote ZIP de prestacao entregue na etapa 5.3 |
 | RF-60 | Auditoria de acoes criticas | `[x]` | Presente nos modulos principais |
 | RF-61 | Controle de acesso por perfil (RBAC) | `[x]` | Permissoes por rota/acao implementadas |
@@ -150,7 +151,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RNF-04 | Seguranca base (CSRF/upload/SQLi/hash) | `[x]` | Implementado |
 | RNF-05 | LGPD avancado | `[x]` | Trilha de visualizacao sensivel e politicas de retencao/anonimizacao implementadas |
 | RNF-06 | Backups e restore operacional | `[x]` | Scripts, checklist e runbook operacional implementados |
-| RNF-07 | Observabilidade operacional | `[~]` | Health/logs existem; sem painel estruturado |
+| RNF-07 | Observabilidade operacional | `[x]` | Painel estruturado em `GET /ops/health-panel` com snapshots de saude, severidade de logs e recorrencias |
 
 ---
 
@@ -476,32 +477,32 @@ Integracao com entidades existentes:
 
 - `[x]` Painel "Minha fila" por responsavel e prioridade
 - `[x]` Checklist automatico por tipo de caso
-- `[ ]` Calculadora automatica de reembolso com memoria de calculo
-- `[ ]` Central de pendencias (documentos, divergencias, retornos)
-- `[ ]` Comentarios internos por processo
+- `[x]` Calculadora automatica de reembolso com memoria de calculo
+- `[x]` Central de pendencias (documentos, divergencias, retornos)
+- `[x]` Comentarios internos por processo
 
 ### 6.2 Governanca e auditoria
 
-- `[ ]` Timeline administrativa completa por processo
-- `[ ]` Historico consolidado de pessoa e orgao
-- `[ ]` Relatorios prontos para auditoria (CGU/TCU)
-- `[ ]` Exportacao completa de dossie (ZIP/PDF + trilha)
-- `[ ]` Controle de versao de documentos
+- `[x]` Timeline administrativa completa por processo (ciclo 9.8)
+- `[x]` Historico consolidado de pessoa e orgao (ciclo 9.9)
+- `[x]` Relatorios prontos para auditoria (CGU/TCU) (ciclo 9.10)
+- `[x]` Exportacao completa de dossie (ZIP/PDF + trilha) (ciclo 9.10)
+- `[x]` Controle de versao de documentos
 - `[x]` Controle de acesso por sensibilidade documental
 
 ### 6.3 Gestao executiva
 
-- `[ ]` Painel executivo com gargalos e ranking de orgaos
-- `[ ]` Controle de SLA e casos em atraso
-- `[ ]` Gestao de lotes de pagamento
-- `[ ]` Busca global por CPF/SEI/DOU/orgao/documento
-- `[ ]` Simulacao previa antes da aprovacao final
+- `[x]` Painel executivo com gargalos e ranking de orgaos (ciclo 9.12)
+- `[x]` Controle de SLA e casos em atraso (ciclo 9.13)
+- `[x]` Gestao de lotes de pagamento (ciclo 9.14)
+- `[x]` Busca global por CPF/SEI/DOU/orgao/documento (ciclo 9.15)
+- `[x]` Simulacao previa antes da aprovacao final (ciclo 9.16)
 
-### 6.4 Evolucao assistida por IA (futuro)
+### 6.4 Evolucao assistida por IA (ciclo 9.19 concluido)
 
-- `[ ]` Extracao de dados de documentos para conferencia automatica
-- `[ ]` Deteccao de inconsistencias por regras e anomalias
-- `[ ]` Sugestao de justificativas para divergencias recorrentes
+- `[x]` Extracao de dados de documentos para conferencia automatica (campos SEI/CPF/competencia/valor no Perfil 360)
+- `[x]` Deteccao de inconsistencias por regras e anomalias (SEI divergente/ausente, competencia ausente, duplicidade e outlier estatistico)
+- `[x]` Sugestao de justificativas para divergencias recorrentes (base historica + template por regra)
 
 ---
 
@@ -533,8 +534,11 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 ## 9) Proximo ciclo recomendado (execucao imediata)
 
 1. `[x]` Enderecar lacunas remanescentes de compliance avancado com foco em dossie e monitoramento de acesso sensivel (RF-22 concluido em 2026-03-05).
-2. `[x]` Planejar entrega incremental de importacao CSV em massa (RF-04) com validacao e rollback operacional (ciclo 9.2: pessoas concluido).
-3. `[~]` Evoluir backlog de produtividade do analista (fila, checklist automatico e central de pendencias) — "Minha fila" (9.3) e checklist automatico (9.4) concluidos; central de pendencias permanece pendente.
+2. `[x]` Planejar entrega incremental de importacao CSV em massa (RF-04) com validacao e rollback operacional (ciclos 9.2: pessoas e 9.17: orgaos).
+3. `[x]` Evoluir backlog de produtividade do analista (fila, checklist automatico, calculadora de reembolso, central de pendencias e comentarios internos) — entregas concluidas nos ciclos 9.3, 9.4, 9.6, 9.5 e 9.7.
+4. `[x]` Iniciar backlog de governanca e auditoria com timeline administrativa completa por processo (ciclo 9.8).
+5. `[x]` Consolidar historico de pessoa e orgao em trilha unica (ciclo 9.9).
+6. `[x]` Entregar pacote de governanca de auditoria (relatorios CGU/TCU + exportacao completa de dossie ZIP/PDF+trilha) no ciclo 9.10.
 
 ---
 

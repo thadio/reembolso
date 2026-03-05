@@ -3,11 +3,20 @@
 declare(strict_types=1);
 
 $items = $items ?? [];
-$summary = $summary ?? ['total' => 0, 'no_prazo' => 0, 'em_risco' => 0, 'vencido' => 0];
+$summary = $summary ?? [
+    'total' => 0,
+    'no_prazo' => 0,
+    'em_risco' => 0,
+    'vencido' => 0,
+    'overdue_open' => 0,
+    'overdue_in_progress' => 0,
+    'overdue_resolved' => 0,
+];
 $filters = $filters ?? [
     'q' => '',
     'status_code' => '',
     'severity' => '',
+    'control_status' => '',
     'sort' => 'status_order',
     'dir' => 'asc',
     'per_page' => 10,
@@ -15,6 +24,8 @@ $filters = $filters ?? [
 $pagination = $pagination ?? ['total' => 0, 'page' => 1, 'per_page' => 10, 'pages' => 1];
 $statusOptions = $statusOptions ?? [];
 $severityOptions = $severityOptions ?? [];
+$controlStatusOptions = $controlStatusOptions ?? [];
+$controlOwnerOptions = $controlOwnerOptions ?? [];
 $recentLogs = $recentLogs ?? [];
 $severityLabel = is_callable($severityLabel ?? null)
     ? $severityLabel
@@ -47,6 +58,7 @@ $buildUrl = static function (array $replace = []) use ($filters, $pagination): s
         'q' => (string) ($filters['q'] ?? ''),
         'status_code' => (string) ($filters['status_code'] ?? ''),
         'severity' => (string) ($filters['severity'] ?? ''),
+        'control_status' => (string) ($filters['control_status'] ?? ''),
         'sort' => (string) ($filters['sort'] ?? 'status_order'),
         'dir' => (string) ($filters['dir'] ?? 'asc'),
         'per_page' => (string) ($filters['per_page'] ?? 10),
@@ -66,6 +78,24 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
     }
 
     return $dir === 'asc' ? 'desc' : 'asc';
+};
+
+$controlStatusLabel = static function (string $value): string {
+    return match ($value) {
+        'aberto' => 'Aberto',
+        'em_tratamento' => 'Em tratamento',
+        'resolvido' => 'Resolvido',
+        default => 'N/A',
+    };
+};
+
+$controlStatusBadge = static function (string $value): string {
+    return match ($value) {
+        'aberto' => 'badge-danger',
+        'em_tratamento' => 'badge-warning',
+        'resolvido' => 'badge-success',
+        default => 'badge-neutral',
+    };
 };
 ?>
 <div class="card">
@@ -98,6 +128,18 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
       <p class="kpi-label">Vencido</p>
       <p class="kpi-value text-danger"><?= e((string) (int) ($summary['vencido'] ?? 0)) ?></p>
     </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Atrasos abertos</p>
+      <p class="kpi-value text-danger"><?= e((string) (int) ($summary['overdue_open'] ?? 0)) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Atrasos em tratamento</p>
+      <p class="kpi-value"><?= e((string) (int) ($summary['overdue_in_progress'] ?? 0)) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Atrasos resolvidos</p>
+      <p class="kpi-value text-success"><?= e((string) (int) ($summary['overdue_resolved'] ?? 0)) ?></p>
+    </article>
   </div>
 
   <form method="get" action="<?= e(url('/sla-alerts')) ?>" class="filters-row filters-sla">
@@ -120,6 +162,19 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
           $label = (string) ($option['label'] ?? $value);
         ?>
         <option value="<?= e($value) ?>" <?= (string) ($filters['severity'] ?? '') === $value ? 'selected' : '' ?>>
+          <?= e($label) ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+
+    <select name="control_status">
+      <option value="">Todos os controles de atraso</option>
+      <?php foreach ($controlStatusOptions as $option): ?>
+        <?php
+          $value = (string) ($option['value'] ?? '');
+          $label = (string) ($option['label'] ?? $value);
+        ?>
+        <option value="<?= e($value) ?>" <?= (string) ($filters['control_status'] ?? '') === $value ? 'selected' : '' ?>>
           <?= e($label) ?>
         </option>
       <?php endforeach; ?>
@@ -179,6 +234,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
             <th><a href="<?= e($buildUrl(['sort' => 'days_in_status', 'dir' => $nextDir('days_in_status'), 'page' => 1])) ?>">Dias</a></th>
             <th>Regra</th>
             <th><a href="<?= e($buildUrl(['sort' => 'sla_level', 'dir' => $nextDir('sla_level'), 'page' => 1])) ?>">Nivel SLA</a></th>
+            <th>Controle atraso</th>
             <th><a href="<?= e($buildUrl(['sort' => 'updated_at', 'dir' => $nextDir('updated_at'), 'page' => 1])) ?>">Atualizado</a></th>
             <th>Acoes</th>
           </tr>
@@ -186,6 +242,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
         <tbody>
           <?php foreach ($items as $item): ?>
             <?php $level = (string) ($item['sla_level'] ?? 'no_prazo'); ?>
+            <?php $controlStatus = (string) ($item['control_status'] ?? 'nao_aplicavel'); ?>
             <tr>
               <td>
                 <a href="<?= e(url('/people/show?id=' . (int) ($item['person_id'] ?? 0))) ?>"><?= e((string) ($item['person_name'] ?? '-')) ?></a>
@@ -203,9 +260,51 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
                 vencido: <?= e((string) (int) ($item['overdue_days'] ?? 0)) ?>d
               </td>
               <td><span class="badge <?= e($levelBadgeClass($level)) ?>"><?= e($severityLabel($level)) ?></span></td>
+              <td>
+                <?php if ($level === 'vencido'): ?>
+                  <span class="badge <?= e($controlStatusBadge($controlStatus)) ?>"><?= e($controlStatusLabel($controlStatus)) ?></span>
+                  <?php if (trim((string) ($item['control_owner_name'] ?? '')) !== ''): ?>
+                    <div class="muted">Responsavel: <?= e((string) ($item['control_owner_name'] ?? '')) ?></div>
+                  <?php endif; ?>
+                  <?php if (trim((string) ($item['control_note'] ?? '')) !== ''): ?>
+                    <div class="muted"><?= e((string) ($item['control_note'] ?? '')) ?></div>
+                  <?php endif; ?>
+                <?php else: ?>
+                  <span class="muted">N/A</span>
+                <?php endif; ?>
+              </td>
               <td><?= e($formatDate((string) ($item['status_changed_at'] ?? ''))) ?></td>
               <td class="actions-cell">
                 <a class="btn btn-ghost" href="<?= e(url('/people/show?id=' . (int) ($item['person_id'] ?? 0))) ?>">Abrir perfil</a>
+                <?php if (($canManage ?? false) === true && $level === 'vencido'): ?>
+                  <form method="post" action="<?= e(url('/sla-alerts/control/update')) ?>" class="inline-form mt-8">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="assignment_id" value="<?= e((string) (int) ($item['assignment_id'] ?? 0)) ?>">
+                    <input type="hidden" name="return_to" value="<?= e($buildUrl()) ?>">
+                    <select name="control_status">
+                      <?php foreach ($controlStatusOptions as $option): ?>
+                        <?php
+                          $value = (string) ($option['value'] ?? '');
+                          $label = (string) ($option['label'] ?? $value);
+                        ?>
+                        <option value="<?= e($value) ?>" <?= $controlStatus === $value ? 'selected' : '' ?>>
+                          <?= e($label) ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                    <select name="owner_user_id">
+                      <option value="0">Sem responsavel</option>
+                      <?php foreach ($controlOwnerOptions as $owner): ?>
+                        <?php $ownerId = (int) ($owner['id'] ?? 0); ?>
+                        <option value="<?= e((string) $ownerId) ?>" <?= (int) ($item['control_owner_user_id'] ?? 0) === $ownerId ? 'selected' : '' ?>>
+                          <?= e((string) ($owner['name'] ?? 'Usuario')) ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                    <input type="text" name="note" value="<?= e((string) ($item['control_note'] ?? '')) ?>" placeholder="Observacao">
+                    <button type="submit" class="btn btn-outline">Atualizar controle</button>
+                  </form>
+                <?php endif; ?>
               </td>
             </tr>
           <?php endforeach; ?>

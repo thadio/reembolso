@@ -1,5 +1,303 @@
 # Changelog
 
+## 2026-03-05 — Ciclo 9.19 concluido (Evolucao assistida por IA no dossie documental)
+- Entregue conferencia assistida por IA no Perfil 360 com execucao manual protegida:
+  - nova rota `POST /people/documents/intelligence/run` (permissao `people.manage` + CSRF)
+  - acao e painel de resultados incorporados em `app/Views/people/show.php`
+- Nova base de dados para inteligencia documental:
+  - migration `040_phase9_document_intelligence.sql`
+  - tabelas `document_ai_reviews`, `document_ai_extractions` e `document_ai_findings`
+- Novo modulo de dominio:
+  - `DocumentIntelligenceRepository` (persistencia e consultas de extracoes/findings/historico)
+  - `DocumentIntelligenceService` com:
+    - extracao automatica de campos (SEI, CPF, competencia e valor) a partir do dossie
+    - deteccao de inconsistencias por regras (SEI divergente/ausente, competencia ausente, duplicidade)
+    - deteccao de anomalias de valor por referencia estatistica (z-score por tipo documental)
+    - sugestao automatica de justificativas para divergencias recorrentes (`cost_mirror_divergences`) usando historico + fallback por template
+- `PeopleController` ampliado para:
+  - expor `documentIntelligence` no payload do Perfil 360
+  - executar `runDocumentIntelligence` com trilha de auditoria/eventos
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.19-ia-assistida.md`.
+
+## 2026-03-05 — Ciclo 9.18 concluido (RF-45 + RNF-07: painel financeiro completo e observabilidade estruturada)
+- Fechamento do `RF-45` no modulo de relatorios premium (`GET /reports`):
+  - consolidado financeiro por status `abertos`, `vencidos`, `pagos` e `conciliados`
+  - visao mensal por status (quantidade e valor) no painel web
+  - dataset financeiro ampliado em `ReportRepository::financialStatusDataset`
+  - exportacoes CSV/PDF atualizadas para incluir secoes de status financeiro
+- Fechamento do `RNF-07` com painel estruturado na aplicacao:
+  - nova rota protegida `GET /ops/health-panel` (permissao `security.view`)
+  - novos componentes `OpsHealthPanelController` e `OpsHealthPanelService`
+  - view `app/Views/ops/health_panel.php` com:
+    - status geral e totais de checks
+    - detalhamento de checks tecnicos (health/log severity/error review/kpi freshness)
+    - historico recente de snapshots
+    - severidade de logs com top mensagens
+    - fontes operacionais (snapshot files e app.log)
+  - menu principal atualizado com atalho "Observabilidade"
+- Configuracao operacional ampliada:
+  - novas chaves `OPS_HEALTH_PANEL_SNAPSHOT_DIR` e `OPS_LOG_SEVERITY_SNAPSHOT_DIR` em `Config`
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.18-rf45-rnf07.md`.
+
+## 2026-03-05 — Ciclo 9.17 concluido (Governanca de cadastro: importacao CSV de orgaos)
+- Entregue importacao CSV em massa para orgaos com rota protegida:
+  - `POST /organs/import-csv`
+- Fluxo implementado no modulo de orgaos:
+  - upload de CSV com validacao de extensao/MIME/tamanho (ate 5MB)
+  - deteccao automatica de delimitador (`,`/`;`/TAB) e suporte a aliases de cabecalho
+  - modo de simulacao (`validate_only=1`) sem persistencia
+  - importacao transacional com rollback completo em caso de erro
+- `OrganService` ampliado com:
+  - `importCsv` (validacao de cabecalho/linhas, deduplicacao por CNPJ e persistencia em lote)
+  - parser CSV interno com normalizacao de campos e mensagens por linha
+- `OrganRepository` ampliado com suporte transacional (`beginTransaction`, `commit`, `rollBack`) para importacao em lote segura.
+- `OrgansController` ampliado:
+  - novo endpoint `importCsv` com tratamento de resumo de erros para feedback operacional
+- UI:
+  - `app/Views/organs/index.php` recebeu formulario de importacao CSV com opcao "Apenas validar (sem gravar)"
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.17-importacao-csv-orgaos.md`.
+
+## 2026-03-05 — Ciclo 9.16 concluido (Gestao executiva: simulacao previa da aprovacao final)
+- Entregue simulacao previa para aprovacao final de lotes de pagamento com rota protegida:
+  - `POST /invoices/payment-batches/final-approval/simulate`
+- Fluxo do detalhe do lote atualizado com duas etapas:
+  - simulacao de risco para status final alvo (`pago` ou `cancelado`)
+  - atualizacao de status com validacao de token de simulacao (expiracao e integridade do lote)
+- `InvoiceService` ampliado com:
+  - `simulatePaymentBatchFinalApproval` (analise de risco, qualidade dos itens e janela de validade)
+  - bloqueio de transicao final sem simulacao valida em `updatePaymentBatchStatus`
+  - nova governanca por auditoria/evento:
+    - auditoria `payment_batch:final_approval.simulate`
+    - evento `payment_batch.final_approval_simulated`
+- `InvoicesController` ampliado:
+  - novo endpoint `simulatePaymentBatchFinalApproval`
+  - gestao de sessao para token de simulacao previa por lote
+- UI do detalhe do lote (`app/Views/invoices/payment_batches/show.php`) atualizada com:
+  - card de simulacao previa (status alvo, risco, comprovantes/processos faltantes e validade)
+  - envio do token de simulacao no formulario de mudanca de status
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.16-simulacao-previa-aprovacao-final.md`.
+
+## 2026-03-05 — Ciclo 9.15 concluido (Gestao executiva: busca global unificada)
+- Entregue modulo de busca global com rota protegida:
+  - `GET /global-search`
+- Novo eixo de consulta unificada por termo (`q`) e escopo (`scope`):
+  - pessoas (`CPF`, `SEI`, nome, tags e orgao)
+  - orgaos (nome, sigla, CNPJ e localidade)
+  - processo formal/DOU (oficio, protocolo, `dou_edition`, link DOU, SEI, pessoa e orgao)
+  - documentos do dossie (titulo, tipo, referencia SEI, tags, arquivo, pessoa e orgao)
+- Novos componentes:
+  - `GlobalSearchRepository` com consultas SQL por secao
+  - `GlobalSearchService` com normalizacao de filtros, controle de escopo e trilha de auditoria/evento de busca
+  - `GlobalSearchController` para orquestracao HTTP/UI
+  - view `app/Views/global_search/index.php` com KPIs por secao, tabelas de resultado e links de aprofundamento
+- Seguranca aplicada:
+  - endpoint sob `people.view`
+  - resultados de documentos respeitam sensibilidade (`restricted/sensitive` so aparecem com `people.documents.sensitive`)
+  - CPF mascarado quando o usuario nao possui `people.cpf.full`
+- Navegacao:
+  - item de menu principal `Busca global` adicionado no layout para perfis com acesso aos modulos consultaveis
+- Governanca/trilha:
+  - auditoria `entity=global_search` com `action=search`
+  - evento `global_search.executed`
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.15-busca-global.md`.
+
+## 2026-03-05 — Ciclo 9.14 concluido (Gestao executiva: lotes de pagamento)
+- Criada migration `039_phase9_payment_batches.sql` com as tabelas:
+  - `payment_batches` (cabecalho do lote: codigo, status, referencia, previsto, totais e trilha de fechamento)
+  - `payment_batch_items` (itens por pagamento com vinculo para `payments` e `invoices`)
+- `InvoiceRepository` ampliado com operacoes de lotes:
+  - listagem paginada de lotes com filtros (`paginatePaymentBatches`)
+  - detalhe e itens do lote (`findPaymentBatchById`, `paymentBatchItems`)
+  - consulta de pagamentos elegiveis (`paymentBatchCandidates`, `findEligiblePaymentsForBatchByIds`)
+  - persistencia de lote/itens e atualizacao de status (`createPaymentBatch`, `addPaymentToBatch`, `updatePaymentBatchStatus`)
+- `InvoiceService` ampliado com regras de negocio de lotes:
+  - criacao transacional de lote com validacao de elegibilidade, totalizacao, auditoria (`payment_batch:create`) e evento (`payment_batch.created`)
+  - atualizacao de status com controle de transicao, fechamento (`closed_by`, `closed_at`), auditoria (`payment_batch:status.update`) e evento (`payment_batch.status_updated`)
+  - normalizacao de filtros e status labels para UI
+- Novas rotas protegidas no modulo de boletos:
+  - `GET /invoices/payment-batches`
+  - `GET /invoices/payment-batches/show`
+  - `POST /invoices/payment-batches/store`
+  - `POST /invoices/payment-batches/status/update`
+- `InvoicesController` ampliado com endpoints de listagem/detalhe/criacao/atualizacao de status de lotes.
+- UI:
+  - nova tela `app/Views/invoices/payment_batches/index.php` (filtros, tabela de lotes e formulario de criacao por selecao de pagamentos elegiveis)
+  - nova tela `app/Views/invoices/payment_batches/show.php` (detalhe, itens e atualizacao de status)
+  - acesso rapido para lotes adicionado em `app/Views/invoices/index.php`
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.14-lotes-pagamento.md`.
+
+## 2026-03-05 — Ciclo 9.12 concluido (Gestao executiva: painel de gargalos e ranking de orgaos)
+- Dashboard executivo incorporado em `GET /dashboard` com novo bloco de governanca:
+  - KPIs executivos (`orgaos monitorados`, `casos monitorados`, `em risco`, `vencidos`)
+  - tabela de gargalos por etapa (impacto por orgao, media/maximo de dias e criticidade SLA)
+  - ranking de orgaos por score de severidade (risco/vencido + tempo medio em etapa)
+  - acao rapida para aprofundamento em `/reports`
+- `DashboardRepository` ampliado com consultas executivas:
+  - `executiveBottlenecks`
+  - `executiveOrganRanking`
+  - calculo unificado de `daysInStatus` e `slaLevel` no proprio repositorio
+- `DashboardService` ampliado:
+  - novo bloco `executive_panel` no payload de `overview`
+  - normalizacao e consolidacao de resumo executivo (totais, criticidade e score)
+  - compatibilidade com leitura de snapshot legado (fallback para calculo live do painel executivo quando ausente)
+- Snapshot KPI atualizado:
+  - `scripts/kpi-snapshot.php` passa a persistir `executive_panel` no JSON
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.12-painel-executivo.md`.
+
+## 2026-03-05 — Ciclo 9.11 concluido (Governanca: controle de versao de documentos)
+- Criada migration `037_phase9_document_version_control.sql` com tabela `document_versions` e backfill inicial (V1) para documentos legados.
+- `DocumentRepository` ampliado com operacoes de versionamento:
+  - criacao de versao (`createVersion`)
+  - calculo de proxima versao (`nextVersionNumber`)
+  - leitura de historico por documento (`versionsByDocumentIds`)
+  - download de versao por pessoa/documento (`findVersionByIdForPerson`)
+  - sincronizacao do arquivo corrente em `documents` (`updateDocumentCurrentFile`)
+- `DocumentService` ampliado para:
+  - registrar versao inicial (V1) durante upload padrao de documentos
+  - criar nova versao por documento (`createDocumentVersion`) com validacoes de upload/hardening e trilha de auditoria/LGPD
+  - baixar versoes historicas (`documentVersionForDownload`) com controle de acesso por sensibilidade
+  - expor historico de versoes no `profileData` do Perfil 360
+- `PeopleController` e rotas atualizados com:
+  - `POST /people/documents/version/store`
+  - `GET /people/documents/version/download`
+- `app/Views/people/show.php` atualizado:
+  - badge da versao atual por documento
+  - formulario de envio de nova versao por card
+  - historico de versoes com download individual
+- `public/assets/css/app.css` ajustado para estilos de historico/versionamento, incluindo responsividade mobile.
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.11-versionamento-documentos.md`.
+
+## 2026-03-05 — Ciclo 9.10 concluido (Governanca: relatorios CGU/TCU + dossie completo ZIP/PDF/trilha)
+- Fechamento da pendencia de governanca 6.2 para relatorios prontos de auditoria:
+  - migration `036_phase6_audit_reports_indexes.sql` aplicada com indices de apoio em `audit_log`, `sensitive_access_logs`, `analyst_pending_items` e `cost_mirror_divergences`
+  - `ReportRepository` ampliado com datasets dedicados para auditoria (`auditCriticalRows`, `auditSensitiveAccessRows`, `auditOpenPendingRows`, `auditUnresolvedDivergenceRows`)
+  - `ReportService::exportAuditZip` entregue com pacote:
+    - `auditoria/trilha_critica_auditoria.csv`
+    - `auditoria/acessos_sensiveis.csv`
+    - `auditoria/pendencias_abertas.csv`
+    - `auditoria/divergencias_sem_justificativa.csv`
+    - `manifesto_auditoria.txt`
+  - nova rota `GET /reports/export/audit-zip` e botao de exportacao no modulo `/reports`
+- Fechamento da pendencia de exportacao completa de dossie (ZIP/PDF + trilha):
+  - novo servico `PersonDossierExportService` para montagem do pacote por pessoa/processo
+  - novo endpoint `GET /people/dossier/export?person_id={id}` em `PeopleController::exportDossier`
+  - pacote do dossie com:
+    - CSVs de pessoa, timeline operacional, documentos, comentarios internos, timeline administrativa e financeiro de reembolso
+    - PDF de sintese (`dossie/resumo_dossie.pdf`)
+    - trilha (`trilha/auditoria.csv` quando houver `audit.view`; fallback `trilha/auditoria.txt` sem permissao)
+    - anexo de arquivos fisicos de documentos/timeline quando disponiveis
+    - manifesto (`manifesto_dossie.txt`)
+  - acao de exportacao adicionada no cabecalho do Perfil 360 (`people/show`)
+- Governanca de trilha e evento:
+  - auditoria `person:export_dossier_zip`
+  - evento `person.dossier_exported`
+  - auditoria/evento de `report.export_audit_zip` mantidos no modulo de relatorios
+- Validacoes executadas:
+  - `php db/migrate.php` (com aplicacao de `036_phase6_audit_reports_indexes.sql`)
+  - smoke test automatizado dos pacotes ZIP de auditoria e dossie (estrutura de arquivos validada)
+  - `php scripts/financial-unit-tests.php --output json` (`status=ok`)
+  - `php scripts/ops-quality-gate.php --output json` (`status=ok`)
+  - `php scripts/kpi-snapshot.php` seguido de `php scripts/ops-health-panel.php --skip-health --output json` (`status=warn`, sem falha de frescor de snapshot)
+
+## 2026-03-05 — Ciclo 9.9 concluido (Governanca: historico consolidado de pessoa e orgao)
+- Criada migration `035_phase6_consolidated_history_indexes.sql` com indices de apoio para leitura de historico consolidado:
+  - `audit_log(entity, entity_id, created_at)`
+  - `people(organ_id, deleted_at, id)`
+- Novo modulo de auditoria consolidada por orgao:
+  - `OrganAuditRepository` com escopo cruzado (orgao + pessoas vinculadas + entidades operacionais/financeiras relacionadas)
+  - `OrganAuditService` com filtros (`entity`, `action`, `q`, periodo), paginacao e exportacao
+- Modulo de orgaos ampliado:
+  - `OrgansController::show` agora carrega historico consolidado (quando usuario possui `audit.view`)
+  - nova exportacao CSV em `OrgansController::exportAudit`
+  - nova rota `GET /organs/audit/export` (protegida por `audit.view`)
+  - `app/Views/organs/show.php` atualizado com card "Historico consolidado de pessoa e orgao", filtros, lista paginada e exportacao
+- Escopo de auditoria por pessoa ampliado:
+  - `PersonAuditRepository` passa a incluir eventos da entidade `organ` (orgao atual da pessoa)
+  - inclui tambem entidade `analyst_pending_item` no Perfil 360
+- UI de pessoa ajustada:
+  - `people/show` recebeu novos rotulos de entidade (`organ` e `analyst_pending_item`) na secao Auditoria.
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.9-historico-consolidado-pessoa-orgao.md`.
+
+## 2026-03-05 — Ciclo 9.8 concluido (Governanca: timeline administrativa completa por processo)
+- Criada migration `034_phase6_process_admin_timeline.sql` com tabela `process_admin_timeline_notes` para notas administrativas por pessoa/movimentacao (status, severidade, fixacao, trilha de criacao/atualizacao/exclusao).
+- Novo modulo de timeline administrativa:
+  - `ProcessAdminTimelineRepository` para consolidacao de fontes administrativas (notas manuais, comentarios internos, pendencias, financeiro de reembolso, metadados formais e timeline operacional)
+  - `ProcessAdminTimelineService` com consolidacao, filtros (`q`, origem e grupo de status), ordenacao, paginacao e KPI de acompanhamento
+  - CRUD de nota manual (criar/editar/status/excluir) com validacao de vinculo `assignment_id` por pessoa
+- Novas rotas:
+  - `POST /people/process-admin-timeline/store`
+  - `POST /people/process-admin-timeline/update`
+  - `POST /people/process-admin-timeline/delete`
+- Governanca e trilha:
+  - auditoria em `process_admin_timeline_note:create`, `process_admin_timeline_note:update`, `process_admin_timeline_note:status.update` e `process_admin_timeline_note:delete`
+  - eventos `process_admin_timeline.note_created`, `process_admin_timeline.note_updated`, `process_admin_timeline.note_status_updated` e `process_admin_timeline.note_deleted`
+  - `PersonAuditRepository` ampliado para incluir `process_admin_timeline_note` no escopo de auditoria do Perfil 360
+- UI:
+  - Perfil 360 (`people/show`) ganhou card de timeline administrativa completa com:
+    - KPIs (`Total`, `Abertos`, `Concluidos`, `Notas manuais`, `Entradas automaticas`)
+    - filtros por busca/origem/status
+    - lista consolidada paginada com badges de origem/status/severidade
+    - formulario de nota manual e edicao/exclusao de notas manuais
+- Ajustes de compatibilidade de esquema:
+  - consultas de `process_metadata` e `timeline_events` ajustadas para colunas reais da base atual, evitando falhas de coluna inexistente durante consolidacao.
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.8-timeline-administrativa.md`.
+
+## 2026-03-05 — Ciclo 9.7 concluido (Produtividade: comentarios internos por processo)
+- Criada migration `033_phase9_process_internal_comments.sql` com tabela `process_comments` para registrar observacoes internas por pessoa/movimentacao.
+- Novo modulo de comentarios internos:
+  - `ProcessCommentRepository` e `ProcessCommentService` para CRUD de comentarios (criar, editar, arquivar/fixar e exclusao logica)
+  - validacoes de texto, status e vinculo de movimentacao (`assignment_id`) com a pessoa
+  - resumo por pessoa (total, abertos, arquivados e fixados)
+- Novas rotas:
+  - `POST /people/process-comments/store`
+  - `POST /people/process-comments/update`
+  - `POST /people/process-comments/delete`
+- Governanca e trilha:
+  - auditoria em `process_comment:create`, `process_comment:update`, `process_comment:status.update` e `process_comment:delete`
+  - eventos `process_comment.created`, `process_comment.updated`, `process_comment.status_updated` e `process_comment.deleted`
+  - `PersonAuditRepository` ampliado para incluir `process_comment` no escopo de auditoria do Perfil 360
+- UI:
+  - Perfil 360 (`people/show`) ganhou card de comentarios internos com formulario, lista e edicao/arquivamento/exclusao
+  - novos KPIs de comentarios no perfil (total, abertos, arquivados e fixados)
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.7-comentarios-processo.md`.
+
+## 2026-03-05 — Ciclo 9.6 concluido (Produtividade: calculadora automatica de reembolso)
+- Criada migration `032_phase9_reimbursement_calculator.sql` para incluir `reimbursement_entries.calculation_memory`.
+- Reembolso ampliado com calculadora automatica:
+  - `ReimbursementService` passou a aceitar componentes de calculo (`base`, `transporte`, `hospedagem`, `alimentacao`, `outros`, `ajuste percentual` e `desconto`)
+  - total e calculado automaticamente no backend pela formula:
+    - `(Base + Transporte + Hospedagem + Alimentacao + Outros) + Ajuste - Desconto`
+  - memoria detalhada de calculo e persistida em JSON por lancamento
+  - validacoes de borda para componentes negativos, percentual fora da faixa e total <= 0
+- Perfil 360 atualizado na secao de reembolsos:
+  - formulario com bloco da calculadora e preview de total
+  - detalhes da memoria de calculo em cada lancamento
+  - tabela de memorias de calculo recentes por pessoa
+- Governanca e trilha:
+  - auditoria de `reimbursement_entry:create` agora inclui flag/formula de calculo quando aplicado
+  - evento `reimbursement.entry_created`/`reimbursement.entry_paid_created` recebe indicador `calculated`
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.6-calculadora-reembolso.md`.
+
+## 2026-03-05 — Ciclo 9.5 concluido (Produtividade: central de pendencias)
+- Criada migration `031_phase9_pending_center.sql` com tabela `analyst_pending_items` para consolidacao de pendencias operacionais por pessoa/movimentacao.
+- Novo modulo de central de pendencias:
+  - `PendingCenterRepository` e `PendingCenterService` para sincronizacao automatica e consulta paginada
+  - regras automaticas para gerar pendencias de:
+    - documentos obrigatorios ausentes no dossie por etapa do pipeline
+    - divergencias financeiras sem justificativa obrigatoria
+    - retornos externos atrasados por permanencia em etapa de retorno
+  - resolucao automatica de pendencias obsoletas quando causa deixa de existir
+- Novas rotas:
+  - `GET /people/pending` (painel consolidado)
+  - `POST /people/pending/status` (resolver/reabrir pendencia)
+- Governanca e trilha:
+  - auditoria em `analyst_pending_item:create`, `analyst_pending_item:sync.update`, `analyst_pending_item:auto.resolve` e `analyst_pending_item:status.update`
+  - eventos `pending.created`, `pending.auto_resolved` e `pending.status_updated`
+- UI:
+  - nova tela `app/Views/people/pending.php` com KPI, filtros por tipo/status/severidade/fila e acoes de resolucao
+  - acesso rapido \"Central de pendencias\" adicionado na listagem de pessoas
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.5-central-pendencias.md`.
+
 ## 2026-03-05 — Ciclo 9.4 concluido (Produtividade: checklist automatico por tipo de caso)
 - Criada migration `030_phase9_case_checklist_automation.sql` com:
   - novas tabelas `assignment_checklist_templates` e `assignment_checklist_items`

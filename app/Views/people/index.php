@@ -101,6 +101,7 @@ $priorityBadgeClass = static function (string $value): string {
       <?php if ($authUserId > 0): ?>
         <a class="btn btn-outline" href="<?= e($buildUrl(['queue_scope' => 'mine', 'responsible_id' => (string) $authUserId, 'page' => 1])) ?>">Minha fila</a>
       <?php endif; ?>
+      <a class="btn btn-outline" href="<?= e(url('/people/pending')) ?>">Central de pendencias</a>
       <?php if (($canManage ?? false) === true): ?>
         <a class="btn btn-primary" href="<?= e(url('/people/create')) ?>">Nova pessoa</a>
       <?php endif; ?>

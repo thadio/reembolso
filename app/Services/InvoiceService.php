@@ -11,6 +11,9 @@ final class InvoiceService
 {
     private const ALLOWED_STATUSES = ['aberto', 'vencido', 'pago_parcial', 'pago', 'cancelado'];
     private const FINAL_STATUSES = ['pago', 'cancelado'];
+    private const PAYMENT_BATCH_ALLOWED_STATUS = ['aberto', 'em_processamento', 'pago', 'cancelado'];
+    private const PAYMENT_BATCH_FINAL_STATUS = ['pago', 'cancelado'];
+    private const PAYMENT_BATCH_FINAL_SIMULATION_TTL_SECONDS = 1800;
     private const INVOICE_PDF_ALLOWED_EXTENSIONS = ['pdf'];
     private const INVOICE_PDF_ALLOWED_MIME = ['application/pdf'];
     private const PAYMENT_PROOF_ALLOWED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg'];
@@ -77,6 +80,583 @@ final class InvoiceService
         return $this->invoices->paymentsByInvoice($invoiceId);
     }
 
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int, pages: int}
+     */
+    public function paginatePaymentBatches(array $filters, int $page, int $perPage): array
+    {
+        $normalized = $this->normalizePaymentBatchFilters($filters);
+        $result = $this->invoices->paginatePaymentBatches($normalized, $page, $perPage);
+
+        foreach ($result['items'] as &$item) {
+            $item['status_label'] = $this->paymentBatchStatusLabel((string) ($item['status'] ?? ''));
+        }
+        unset($item);
+
+        return $result;
+    }
+
+    /** @param array<string, mixed> $filters
+     *  @return array<int, array<string, mixed>>
+     */
+    public function paymentBatchCandidates(array $filters, int $limit = 220): array
+    {
+        return $this->invoices->paymentBatchCandidates(
+            $this->normalizePaymentBatchCandidateFilters($filters),
+            $limit
+        );
+    }
+
+    /** @return array{batch: array<string, mixed>, items: array<int, array<string, mixed>>}|null */
+    public function paymentBatchDetail(int $batchId): ?array
+    {
+        $batch = $this->invoices->findPaymentBatchById($batchId);
+        if ($batch === null) {
+            return null;
+        }
+
+        $batch['status_label'] = $this->paymentBatchStatusLabel((string) ($batch['status'] ?? ''));
+        $items = $this->invoices->paymentBatchItems($batchId);
+
+        return [
+            'batch' => $batch,
+            'items' => $items,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, id?: int}
+     */
+    public function createPaymentBatch(array $input, int $userId, string $ip, string $userAgent): array
+    {
+        $title = $this->clean($input['title'] ?? null);
+        $referenceMonthRaw = $this->clean($input['reference_month'] ?? null);
+        $scheduledDateRaw = $this->clean($input['scheduled_payment_date'] ?? null);
+        $notes = $this->clean($input['notes'] ?? null);
+        $paymentIds = $this->collectPositiveIds($input['payment_ids'] ?? []);
+
+        $errors = [];
+
+        if ($title !== null && mb_strlen($title) > 190) {
+            $errors[] = 'Titulo do lote excede limite de 190 caracteres.';
+        }
+
+        $referenceMonth = $this->normalizeReferenceMonth($referenceMonthRaw);
+        if ($referenceMonthRaw !== null && $referenceMonth === null) {
+            $errors[] = 'Referencia do lote invalida (use AAAA-MM).';
+        }
+
+        $scheduledPaymentDate = $this->normalizeDate($scheduledDateRaw);
+        if ($scheduledDateRaw !== null && $scheduledPaymentDate === null) {
+            $errors[] = 'Data prevista de pagamento invalida.';
+        }
+
+        if ($notes !== null && mb_strlen($notes) > 4000) {
+            $errors[] = 'Observacoes do lote excedem limite de 4000 caracteres.';
+        }
+
+        if ($paymentIds === []) {
+            $errors[] = 'Selecione ao menos um pagamento para montar o lote.';
+        } elseif (count($paymentIds) > 600) {
+            $errors[] = 'Selecao excede limite de 600 pagamentos por lote.';
+        }
+
+        if ($errors !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel criar lote de pagamento.',
+                'errors' => $errors,
+            ];
+        }
+
+        $eligiblePayments = $this->invoices->findEligiblePaymentsForBatchByIds($paymentIds);
+        $eligibleIds = array_values(array_map(
+            static fn (array $row): int => (int) ($row['payment_id'] ?? 0),
+            $eligiblePayments
+        ));
+        $missing = array_values(array_diff($paymentIds, $eligibleIds));
+        if ($missing !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel criar lote de pagamento.',
+                'errors' => [
+                    'Alguns pagamentos nao estao elegiveis para lote (inexistentes, removidos ou ja vinculados): '
+                    . implode(', ', array_slice($missing, 0, 8)),
+                ],
+            ];
+        }
+
+        $paymentsCount = count($eligiblePayments);
+        if ($paymentsCount <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel criar lote de pagamento.',
+                'errors' => ['Nenhum pagamento elegivel encontrado para o lote.'],
+            ];
+        }
+
+        $totalAmount = 0.0;
+        foreach ($eligiblePayments as $payment) {
+            $totalAmount += (float) ($payment['amount'] ?? 0);
+        }
+        $totalAmountFormatted = number_format($totalAmount, 2, '.', '');
+
+        $batchCode = $this->generatePaymentBatchCode();
+        $payload = [
+            'batch_code' => $batchCode,
+            'title' => $title === null ? null : mb_substr($title, 0, 190),
+            'status' => 'aberto',
+            'reference_month' => $referenceMonth,
+            'scheduled_payment_date' => $scheduledPaymentDate,
+            'total_amount' => $totalAmountFormatted,
+            'payments_count' => $paymentsCount,
+            'notes' => $notes === null ? null : mb_substr($notes, 0, 4000),
+            'created_by' => $userId > 0 ? $userId : null,
+            'closed_by' => null,
+            'closed_at' => null,
+        ];
+
+        try {
+            $this->invoices->beginTransaction();
+
+            $batchId = $this->invoices->createPaymentBatch($payload);
+            if ($batchId <= 0) {
+                throw new \RuntimeException('Falha ao persistir lote de pagamento.');
+            }
+
+            foreach ($eligiblePayments as $payment) {
+                $paymentId = (int) ($payment['payment_id'] ?? 0);
+                $invoiceId = (int) ($payment['invoice_id'] ?? 0);
+                $paymentDate = (string) ($payment['payment_date'] ?? '');
+                $amount = number_format((float) ($payment['amount'] ?? 0), 2, '.', '');
+
+                if ($paymentId <= 0 || $invoiceId <= 0 || $paymentDate === '') {
+                    throw new \RuntimeException('Pagamento invalido encontrado durante criacao do lote.');
+                }
+
+                $this->invoices->addPaymentToBatch(
+                    batchId: $batchId,
+                    paymentId: $paymentId,
+                    invoiceId: $invoiceId,
+                    amount: $amount,
+                    paymentDate: $paymentDate
+                );
+            }
+
+            $this->audit->log(
+                entity: 'payment_batch',
+                entityId: $batchId,
+                action: 'create',
+                beforeData: null,
+                afterData: [
+                    'batch_code' => $batchCode,
+                    'status' => 'aberto',
+                    'payments_count' => $paymentsCount,
+                    'total_amount' => $totalAmountFormatted,
+                    'reference_month' => $referenceMonth,
+                    'scheduled_payment_date' => $scheduledPaymentDate,
+                ],
+                metadata: [
+                    'payment_ids' => $eligibleIds,
+                ],
+                userId: $userId,
+                ip: $ip,
+                userAgent: $userAgent
+            );
+
+            $this->events->recordEvent(
+                entity: 'payment_batch',
+                type: 'payment_batch.created',
+                payload: [
+                    'batch_id' => $batchId,
+                    'batch_code' => $batchCode,
+                    'payments_count' => $paymentsCount,
+                    'total_amount' => $totalAmountFormatted,
+                ],
+                entityId: $batchId,
+                userId: $userId
+            );
+
+            $this->invoices->commit();
+        } catch (\Throwable $exception) {
+            $this->invoices->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel criar lote de pagamento.',
+                'errors' => ['Falha ao persistir lote e itens de pagamento.'],
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'message' => 'Lote de pagamento criado com sucesso.',
+            'errors' => [],
+            'id' => $batchId,
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, message: string, errors: array<int, string>, simulation?: array<string, mixed>}
+     */
+    public function simulatePaymentBatchFinalApproval(
+        int $batchId,
+        string $targetStatus,
+        int $userId,
+        string $ip,
+        string $userAgent
+    ): array {
+        if ($batchId <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Lote invalido para simulacao.',
+                'errors' => ['Lote invalido para simulacao.'],
+            ];
+        }
+
+        $batch = $this->invoices->findPaymentBatchById($batchId);
+        if ($batch === null) {
+            return [
+                'ok' => false,
+                'message' => 'Lote de pagamento nao encontrado.',
+                'errors' => ['Lote de pagamento nao encontrado.'],
+            ];
+        }
+
+        $target = mb_strtolower(trim($targetStatus));
+        if (!in_array($target, self::PAYMENT_BATCH_FINAL_STATUS, true)) {
+            return [
+                'ok' => false,
+                'message' => 'Status final invalido para simulacao.',
+                'errors' => ['Selecione um status final valido (pago ou cancelado).'],
+            ];
+        }
+
+        $currentStatus = (string) ($batch['status'] ?? 'aberto');
+        if (in_array($currentStatus, self::PAYMENT_BATCH_FINAL_STATUS, true)) {
+            return [
+                'ok' => false,
+                'message' => 'Lote ja finalizado.',
+                'errors' => ['Lote em status final nao permite nova simulacao de aprovacao.'],
+            ];
+        }
+
+        if (!$this->canTransitionPaymentBatchStatus($currentStatus, $target)) {
+            return [
+                'ok' => false,
+                'message' => 'Transicao final nao permitida para simulacao.',
+                'errors' => ['Fluxo invalido: finalize apenas transicoes permitidas do lote atual.'],
+            ];
+        }
+
+        $items = $this->invoices->paymentBatchItems($batchId);
+        if ($items === []) {
+            return [
+                'ok' => false,
+                'message' => 'Lote sem itens para simulacao final.',
+                'errors' => ['Nao ha pagamentos vinculados para simular aprovacao final.'],
+            ];
+        }
+
+        $paymentsCount = count($items);
+        $invoiceIds = [];
+        $organNames = [];
+        $totalItems = 0.0;
+        $proofsMissing = 0;
+        $processMissing = 0;
+        $paymentDateFrom = null;
+        $paymentDateTo = null;
+
+        foreach ($items as $item) {
+            $invoiceId = (int) ($item['invoice_id'] ?? 0);
+            if ($invoiceId > 0) {
+                $invoiceIds[$invoiceId] = true;
+            }
+
+            $organName = trim((string) ($item['organ_name'] ?? ''));
+            if ($organName !== '') {
+                $organNames[$organName] = true;
+            }
+
+            $totalItems += (float) ($item['amount'] ?? 0);
+
+            if (trim((string) ($item['proof_storage_path'] ?? '')) === '') {
+                $proofsMissing++;
+            }
+
+            if (trim((string) ($item['process_reference'] ?? '')) === '') {
+                $processMissing++;
+            }
+
+            $paymentDate = trim((string) ($item['payment_date'] ?? ''));
+            if ($paymentDate !== '') {
+                $paymentDateFrom = $paymentDateFrom === null || $paymentDate < $paymentDateFrom ? $paymentDate : $paymentDateFrom;
+                $paymentDateTo = $paymentDateTo === null || $paymentDate > $paymentDateTo ? $paymentDate : $paymentDateTo;
+            }
+        }
+
+        $batchTotal = (float) ($batch['total_amount'] ?? 0);
+        $amountGap = abs($batchTotal - $totalItems);
+
+        $riskLevel = 'baixo';
+        $riskNotes = [];
+
+        if ($amountGap > 0.009) {
+            $riskLevel = 'alto';
+            $riskNotes[] = 'Soma dos itens diverge do total consolidado do lote.';
+        }
+
+        if ($target === 'pago' && $proofsMissing > 0) {
+            $riskLevel = 'alto';
+            $riskNotes[] = sprintf('%d pagamento(s) sem comprovante anexo.', $proofsMissing);
+        }
+
+        if ($processMissing > 0 && $riskLevel !== 'alto') {
+            $riskLevel = 'medio';
+            $riskNotes[] = sprintf('%d pagamento(s) sem referencia de processo.', $processMissing);
+        }
+
+        if ($riskNotes === []) {
+            $riskNotes[] = 'Nenhuma inconsistencia critica detectada para aprovacao final.';
+        }
+
+        try {
+            $token = bin2hex(random_bytes(20));
+        } catch (\Throwable $exception) {
+            $token = sha1((string) microtime(true) . '-' . (string) $batchId . '-' . (string) mt_rand());
+        }
+
+        $expiresAt = time() + self::PAYMENT_BATCH_FINAL_SIMULATION_TTL_SECONDS;
+        $simulation = [
+            'batch_id' => $batchId,
+            'batch_code' => (string) ($batch['batch_code'] ?? ''),
+            'source_status' => $currentStatus,
+            'target_status' => $target,
+            'target_status_label' => $this->paymentBatchStatusLabel($target),
+            'generated_at' => date('Y-m-d H:i:s'),
+            'expires_at' => $expiresAt,
+            'expires_at_label' => date('Y-m-d H:i:s', $expiresAt),
+            'batch_updated_at' => (string) ($batch['updated_at'] ?? ''),
+            'token' => $token,
+            'risk_level' => $riskLevel,
+            'risk_notes' => $riskNotes,
+            'summary' => [
+                'payments_count' => $paymentsCount,
+                'invoices_count' => count($invoiceIds),
+                'organs_count' => count($organNames),
+                'total_amount' => number_format($totalItems, 2, '.', ''),
+                'payment_date_from' => $paymentDateFrom,
+                'payment_date_to' => $paymentDateTo,
+            ],
+            'quality' => [
+                'proofs_missing_count' => $proofsMissing,
+                'process_missing_count' => $processMissing,
+                'amount_gap' => number_format($amountGap, 2, '.', ''),
+            ],
+        ];
+
+        $this->audit->log(
+            entity: 'payment_batch',
+            entityId: $batchId,
+            action: 'final_approval.simulate',
+            beforeData: null,
+            afterData: [
+                'source_status' => $currentStatus,
+                'target_status' => $target,
+                'risk_level' => $riskLevel,
+                'payments_count' => $paymentsCount,
+            ],
+            metadata: [
+                'batch_code' => (string) ($batch['batch_code'] ?? ''),
+                'proofs_missing_count' => $proofsMissing,
+                'process_missing_count' => $processMissing,
+                'amount_gap' => number_format($amountGap, 2, '.', ''),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'payment_batch',
+            type: 'payment_batch.final_approval_simulated',
+            payload: [
+                'batch_id' => $batchId,
+                'batch_code' => (string) ($batch['batch_code'] ?? ''),
+                'source_status' => $currentStatus,
+                'target_status' => $target,
+                'risk_level' => $riskLevel,
+            ],
+            entityId: $batchId,
+            userId: $userId
+        );
+
+        return [
+            'ok' => true,
+            'message' => 'Simulacao previa da aprovacao final executada com sucesso.',
+            'errors' => [],
+            'simulation' => $simulation,
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, message: string, errors: array<int, string>}
+     */
+    public function updatePaymentBatchStatus(
+        int $batchId,
+        string $status,
+        string $note,
+        int $userId,
+        string $ip,
+        string $userAgent,
+        string $simulationToken = '',
+        ?array $finalApprovalSimulation = null
+    ): array {
+        if ($batchId <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Lote invalido para atualizacao.',
+                'errors' => ['Lote invalido para atualizacao.'],
+            ];
+        }
+
+        $batch = $this->invoices->findPaymentBatchById($batchId);
+        if ($batch === null) {
+            return [
+                'ok' => false,
+                'message' => 'Lote de pagamento nao encontrado.',
+                'errors' => ['Lote de pagamento nao encontrado.'],
+            ];
+        }
+
+        $normalizedStatus = mb_strtolower(trim($status));
+        if (!in_array($normalizedStatus, self::PAYMENT_BATCH_ALLOWED_STATUS, true)) {
+            return [
+                'ok' => false,
+                'message' => 'Status invalido para lote de pagamento.',
+                'errors' => ['Status invalido para lote de pagamento.'],
+            ];
+        }
+
+        $statusNote = $this->clean($note);
+        if ($statusNote !== null && mb_strlen($statusNote) > 4000) {
+            return [
+                'ok' => false,
+                'message' => 'Observacao excede limite de 4000 caracteres.',
+                'errors' => ['Observacao excede limite de 4000 caracteres.'],
+            ];
+        }
+
+        $currentStatus = (string) ($batch['status'] ?? 'aberto');
+        if ($currentStatus !== $normalizedStatus && !$this->canTransitionPaymentBatchStatus($currentStatus, $normalizedStatus)) {
+            return [
+                'ok' => false,
+                'message' => 'Transicao de status nao permitida para o lote.',
+                'errors' => ['Transicao invalida: revise o fluxo do lote (aberto -> em_processamento -> pago/cancelado).'],
+            ];
+        }
+
+        $appliedFinalSimulation = false;
+        if (in_array($normalizedStatus, self::PAYMENT_BATCH_FINAL_STATUS, true) && $currentStatus !== $normalizedStatus) {
+            $simulationError = $this->validatePaymentBatchFinalApprovalSimulation(
+                batch: $batch,
+                currentStatus: $currentStatus,
+                targetStatus: $normalizedStatus,
+                simulationToken: $simulationToken,
+                finalApprovalSimulation: $finalApprovalSimulation
+            );
+
+            if ($simulationError !== null) {
+                return [
+                    'ok' => false,
+                    'message' => 'Aprovacao final bloqueada sem simulacao valida.',
+                    'errors' => [$simulationError],
+                ];
+            }
+
+            $appliedFinalSimulation = true;
+        }
+
+        $notesToPersist = $statusNote ?? $this->clean($batch['notes'] ?? null);
+        $closedBy = in_array($normalizedStatus, self::PAYMENT_BATCH_FINAL_STATUS, true) && $userId > 0 ? $userId : null;
+        $closedAt = in_array($normalizedStatus, self::PAYMENT_BATCH_FINAL_STATUS, true) ? date('Y-m-d H:i:s') : null;
+
+        try {
+            $this->invoices->beginTransaction();
+
+            $updated = $this->invoices->updatePaymentBatchStatus(
+                batchId: $batchId,
+                status: $normalizedStatus,
+                notes: $notesToPersist,
+                closedBy: $closedBy,
+                closedAt: $closedAt
+            );
+            if (!$updated) {
+                throw new \RuntimeException('Falha ao atualizar status do lote.');
+            }
+
+            $after = $this->invoices->findPaymentBatchById($batchId) ?? $batch;
+
+            $this->audit->log(
+                entity: 'payment_batch',
+                entityId: $batchId,
+                action: 'status.update',
+                beforeData: [
+                    'status' => $batch['status'] ?? null,
+                    'closed_by' => $batch['closed_by'] ?? null,
+                    'closed_at' => $batch['closed_at'] ?? null,
+                    'notes' => $batch['notes'] ?? null,
+                ],
+                afterData: [
+                    'status' => $after['status'] ?? null,
+                    'closed_by' => $after['closed_by'] ?? null,
+                    'closed_at' => $after['closed_at'] ?? null,
+                    'notes' => $after['notes'] ?? null,
+                ],
+                metadata: [
+                    'batch_code' => (string) ($after['batch_code'] ?? ''),
+                    'status_note' => $statusNote,
+                    'final_approval_simulation_applied' => $appliedFinalSimulation,
+                ],
+                userId: $userId,
+                ip: $ip,
+                userAgent: $userAgent
+            );
+
+            $this->events->recordEvent(
+                entity: 'payment_batch',
+                type: 'payment_batch.status_updated',
+                payload: [
+                    'batch_id' => $batchId,
+                    'batch_code' => (string) ($after['batch_code'] ?? ''),
+                    'before_status' => $currentStatus,
+                    'after_status' => $normalizedStatus,
+                    'final_approval_simulation_applied' => $appliedFinalSimulation,
+                ],
+                entityId: $batchId,
+                userId: $userId
+            );
+
+            $this->invoices->commit();
+        } catch (\Throwable $exception) {
+            $this->invoices->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel atualizar o status do lote.',
+                'errors' => ['Falha ao persistir atualizacao de status do lote.'],
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'message' => 'Status do lote atualizado com sucesso.',
+            'errors' => [],
+        ];
+    }
+
     /** @return array<int, array<string, mixed>> */
     public function availablePeople(int $invoiceId, int $limit = 300): array
     {
@@ -98,6 +678,20 @@ final class InvoiceService
             ['value' => 'aberto', 'label' => 'Aberto'],
             ['value' => 'vencido', 'label' => 'Vencido'],
             ['value' => 'pago_parcial', 'label' => 'Pago parcial'],
+            ['value' => 'pago', 'label' => 'Pago'],
+            ['value' => 'cancelado', 'label' => 'Cancelado'],
+        ];
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function paymentBatchStatusOptions(): array
+    {
+        return [
+            ['value' => '', 'label' => 'Todos os status'],
+            ['value' => 'aberto', 'label' => 'Aberto'],
+            ['value' => 'em_processamento', 'label' => 'Em processamento'],
             ['value' => 'pago', 'label' => 'Pago'],
             ['value' => 'cancelado', 'label' => 'Cancelado'],
         ];
@@ -1309,6 +1903,190 @@ final class InvoiceService
                 'proof_storage_path' => $subDir . '/' . $storedName,
             ],
         ];
+    }
+
+    /** @param array<string, mixed> $filters
+     *  @return array<string, mixed>
+     */
+    private function normalizePaymentBatchFilters(array $filters): array
+    {
+        $statusRaw = mb_strtolower(trim((string) ($filters['status'] ?? '')));
+        $status = in_array($statusRaw, self::PAYMENT_BATCH_ALLOWED_STATUS, true) ? $statusRaw : '';
+
+        $referenceMonthNormalized = $this->normalizeReferenceMonth($this->clean($filters['reference_month'] ?? null));
+        $referenceMonth = $referenceMonthNormalized === null ? '' : substr($referenceMonthNormalized, 0, 7);
+
+        $sortRaw = trim((string) ($filters['sort'] ?? 'created_at'));
+        $allowedSort = ['batch_code', 'status', 'scheduled_payment_date', 'payments_count', 'total_amount', 'created_at'];
+        $sort = in_array($sortRaw, $allowedSort, true) ? $sortRaw : 'created_at';
+
+        $dirRaw = mb_strtolower(trim((string) ($filters['dir'] ?? 'desc')));
+        $dir = $dirRaw === 'asc' ? 'asc' : 'desc';
+
+        return [
+            'q' => $this->clean($filters['q'] ?? null) ?? '',
+            'status' => $status,
+            'organ_id' => max(0, (int) ($filters['organ_id'] ?? 0)),
+            'reference_month' => $referenceMonth,
+            'sort' => $sort,
+            'dir' => $dir,
+        ];
+    }
+
+    /** @param array<string, mixed> $filters
+     *  @return array<string, mixed>
+     */
+    private function normalizePaymentBatchCandidateFilters(array $filters): array
+    {
+        $referenceMonthNormalized = $this->normalizeReferenceMonth($this->clean($filters['reference_month'] ?? null));
+        $referenceMonth = $referenceMonthNormalized === null ? '' : substr($referenceMonthNormalized, 0, 7);
+
+        $paymentDateFrom = $this->normalizeDate($this->clean($filters['payment_date_from'] ?? null));
+        $paymentDateTo = $this->normalizeDate($this->clean($filters['payment_date_to'] ?? null));
+
+        if ($paymentDateFrom !== null && $paymentDateTo !== null && strtotime($paymentDateFrom) > strtotime($paymentDateTo)) {
+            [$paymentDateFrom, $paymentDateTo] = [$paymentDateTo, $paymentDateFrom];
+        }
+
+        return [
+            'q' => $this->clean($filters['q'] ?? null) ?? '',
+            'organ_id' => max(0, (int) ($filters['organ_id'] ?? 0)),
+            'reference_month' => $referenceMonth,
+            'payment_date_from' => $paymentDateFrom ?? '',
+            'payment_date_to' => $paymentDateTo ?? '',
+        ];
+    }
+
+    /** @return array<int, int> */
+    private function collectPositiveIds(mixed $value): array
+    {
+        $rawValues = [];
+
+        if (is_array($value)) {
+            $rawValues = $value;
+        } elseif (is_string($value) && trim($value) !== '') {
+            $rawValues = preg_split('/[\s,;]+/', trim($value)) ?: [];
+        } elseif ($value !== null) {
+            $rawValues = [$value];
+        }
+
+        $ids = [];
+        $seen = [];
+
+        foreach ($rawValues as $rawValue) {
+            if (is_array($rawValue)) {
+                foreach ($rawValue as $nestedValue) {
+                    $id = (int) $nestedValue;
+                    if ($id <= 0 || isset($seen[$id])) {
+                        continue;
+                    }
+
+                    $seen[$id] = true;
+                    $ids[] = $id;
+                }
+
+                continue;
+            }
+
+            $id = (int) $rawValue;
+            if ($id <= 0 || isset($seen[$id])) {
+                continue;
+            }
+
+            $seen[$id] = true;
+            $ids[] = $id;
+        }
+
+        return $ids;
+    }
+
+    private function generatePaymentBatchCode(): string
+    {
+        try {
+            $token = strtoupper(bin2hex(random_bytes(3)));
+        } catch (\Throwable $exception) {
+            $token = strtoupper(substr(sha1((string) microtime(true) . '-' . (string) mt_rand()), 0, 6));
+        }
+
+        return 'LP-' . date('YmdHis') . '-' . $token;
+    }
+
+    private function paymentBatchStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'aberto' => 'Aberto',
+            'em_processamento' => 'Em processamento',
+            'pago' => 'Pago',
+            'cancelado' => 'Cancelado',
+            default => ucfirst(str_replace('_', ' ', $status)),
+        };
+    }
+
+    private function canTransitionPaymentBatchStatus(string $current, string $next): bool
+    {
+        $from = mb_strtolower(trim($current));
+        $to = mb_strtolower(trim($next));
+
+        if ($from === $to) {
+            return true;
+        }
+
+        if (in_array($from, self::PAYMENT_BATCH_FINAL_STATUS, true)) {
+            return false;
+        }
+
+        $allowed = [
+            'aberto' => ['em_processamento', 'cancelado'],
+            'em_processamento' => ['pago', 'cancelado'],
+        ];
+
+        return in_array($to, $allowed[$from] ?? [], true);
+    }
+
+    /** @param array<string, mixed> $batch */
+    private function validatePaymentBatchFinalApprovalSimulation(
+        array $batch,
+        string $currentStatus,
+        string $targetStatus,
+        string $simulationToken,
+        ?array $finalApprovalSimulation
+    ): ?string {
+        $token = trim($simulationToken);
+        if ($token === '') {
+            return 'Execute a simulacao previa antes da aprovacao final do lote.';
+        }
+
+        if (!is_array($finalApprovalSimulation)) {
+            return 'Nao foi encontrada simulacao previa valida para este lote.';
+        }
+
+        $batchId = (int) ($batch['id'] ?? 0);
+        if ((int) ($finalApprovalSimulation['batch_id'] ?? 0) !== $batchId) {
+            return 'Simulacao previa nao corresponde ao lote selecionado.';
+        }
+
+        if ((string) ($finalApprovalSimulation['target_status'] ?? '') !== $targetStatus) {
+            return 'Simulacao previa nao corresponde ao status final selecionado.';
+        }
+
+        if ((string) ($finalApprovalSimulation['source_status'] ?? '') !== $currentStatus) {
+            return 'Status do lote mudou apos a simulacao. Execute nova simulacao.';
+        }
+
+        if ((string) ($finalApprovalSimulation['token'] ?? '') !== $token) {
+            return 'Token de simulacao invalido para aprovacao final.';
+        }
+
+        $expiresAt = (int) ($finalApprovalSimulation['expires_at'] ?? 0);
+        if ($expiresAt <= time()) {
+            return 'Simulacao previa expirada. Execute novamente antes de aprovar.';
+        }
+
+        if ((string) ($finalApprovalSimulation['batch_updated_at'] ?? '') !== (string) ($batch['updated_at'] ?? '')) {
+            return 'O lote foi alterado apos a simulacao. Execute nova simulacao.';
+        }
+
+        return null;
     }
 
     private function effectiveStatus(string $status, string $dueDate, float $paidAmount, float $totalAmount): string

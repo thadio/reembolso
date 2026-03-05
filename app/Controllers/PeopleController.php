@@ -8,21 +8,29 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\CostPlanRepository;
 use App\Repositories\DocumentRepository;
+use App\Repositories\DocumentIntelligenceRepository;
 use App\Repositories\LgpdRepository;
 use App\Repositories\PersonAuditRepository;
 use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
+use App\Repositories\ProcessAdminTimelineRepository;
+use App\Repositories\ProcessCommentRepository;
 use App\Repositories\ReconciliationRepository;
 use App\Repositories\ReimbursementRepository;
 use App\Repositories\SecuritySettingsRepository;
 use App\Services\CostPlanService;
 use App\Services\DocumentService;
+use App\Services\DocumentIntelligenceService;
 use App\Services\LgpdService;
 use App\Services\PersonAuditService;
+use App\Services\PersonDossierExportService;
 use App\Services\PipelineService;
 use App\Services\PeopleService;
+use App\Services\ProcessAdminTimelineService;
+use App\Services\ProcessCommentService;
 use App\Services\ReconciliationService;
 use App\Services\ReimbursementService;
+use App\Services\ReportPdfBuilder;
 use App\Services\SecuritySettingsService;
 
 final class PeopleController extends Controller
@@ -200,6 +208,7 @@ final class PeopleController extends Controller
         $id = (int) $request->input('id', '0');
         $timelinePage = max(1, (int) $request->input('timeline_page', '1'));
         $documentsPage = max(1, (int) $request->input('documents_page', '1'));
+        $adminTimelinePage = max(1, (int) $request->input('admin_timeline_page', '1'));
         $auditPage = max(1, (int) $request->input('audit_page', '1'));
         if ($id <= 0) {
             flash('error', 'Pessoa inválida.');
@@ -233,9 +242,22 @@ final class PeopleController extends Controller
         $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
         $canViewSensitiveDocuments = $this->app->auth()->hasPermission('people.documents.sensitive');
         $documents = $this->documentService()->profileData($id, $documentsPage, 8, $canViewSensitiveDocuments);
+        $documentIntelligence = $this->documentIntelligenceService()->profileData($id);
         $costs = $this->costService()->profileData($id);
         $conciliation = $this->conciliationService()->profileData($id, 8);
         $reimbursements = $this->reimbursementService()->profileData($id, 80);
+        $processComments = $this->processCommentService()->profileData($id, 80);
+        $adminTimelineFilters = [
+            'q' => (string) $request->input('admin_timeline_q', ''),
+            'source' => (string) $request->input('admin_timeline_source', ''),
+            'status_group' => (string) $request->input('admin_timeline_status_group', ''),
+        ];
+        $adminTimeline = $this->processAdminTimelineService()->profileData(
+            personId: $id,
+            filters: $adminTimelineFilters,
+            page: $adminTimelinePage,
+            perPage: 14
+        );
 
         if ($canViewCpfFull && trim((string) ($person['cpf'] ?? '')) !== '') {
             $this->lgpdService()->registerSensitiveAccess(
@@ -293,14 +315,20 @@ final class PeopleController extends Controller
             'person' => $person,
             'pipeline' => $pipeline,
             'documents' => $documents,
+            'documentIntelligence' => $documentIntelligence,
             'costs' => $costs,
             'conciliation' => $conciliation,
             'reimbursements' => $reimbursements,
+            'processComments' => $processComments,
+            'adminTimeline' => $adminTimeline,
             'audit' => $audit,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $canViewCpfFull,
             'canViewAudit' => $canViewAudit,
             'canViewSensitiveDocuments' => $canViewSensitiveDocuments,
+            'processCommentStatusOptions' => $this->processCommentService()->statusOptions(),
+            'adminTimelineNoteStatusOptions' => $this->processAdminTimelineService()->noteStatusOptions(),
+            'adminTimelineNoteSeverityOptions' => $this->processAdminTimelineService()->noteSeverityOptions(),
         ]);
     }
 
@@ -670,6 +698,37 @@ final class PeopleController extends Controller
         $this->redirect('/people/show?id=' . $personId);
     }
 
+    public function runDocumentIntelligence(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa invalida para conferencia assistida.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->documentIntelligenceService()->runPersonReview(
+            personId: $personId,
+            expectedSei: (string) ($person['sei_process_number'] ?? ''),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
     public function downloadDocument(Request $request): void
     {
         $documentId = (int) $request->input('id', '0');
@@ -690,6 +749,79 @@ final class PeopleController extends Controller
         );
         if ($file === null) {
             flash('error', 'Documento não encontrado ou acesso não autorizado.');
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        header('Content-Type: ' . $file['mime_type']);
+        header('Content-Length: ' . (string) filesize($file['path']));
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="' . rawurlencode($file['original_name']) . '"');
+        readfile($file['path']);
+        exit;
+    }
+
+    public function storeDocumentVersion(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $documentId = (int) $request->input('document_id', '0');
+
+        if ($personId <= 0 || $documentId <= 0) {
+            flash('error', 'Dados inválidos para versionamento do documento.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa não encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->documentService()->createDocumentVersion(
+            personId: $personId,
+            documentId: $documentId,
+            files: $_FILES,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+            canAccessSensitiveDocuments: $this->app->auth()->hasPermission('people.documents.sensitive')
+        );
+
+        if (!$result['ok']) {
+            $messages = array_merge($result['errors'], $result['warnings']);
+            flash('error', implode(' ', $messages));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function downloadDocumentVersion(Request $request): void
+    {
+        $versionId = (int) $request->input('version_id', '0');
+        $documentId = (int) $request->input('document_id', '0');
+        $personId = (int) $request->input('person_id', '0');
+
+        if ($versionId <= 0 || $documentId <= 0 || $personId <= 0) {
+            flash('error', 'Versão de documento inválida.');
+            $this->redirect('/people');
+        }
+
+        $file = $this->documentService()->documentVersionForDownload(
+            versionId: $versionId,
+            documentId: $documentId,
+            personId: $personId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+            canAccessSensitiveDocuments: $this->app->auth()->hasPermission('people.documents.sensitive')
+        );
+        if ($file === null) {
+            flash('error', 'Versão do documento não encontrada ou acesso não autorizado.');
             $this->redirect('/people/show?id=' . $personId);
         }
 
@@ -844,6 +976,228 @@ final class PeopleController extends Controller
         $this->redirect('/people/show?id=' . $personId);
     }
 
+    public function storeProcessComment(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa invalida para comentario interno.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $defaultAssignmentId = max(0, (int) $request->input('assignment_id', '0'));
+
+        $result = $this->processCommentService()->create(
+            personId: $personId,
+            defaultAssignmentId: $defaultAssignmentId > 0 ? $defaultAssignmentId : null,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function updateProcessComment(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $commentId = (int) $request->input('comment_id', '0');
+        if ($personId <= 0 || $commentId <= 0) {
+            flash('error', 'Dados invalidos para atualizar comentario interno.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->processCommentService()->update(
+            personId: $personId,
+            commentId: $commentId,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function deleteProcessComment(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $commentId = (int) $request->input('comment_id', '0');
+        if ($personId <= 0 || $commentId <= 0) {
+            flash('error', 'Dados invalidos para excluir comentario interno.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->processCommentService()->delete(
+            personId: $personId,
+            commentId: $commentId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function storeProcessAdminTimelineNote(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa invalida para timeline administrativa.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $defaultAssignmentId = max(0, (int) $request->input('assignment_id', '0'));
+
+        $result = $this->processAdminTimelineService()->createManualNote(
+            personId: $personId,
+            defaultAssignmentId: $defaultAssignmentId > 0 ? $defaultAssignmentId : null,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function updateProcessAdminTimelineNote(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $noteId = (int) $request->input('note_id', '0');
+        if ($personId <= 0 || $noteId <= 0) {
+            flash('error', 'Dados invalidos para atualizar nota administrativa.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->processAdminTimelineService()->updateManualNote(
+            personId: $personId,
+            noteId: $noteId,
+            input: $request->all(),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
+    public function deleteProcessAdminTimelineNote(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        $noteId = (int) $request->input('note_id', '0');
+        if ($personId <= 0 || $noteId <= 0) {
+            flash('error', 'Dados invalidos para excluir nota administrativa.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $result = $this->processAdminTimelineService()->deleteManualNote(
+            personId: $personId,
+            noteId: $noteId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        flash('success', $result['message']);
+        if ($result['warnings'] !== []) {
+            flash('error', implode(' ', $result['warnings']));
+        }
+
+        $this->redirect('/people/show?id=' . $personId);
+    }
+
     public function exportAudit(Request $request): void
     {
         $personId = (int) $request->input('person_id', '0');
@@ -929,6 +1283,56 @@ final class PeopleController extends Controller
         exit;
     }
 
+    public function exportDossier(Request $request): void
+    {
+        $personId = (int) $request->input('person_id', '0');
+        if ($personId <= 0) {
+            flash('error', 'Pessoa invalida para exportacao de dossie.');
+            $this->redirect('/people');
+        }
+
+        $person = $this->service()->find($personId);
+        if ($person === null) {
+            flash('error', 'Pessoa nao encontrada.');
+            $this->redirect('/people');
+        }
+
+        $export = $this->dossierService()->exportZip(
+            personId: $personId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+            canViewSensitiveDocuments: $this->app->auth()->hasPermission('people.documents.sensitive'),
+            canViewAuditTrail: $this->app->auth()->hasPermission('audit.view'),
+            canViewCpfFull: $this->app->auth()->hasPermission('people.cpf.full')
+        );
+
+        if (($export['ok'] ?? false) !== true) {
+            $errors = is_array($export['errors'] ?? null) ? $export['errors'] : ['Falha ao gerar dossie ZIP.'];
+            flash('error', implode(' ', $errors));
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        $path = (string) ($export['path'] ?? '');
+        $fileName = (string) ($export['file_name'] ?? ('dossie-pessoa-' . $personId . '.zip'));
+
+        if ($path === '' || !is_file($path)) {
+            flash('error', 'Arquivo ZIP de dossie nao encontrado para download.');
+            $this->redirect('/people/show?id=' . $personId);
+        }
+
+        if (!headers_sent()) {
+            header('Content-Type: application/zip');
+            header('X-Content-Type-Options: nosniff');
+            header('Content-Disposition: attachment; filename="' . $fileName . '"');
+            header('Content-Length: ' . (string) filesize($path));
+        }
+
+        readfile($path);
+        @unlink($path);
+        exit;
+    }
+
     /** @return array<string, mixed> */
     private function emptyPerson(): array
     {
@@ -981,6 +1385,15 @@ final class PeopleController extends Controller
         );
     }
 
+    private function documentIntelligenceService(): DocumentIntelligenceService
+    {
+        return new DocumentIntelligenceService(
+            new DocumentIntelligenceRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
+        );
+    }
+
     private function costService(): CostPlanService
     {
         return new CostPlanService(
@@ -999,6 +1412,24 @@ final class PeopleController extends Controller
         );
     }
 
+    private function processCommentService(): ProcessCommentService
+    {
+        return new ProcessCommentService(
+            new ProcessCommentRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
+        );
+    }
+
+    private function processAdminTimelineService(): ProcessAdminTimelineService
+    {
+        return new ProcessAdminTimelineService(
+            new ProcessAdminTimelineRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
+        );
+    }
+
     private function conciliationService(): ReconciliationService
     {
         return new ReconciliationService(
@@ -1010,6 +1441,23 @@ final class PeopleController extends Controller
     {
         return new PersonAuditService(
             new PersonAuditRepository($this->app->db())
+        );
+    }
+
+    private function dossierService(): PersonDossierExportService
+    {
+        return new PersonDossierExportService(
+            $this->service(),
+            $this->pipelineService(),
+            $this->documentService(),
+            $this->processCommentService(),
+            $this->processAdminTimelineService(),
+            $this->reimbursementService(),
+            $this->auditTrailService(),
+            $this->app->audit(),
+            $this->app->events(),
+            new ReportPdfBuilder(),
+            $this->app->config()
         );
     }
 

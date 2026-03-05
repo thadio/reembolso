@@ -110,6 +110,7 @@ function buildSnapshotPayload(array $overview, App $app): array
         ],
         'summary' => $summary,
         'status_distribution' => is_array($overview['status_distribution'] ?? null) ? $overview['status_distribution'] : [],
+        'executive_panel' => is_array($overview['executive_panel'] ?? null) ? $overview['executive_panel'] : [],
         'recommendation' => is_array($overview['recommendation'] ?? null) ? $overview['recommendation'] : [],
         'projections' => [
             'method' => 'annualizacao_linear_mes_atual_x_12',

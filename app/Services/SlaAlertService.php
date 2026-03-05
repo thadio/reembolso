@@ -11,6 +11,7 @@ final class SlaAlertService
 {
     private const DEFAULT_WARNING_DAYS = 5;
     private const DEFAULT_OVERDUE_DAYS = 10;
+    private const ALLOWED_CONTROL_STATUS = ['aberto', 'em_tratamento', 'resolvido'];
 
     public function __construct(
         private SlaAlertRepository $sla,
@@ -28,7 +29,15 @@ final class SlaAlertService
      *   page: int,
      *   per_page: int,
      *   pages: int,
-     *   summary: array{total: int, no_prazo: int, em_risco: int, vencido: int}
+     *   summary: array{
+     *      total: int,
+     *      no_prazo: int,
+     *      em_risco: int,
+     *      vencido: int,
+     *      overdue_open: int,
+     *      overdue_in_progress: int,
+     *      overdue_resolved: int
+     *   }
      * }
      */
     public function panel(array $filters, int $page, int $perPage): array
@@ -57,6 +66,22 @@ final class SlaAlertService
             ['value' => 'em_risco', 'label' => 'Em risco'],
             ['value' => 'vencido', 'label' => 'Vencido'],
         ];
+    }
+
+    /** @return array<int, array{value: string, label: string}> */
+    public function controlStatusOptions(): array
+    {
+        return [
+            ['value' => 'aberto', 'label' => 'Aberto'],
+            ['value' => 'em_tratamento', 'label' => 'Em tratamento'],
+            ['value' => 'resolvido', 'label' => 'Resolvido'],
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function controlOwnerOptions(int $limit = 300): array
+    {
+        return $this->sla->activeAssignableUsers($limit);
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -311,6 +336,140 @@ final class SlaAlertService
             'sent' => $sent,
             'failed' => $failed,
             'skipped' => $skipped,
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, message: string, errors: array<int, string>, data?: array<string, mixed>}
+     */
+    public function updateCaseControl(
+        int $assignmentId,
+        string $controlStatus,
+        int $ownerUserId,
+        string $note,
+        int $userId,
+        string $ip,
+        string $userAgent
+    ): array {
+        if ($assignmentId <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Caso invalido para controle.',
+                'errors' => ['Caso invalido para controle.'],
+            ];
+        }
+
+        $normalizedControl = mb_strtolower(trim($controlStatus));
+        if (!in_array($normalizedControl, self::ALLOWED_CONTROL_STATUS, true)) {
+            return [
+                'ok' => false,
+                'message' => 'Status de controle invalido.',
+                'errors' => ['Status de controle invalido.'],
+            ];
+        }
+
+        if ($ownerUserId > 0 && !$this->sla->userExists($ownerUserId)) {
+            return [
+                'ok' => false,
+                'message' => 'Responsavel invalido para o controle de atraso.',
+                'errors' => ['Responsavel invalido para o controle de atraso.'],
+            ];
+        }
+
+        $controlNote = $this->clean($note);
+        if ($controlNote !== null && mb_strlen($controlNote) > 2000) {
+            return [
+                'ok' => false,
+                'message' => 'Observacao excede limite de 2000 caracteres.',
+                'errors' => ['Observacao excede limite de 2000 caracteres.'],
+            ];
+        }
+
+        $case = $this->sla->findCaseForControl($assignmentId);
+        if ($case === null) {
+            return [
+                'ok' => false,
+                'message' => 'Caso nao encontrado para controle de atraso.',
+                'errors' => ['Caso nao encontrado para controle de atraso.'],
+            ];
+        }
+
+        if ((string) ($case['sla_level'] ?? '') !== 'vencido') {
+            return [
+                'ok' => false,
+                'message' => 'Somente casos vencidos podem receber controle de atraso.',
+                'errors' => ['Somente casos vencidos podem receber controle de atraso.'],
+            ];
+        }
+
+        $before = $this->sla->findControlByAssignment($assignmentId);
+        $beforeStatus = (string) ($before['control_status'] ?? 'aberto');
+        $beforeOwner = (int) ($before['owner_user_id'] ?? 0);
+        $beforeNote = $this->clean($before['note'] ?? null);
+        $normalizedOwner = $ownerUserId > 0 ? $ownerUserId : 0;
+
+        if (
+            $before !== null
+            && $beforeStatus === $normalizedControl
+            && $beforeOwner === $normalizedOwner
+            && (($beforeNote ?? '') === ($controlNote ?? ''))
+        ) {
+            return [
+                'ok' => true,
+                'message' => 'Controle de atraso mantido sem alteracoes.',
+                'errors' => [],
+                'data' => $before,
+            ];
+        }
+
+        $payload = [
+            'assignment_id' => $assignmentId,
+            'person_id' => (int) ($case['person_id'] ?? 0),
+            'control_status' => $normalizedControl,
+            'owner_user_id' => $normalizedOwner > 0 ? $normalizedOwner : null,
+            'note' => $controlNote,
+            'created_by' => $userId > 0 ? $userId : null,
+            'updated_by' => $userId > 0 ? $userId : null,
+        ];
+
+        $this->sla->upsertCaseControl($payload);
+        $after = $this->sla->findControlByAssignment($assignmentId);
+
+        $this->audit->log(
+            entity: 'sla_case_control',
+            entityId: (int) ($after['id'] ?? 0),
+            action: 'upsert',
+            beforeData: $before,
+            afterData: $after,
+            metadata: [
+                'assignment_id' => $assignmentId,
+                'person_id' => (int) ($case['person_id'] ?? 0),
+                'status_code' => (string) ($case['status_code'] ?? ''),
+                'sla_level' => (string) ($case['sla_level'] ?? ''),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'sla',
+            type: 'sla.case_control_updated',
+            payload: [
+                'assignment_id' => $assignmentId,
+                'person_id' => (int) ($case['person_id'] ?? 0),
+                'control_status' => $normalizedControl,
+                'owner_user_id' => $normalizedOwner > 0 ? $normalizedOwner : null,
+            ],
+            entityId: $assignmentId,
+            userId: $userId
+        );
+
+        return [
+            'ok' => true,
+            'message' => 'Controle de atraso atualizado com sucesso.',
+            'errors' => [],
+            'data' => $after ?? $payload,
         ];
     }
 

@@ -10,6 +10,7 @@ $canViewUsers = in_array('users.view', $authPermissions, true);
 $canManageUsers = in_array('users.manage', $authPermissions, true);
 $canViewSecurity = in_array('security.view', $authPermissions, true);
 $canManageSecurity = in_array('security.manage', $authPermissions, true);
+$canViewOpsPanel = $canViewSecurity;
 $canViewLgpd = in_array('lgpd.view', $authPermissions, true);
 $canManageLgpd = in_array('lgpd.manage', $authPermissions, true);
 $canViewBudget = in_array('budget.view', $authPermissions, true);
@@ -33,6 +34,7 @@ $canManageProcessMeta = in_array('process_meta.manage', $authPermissions, true);
 $canViewSla = in_array('sla.view', $authPermissions, true);
 $canManageSla = in_array('sla.manage', $authPermissions, true);
 $canViewReports = in_array('report.view', $authPermissions, true);
+$canUseGlobalSearch = $canViewPeople || $canViewOrgans || $canViewProcessMeta;
 
 $renderMenuIcon = static function (string $icon): string {
     switch ($icon) {
@@ -62,6 +64,10 @@ $renderMenuIcon = static function (string $icon): string {
             $body = '<path d="M12 2l8 4v6c0 5-3.4 9.3-8 10-4.6-.7-8-5-8-10V6z"></path>'
                 . '<circle cx="12" cy="13" r="2"></circle>'
                 . '<path d="M12 15v3"></path>';
+            break;
+        case 'ops':
+            $body = '<path d="M3 12h3l2-4 3 8 2-4h6"></path>'
+                . '<rect x="2.5" y="4" width="19" height="16" rx="2"></rect>';
             break;
         case 'budget':
             $body = '<path d="M3 20h18"></path>'
@@ -121,6 +127,10 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<path d="M8 12h8"></path>'
                 . '<path d="M8 16h5"></path>';
             break;
+        case 'search':
+            $body = '<circle cx="11" cy="11" r="7"></circle>'
+                . '<path d="M20 20l-4-4"></path>';
+            break;
         case 'plus':
             $body = '<circle cx="12" cy="12" r="9"></circle>'
                 . '<path d="M12 8v8"></path>'
@@ -149,6 +159,14 @@ if ($canViewDashboard) {
         'active' => $path === '/dashboard' || $path === '/',
     ];
 }
+if ($canUseGlobalSearch) {
+    $mainMenuItems[] = [
+        'label' => 'Busca global',
+        'href' => '/global-search',
+        'icon' => 'search',
+        'active' => str_starts_with($path, '/global-search'),
+    ];
+}
 if ($canViewUsers) {
     $mainMenuItems[] = [
         'label' => 'Usuarios',
@@ -163,6 +181,14 @@ if ($canViewSecurity) {
         'href' => '/security',
         'icon' => 'security',
         'active' => str_starts_with($path, '/security'),
+    ];
+}
+if ($canViewOpsPanel) {
+    $mainMenuItems[] = [
+        'label' => 'Observabilidade',
+        'href' => '/ops/health-panel',
+        'icon' => 'ops',
+        'active' => str_starts_with($path, '/ops/health-panel'),
     ];
 }
 if ($canViewLgpd) {

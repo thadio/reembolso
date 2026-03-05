@@ -54,6 +54,8 @@ Arquivo de exemplo: `.env.example`
 - `OPS_KPI_SNAPSHOT_DIR` (default: `storage/ops/kpi_snapshots`)
 - `OPS_KPI_SNAPSHOT_RETENTION_DAYS` (default: `30`)
 - `OPS_KPI_SNAPSHOT_MAX_AGE_MINUTES` (default: `240`, controla uso de snapshot no dashboard)
+- `OPS_HEALTH_PANEL_SNAPSHOT_DIR` (default: `storage/ops/health-panel`, usado pelo painel web de observabilidade)
+- `OPS_LOG_SEVERITY_SNAPSHOT_DIR` (default: `storage/ops/log-severity`, usado pelo painel web de observabilidade)
 
 ### Opcionais para upload FTP
 - `FTP_HOST`

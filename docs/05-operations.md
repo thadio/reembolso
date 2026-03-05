@@ -112,6 +112,9 @@ Saida JSON para automacao:
 ```
 
 ## Observabilidade operacional (fase 7.4)
+Painel web estruturado:
+- `GET /ops/health-panel` (requer permissao `security.view`; consome snapshots em `storage/ops`)
+
 Resumo de severidade no log:
 ```bash
 ./scripts/log-severity.php --output table

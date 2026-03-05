@@ -3,10 +3,10 @@
 Aplicacao web em PHP para gestao de movimentacao de forca de trabalho, pipeline de pessoas, timeline e reembolsos.
 
 ## Estado atual
-- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 5.4 (MVP de orcamento/capacidade), 6.1 (admin de usuarios/acessos), 6.2 (LGPD avancado), 6.3 (seguranca reforcada), 7.1 (backup/restore), 7.2 (performance com indices + snapshot KPI + otimizacao do dashboard), 7.3 (qualidade com suites unitaria/integracao e regressao fixa QA), 7.4 (observabilidade com painel tecnico, severidade de logs e revisao recorrente), 9.1 (compliance documental RF-22 com sensibilidade e permissao granular), 9.2 (importacao CSV em massa de pessoas com validacao/rollback), 9.3 (painel de fila por responsavel/prioridade no pipeline) e 9.4 (checklist automatico por tipo de caso no Perfil 360)
+- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 5.4 (MVP de orcamento/capacidade), 6.1 (admin de usuarios/acessos), 6.2 (LGPD avancado), 6.3 (seguranca reforcada), 7.1 (backup/restore), 7.2 (performance com indices + snapshot KPI + otimizacao do dashboard), 7.3 (qualidade com suites unitaria/integracao e regressao fixa QA), 7.4 (observabilidade com painel tecnico, severidade de logs e revisao recorrente), 9.1 (compliance documental RF-22 com sensibilidade e permissao granular), 9.2 (importacao CSV em massa de pessoas com validacao/rollback), 9.3 (painel de fila por responsavel/prioridade no pipeline), 9.4 (checklist automatico por tipo de caso no Perfil 360), 9.5 (central de pendencias operacionais no pipeline), 9.6 (calculadora automatica de reembolso com memoria de calculo), 9.7 (comentarios internos por processo), 9.8 (timeline administrativa completa por processo), 9.9 (historico consolidado de pessoa e orgao), 9.10 (relatorios de auditoria CGU/TCU + exportacao completa de dossie ZIP/PDF+trilha), 9.11 (controle de versao de documentos no Perfil 360), 9.12 (painel executivo com gargalos e ranking de orgaos), 9.13 (controle de SLA e casos em atraso), 9.14 (gestao de lotes de pagamento), 9.15 (busca global unificada), 9.16 (simulacao previa para aprovacao final de lotes), 9.17 (importacao CSV em massa de orgaos com validacao/rollback), 9.18 (painel financeiro por status completo + observabilidade estruturada via UI) e 9.19 (conferencia assistida por IA para dossie documental e sugestoes de justificativa)
 - Stack: PHP 8.1+, MySQL/Percona 5.7+, Apache (shared hosting compativel)
 - Deploy alvo: execucao via bash no servidor
-- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos), conciliacao previsto x real por pessoa/competencia, CDO com vinculo 1..N de pessoas, boletos estruturados por orgao/competencia com baixa parcial/total e comprovante, espelho de custo detalhado por pessoa/competencia (manual + CSV), conciliacao avancada item a item com workflow de aprovacao e bloqueio, templates de oficio versionados com geracao de documento (HTML print + PDF nativo) e auditoria filtravel no Perfil 360, metadados formais de processo (oficio/DOU/entrada MTE) com anexo e trilha auditavel, painel de SLA com regras por etapa e notificacao opcional por email, dashboard orcamentario com simulador de contratacao e cenarios salvos, relatorios premium com filtros e exportacao CSV/PDF/ZIP, administracao de usuarios com papeis/permissoes via UI e fluxo de troca/reset de senha, painel LGPD com trilha de acesso sensivel, relatorio CSV e politicas de retencao/anonimizacao parametrizaveis, painel de seguranca com politica de senha/expiracao, lockout configuravel e hardening adicional de upload, observabilidade operacional com `ops-health-panel`, `log-severity`, `error-review` e `ops-quality-gate`
+- Modulos ativos: dashboard operacional com metricas reais e painel executivo (gargalos + ranking de orgaos por criticidade de SLA), pipeline de pessoas, timeline completa, dossie documental com upload/download seguro e controle de versoes por documento, conferencia assistida por IA no Perfil 360 (extracao de campos, inconsistencias por regras/anomalias e sugestoes de justificativas), custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos) com calculadora automatica e memoria de calculo por lancamento, comentarios internos por processo (edicao, arquivamento/fixacao e exclusao logica), timeline administrativa completa por processo (consolidacao de fontes + notas manuais com filtros e KPI), historico consolidado de pessoa e orgao (trilha unificada de auditoria no Perfil 360 e no detalhe de orgao), conciliacao previsto x real por pessoa/competencia, CDO com vinculo 1..N de pessoas, boletos estruturados por orgao/competencia com baixa parcial/total e comprovante, lotes de pagamento com selecao de baixas elegiveis, simulacao previa de risco e fechamento por status final, importacao CSV em massa de orgaos com validacao/simulacao e rollback transacional, espelho de custo detalhado por pessoa/competencia (manual + CSV), conciliacao avancada item a item com workflow de aprovacao e bloqueio, templates de oficio versionados com geracao de documento (HTML print + PDF nativo) e auditoria filtravel no Perfil 360, metadados formais de processo (oficio/DOU/entrada MTE) com anexo e trilha auditavel, busca global unificada por CPF/SEI/DOU/orgao/documento com resultados cross-modulo, painel de SLA com regras por etapa, notificacao opcional por email e controle operacional de casos vencidos, dashboard orcamentario com simulador de contratacao e cenarios salvos, relatorios premium com filtros e exportacao CSV/PDF/ZIP e painel financeiro por status (abertos/vencidos/pagos/conciliados), pacote de auditoria CGU/TCU por filtros, exportacao completa de dossie por pessoa (ZIP + PDF sintese + trilha + anexos), administracao de usuarios com papeis/permissoes via UI e fluxo de troca/reset de senha, painel LGPD com trilha de acesso sensivel, relatorio CSV e politicas de retencao/anonimizacao parametrizaveis, painel de seguranca com politica de senha/expiracao, lockout configuravel e hardening adicional de upload, observabilidade operacional com `ops-health-panel`, `log-severity`, `error-review`, `ops-quality-gate` e painel web `GET /ops/health-panel`
 
 ## Inicio rapido (local)
 1. Copie `.env.example` para `.env`.
@@ -25,22 +25,48 @@ php -S localhost:8000 -t public
 ## Rotas de Pessoas (resumo)
 - `GET /people`
 - `GET /people/show?id={id}`
+- `GET /people/pending`
 - `POST /people/pipeline/advance`
 - `POST /people/pipeline/queue/update`
 - `POST /people/pipeline/checklist/update`
+- `POST /people/pending/status`
 - `POST /people/timeline/store`
 - `POST /people/timeline/rectify`
 - `GET /people/timeline/attachment?id={attachmentId}&person_id={personId}`
 - `GET /people/timeline/print?id={personId}`
 - `POST /people/documents/store`
+- `POST /people/documents/intelligence/run`
 - `GET /people/documents/download?id={documentId}&person_id={personId}`
+- `POST /people/documents/version/store`
+- `GET /people/documents/version/download?version_id={versionId}&document_id={documentId}&person_id={personId}`
 - `POST /people/import-csv` (`validate_only=1` para simulacao sem persistencia)
+- `GET /people/dossier/export?person_id={personId}`
 - `people.documents.sensitive` e necessario para classificar/baixar documentos `restricted` e `sensitive`
 - `POST /people/costs/version/create`
 - `POST /people/costs/item/store`
-- `POST /people/reimbursements/store`
+- `POST /people/reimbursements/store` (suporta calculadora automatica via `use_calculator` + campos `calc_*` com memoria de calculo)
 - `POST /people/reimbursements/mark-paid`
+- `POST /people/process-comments/store`
+- `POST /people/process-comments/update`
+- `POST /people/process-comments/delete`
+- `POST /people/process-admin-timeline/store`
+- `POST /people/process-admin-timeline/update`
+- `POST /people/process-admin-timeline/delete`
 - `GET /people/audit/export?person_id={personId}&audit_*={filtros}`
+
+## Busca Global (resumo)
+- `GET /global-search?q={termo}&scope={all|people|organs|process_meta|documents}`
+
+## Rotas de Orgaos (resumo)
+- `GET /organs`
+- `GET /organs/create`
+- `POST /organs/store`
+- `POST /organs/import-csv` (`validate_only=1` para simulacao sem persistencia)
+- `GET /organs/show?id={id}`
+- `GET /organs/edit?id={id}`
+- `POST /organs/update`
+- `POST /organs/delete`
+- `GET /organs/audit/export?organ_id={organId}&audit_*={filtros}`
 
 ## Rotas de Usuarios e Acessos (resumo)
 - `GET /users`
@@ -67,6 +93,9 @@ php -S localhost:8000 -t public
 - `GET /security`
 - `POST /security/update`
 
+## Rotas de Observabilidade (resumo)
+- `GET /ops/health-panel` (painel estruturado de saude/logs/recorrencias; exige `security.view`)
+
 ## Rotas de CDO (resumo)
 - `GET /cdos`
 - `GET /cdos/create`
@@ -91,6 +120,11 @@ php -S localhost:8000 -t public
 - `POST /invoices/payments/store`
 - `GET /invoices/payments/proof?id={paymentId}&invoice_id={invoiceId}`
 - `GET /invoices/pdf?id={id}`
+- `GET /invoices/payment-batches`
+- `GET /invoices/payment-batches/show?id={batchId}`
+- `POST /invoices/payment-batches/store`
+- `POST /invoices/payment-batches/final-approval/simulate`
+- `POST /invoices/payment-batches/status/update`
 
 ## Rotas de Orcamento/Capacidade (resumo)
 - `GET /budget?year={ano}`
@@ -102,6 +136,7 @@ php -S localhost:8000 -t public
 - `GET /reports/export/csv`
 - `GET /reports/export/pdf`
 - `GET /reports/export/zip`
+- `GET /reports/export/audit-zip`
 
 ## Rotas de Espelhos de Custo (resumo)
 - `GET /cost-mirrors`
@@ -148,6 +183,7 @@ php -S localhost:8000 -t public
 - `GET /sla-alerts/rules`
 - `POST /sla-alerts/rules/upsert`
 - `POST /sla-alerts/dispatch-email`
+- `POST /sla-alerts/control/update`
 
 ## Portal de documentacao
 A documentacao oficial esta centralizada em `/docs`:

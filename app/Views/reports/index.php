@@ -19,6 +19,9 @@ $pagination = is_array($operational['pagination'] ?? null) ? $operational['pagin
 
 $financialSummary = is_array($financial['summary'] ?? null) ? $financial['summary'] : [];
 $financialMonths = is_array($financial['months'] ?? null) ? $financial['months'] : [];
+$financialStatusPanel = is_array($financial['status_panel'] ?? null) ? $financial['status_panel'] : [];
+$financialStatusSummary = is_array($financialStatusPanel['summary'] ?? null) ? $financialStatusPanel['summary'] : [];
+$financialStatusMonths = is_array($financialStatusPanel['months'] ?? null) ? $financialStatusPanel['months'] : [];
 
 $year = (int) ($filters['year'] ?? date('Y'));
 $monthFrom = (int) ($filters['month_from'] ?? 1);
@@ -96,12 +99,13 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
   <div class="header-row">
     <div>
       <h2>Relatorios premium (5.3)</h2>
-      <p class="muted">Consolidado operacional (SLA, gargalos, tempos medios) e financeiro (previsto x efetivo, pago x a pagar).</p>
+      <p class="muted">Consolidado operacional (SLA, gargalos, tempos medios) e financeiro (previsto x efetivo + painel completo de status abertos/vencidos/pagos/conciliados).</p>
     </div>
     <div class="actions-inline">
       <a class="btn btn-outline" href="<?= e($buildExportUrl('/reports/export/csv')) ?>">Exportar CSV</a>
       <a class="btn btn-primary" href="<?= e($buildExportUrl('/reports/export/pdf')) ?>">Exportar PDF</a>
       <a class="btn btn-outline" href="<?= e($buildExportUrl('/reports/export/zip')) ?>">Pacote ZIP</a>
+      <a class="btn btn-outline" href="<?= e($buildExportUrl('/reports/export/audit-zip')) ?>">Pacote Auditoria CGU/TCU</a>
     </div>
   </div>
 
@@ -358,6 +362,71 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
     <p class="kpi-value"><?= e($formatPercent((float) ($financialSummary['adherence_percent'] ?? 0))) ?></p>
     <p class="dashboard-kpi-note">Cobertura de pagamento: <?= e($formatPercent((float) ($financialSummary['payment_coverage_percent'] ?? 0))) ?></p>
   </article>
+</div>
+
+<div class="card">
+  <h3>Painel financeiro por status</h3>
+  <div class="grid-kpi reports-kpi-grid">
+    <article class="card kpi-card">
+      <p class="kpi-label">Abertos</p>
+      <p class="kpi-value"><?= e((string) (int) ($financialStatusSummary['open_count'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note"><?= e($formatMoney((float) ($financialStatusSummary['open_amount'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Vencidos</p>
+      <p class="kpi-value text-danger"><?= e((string) (int) ($financialStatusSummary['overdue_count'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note"><?= e($formatMoney((float) ($financialStatusSummary['overdue_amount'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Pagos</p>
+      <p class="kpi-value text-success"><?= e((string) (int) ($financialStatusSummary['paid_count'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note"><?= e($formatMoney((float) ($financialStatusSummary['paid_amount'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Conciliados</p>
+      <p class="kpi-value"><?= e((string) (int) ($financialStatusSummary['reconciled_count'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note"><?= e($formatMoney((float) ($financialStatusSummary['reconciled_amount'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Cobertura de conciliacao</p>
+      <p class="kpi-value"><?= e($formatPercent((float) ($financialStatusSummary['reconciled_coverage_percent'] ?? 0))) ?></p>
+      <p class="dashboard-kpi-note">Base em itens financeiros monitorados no periodo</p>
+    </article>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Status financeiro mensal</h3>
+  <?php if ($financialStatusMonths === []): ?>
+    <div class="empty-state">
+      <p>Sem dados de status financeiro para o recorte selecionado.</p>
+    </div>
+  <?php else: ?>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th>Abertos (qtd/valor)</th>
+            <th>Vencidos (qtd/valor)</th>
+            <th>Pagos (qtd/valor)</th>
+            <th>Conciliados (qtd/valor)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($financialStatusMonths as $month): ?>
+            <tr>
+              <td><?= e((string) ($month['month_label'] ?? '-')) ?></td>
+              <td><?= e((string) (int) ($month['open_count'] ?? 0)) ?> / <?= e($formatMoney((float) ($month['open_amount'] ?? 0))) ?></td>
+              <td><?= e((string) (int) ($month['overdue_count'] ?? 0)) ?> / <?= e($formatMoney((float) ($month['overdue_amount'] ?? 0))) ?></td>
+              <td><?= e((string) (int) ($month['paid_count'] ?? 0)) ?> / <?= e($formatMoney((float) ($month['paid_amount'] ?? 0))) ?></td>
+              <td><?= e((string) (int) ($month['reconciled_count'] ?? 0)) ?> / <?= e($formatMoney((float) ($month['reconciled_amount'] ?? 0))) ?></td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
 </div>
 
 <div class="card">

@@ -29,6 +29,19 @@ $dashboard = $dashboard ?? [
     ],
     'status_distribution' => [],
     'recent_timeline' => [],
+    'executive_panel' => [
+        'summary' => [
+            'total_organs_monitored' => 0,
+            'organs_with_critical_cases' => 0,
+            'total_cases_monitored' => 0,
+            'critical_cases' => 0,
+            'overdue_cases' => 0,
+            'risk_cases' => 0,
+            'critical_share_percent' => 0,
+        ],
+        'bottlenecks' => [],
+        'organ_ranking' => [],
+    ],
     'recommendation' => [
         'title' => 'Sem recomendacao',
         'description' => 'Dados insuficientes para sugerir proxima acao.',
@@ -42,6 +55,10 @@ $dashboard = $dashboard ?? [
 $summary = is_array($dashboard['summary'] ?? null) ? $dashboard['summary'] : [];
 $statusDistribution = is_array($dashboard['status_distribution'] ?? null) ? $dashboard['status_distribution'] : [];
 $recentTimeline = is_array($dashboard['recent_timeline'] ?? null) ? $dashboard['recent_timeline'] : [];
+$executivePanel = is_array($dashboard['executive_panel'] ?? null) ? $dashboard['executive_panel'] : [];
+$executiveSummary = is_array($executivePanel['summary'] ?? null) ? $executivePanel['summary'] : [];
+$executiveBottlenecks = is_array($executivePanel['bottlenecks'] ?? null) ? $executivePanel['bottlenecks'] : [];
+$executiveOrganRanking = is_array($executivePanel['organ_ranking'] ?? null) ? $executivePanel['organ_ranking'] : [];
 $recommendation = is_array($dashboard['recommendation'] ?? null) ? $dashboard['recommendation'] : [];
 $generatedAt = (string) ($dashboard['generated_at'] ?? '');
 $dataSource = (string) ($dashboard['data_source'] ?? 'live');
@@ -116,6 +133,22 @@ $eventTypeLabel = static function (string $value): string {
     $value = str_replace(['pipeline.', '_', '.'], ['Pipeline ', ' ', ' • '], $value);
 
     return ucfirst(trim($value));
+};
+
+$slaLevelLabel = static function (string $value): string {
+    return match ($value) {
+        'vencido' => 'Vencido',
+        'em_risco' => 'Em risco',
+        default => 'No prazo',
+    };
+};
+
+$slaLevelBadgeClass = static function (string $value): string {
+    return match ($value) {
+        'vencido' => 'badge-danger',
+        'em_risco' => 'badge-warning',
+        default => 'badge-success',
+    };
 };
 ?>
 <div class="grid-kpi">
@@ -195,6 +228,145 @@ $eventTypeLabel = static function (string $value): string {
   <p><?= e((string) ($recommendation['description'] ?? 'Sem recomendação no momento.')) ?></p>
   <?php if (!empty($recommendation['path'])): ?>
     <a class="btn btn-outline" href="<?= e(url((string) $recommendation['path'])) ?>"><?= e((string) ($recommendation['label'] ?? 'Abrir')) ?></a>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h2>Painel executivo</h2>
+      <p class="muted">Gargalos operacionais e ranking de órgãos por criticidade de SLA.</p>
+    </div>
+    <a class="btn btn-outline" href="<?= e(url('/reports')) ?>">Abrir relatórios premium</a>
+  </div>
+
+  <div class="grid-kpi reports-kpi-grid">
+    <article class="card kpi-card">
+      <p class="kpi-label">Órgãos monitorados</p>
+      <p class="kpi-value"><?= e((string) (int) ($executiveSummary['total_organs_monitored'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note">Com criticidade: <?= e((string) (int) ($executiveSummary['organs_with_critical_cases'] ?? 0)) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Casos monitorados</p>
+      <p class="kpi-value"><?= e((string) (int) ($executiveSummary['total_cases_monitored'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note">Criticidade total: <?= e($formatPercent((float) ($executiveSummary['critical_share_percent'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Em risco</p>
+      <p class="kpi-value"><?= e((string) (int) ($executiveSummary['risk_cases'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note">SLA com necessidade de ação preventiva</p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Vencidos</p>
+      <p class="kpi-value text-danger"><?= e((string) (int) ($executiveSummary['overdue_cases'] ?? 0)) ?></p>
+      <p class="dashboard-kpi-note">Prioridade crítica de regularização</p>
+    </article>
+  </div>
+
+  <?php if ($executiveBottlenecks === [] && $executiveOrganRanking === []): ?>
+    <div class="empty-state">
+      <p class="muted">Sem dados executivos suficientes para montagem de gargalos e ranking.</p>
+    </div>
+  <?php else: ?>
+    <h3>Gargalos por etapa</h3>
+    <?php if ($executiveBottlenecks === []): ?>
+      <div class="empty-state">
+        <p class="muted">Sem gargalos operacionais identificados no momento.</p>
+      </div>
+    <?php else: ?>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Etapa</th>
+              <th>Casos</th>
+              <th>Órgãos impactados</th>
+              <th>Média (dias)</th>
+              <th>Em risco</th>
+              <th>Vencido</th>
+              <th>Criticidade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($executiveBottlenecks as $row): ?>
+              <?php
+                $riskCount = (int) ($row['em_risco_count'] ?? 0);
+                $overdueCount = (int) ($row['vencido_count'] ?? 0);
+                $level = $overdueCount > 0 ? 'vencido' : ($riskCount > 0 ? 'em_risco' : 'no_prazo');
+              ?>
+              <tr>
+                <td>
+                  <strong><?= e((string) ($row['status_label'] ?? '-')) ?></strong>
+                  <div class="muted"><?= e((string) ($row['status_code'] ?? '-')) ?></div>
+                </td>
+                <td><?= e((string) (int) ($row['cases_count'] ?? 0)) ?></td>
+                <td><?= e((string) (int) ($row['impacted_organs_count'] ?? 0)) ?></td>
+                <td><?= e(number_format((float) ($row['avg_days_in_status'] ?? 0), 2, ',', '.')) ?></td>
+                <td><?= e((string) $riskCount) ?></td>
+                <td><?= e((string) $overdueCount) ?></td>
+                <td>
+                  <span class="badge <?= e($slaLevelBadgeClass($level)) ?>"><?= e($slaLevelLabel($level)) ?></span>
+                  <span class="muted"><?= e($formatPercent((float) ($row['critical_share_percent'] ?? 0))) ?></span>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
+
+    <h3>Ranking de órgãos</h3>
+    <?php if ($executiveOrganRanking === []): ?>
+      <div class="empty-state">
+        <p class="muted">Sem órgãos suficientes para ranking no recorte atual.</p>
+      </div>
+    <?php else: ?>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Órgão</th>
+              <th>Casos</th>
+              <th>Em risco</th>
+              <th>Vencido</th>
+              <th>Criticidade</th>
+              <th>Média (dias)</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($executiveOrganRanking as $index => $row): ?>
+              <?php
+                $riskCount = (int) ($row['em_risco_count'] ?? 0);
+                $overdueCount = (int) ($row['vencido_count'] ?? 0);
+                $level = $overdueCount > 0 ? 'vencido' : ($riskCount > 0 ? 'em_risco' : 'no_prazo');
+                $organId = (int) ($row['organ_id'] ?? 0);
+              ?>
+              <tr>
+                <td><?= e((string) ($index + 1)) ?></td>
+                <td>
+                  <?php if ($organId > 0): ?>
+                    <a href="<?= e(url('/organs/show?id=' . $organId)) ?>"><?= e((string) ($row['organ_name'] ?? '-')) ?></a>
+                  <?php else: ?>
+                    <?= e((string) ($row['organ_name'] ?? '-')) ?>
+                  <?php endif; ?>
+                </td>
+                <td><?= e((string) (int) ($row['cases_count'] ?? 0)) ?></td>
+                <td><?= e((string) $riskCount) ?></td>
+                <td><?= e((string) $overdueCount) ?></td>
+                <td>
+                  <span class="badge <?= e($slaLevelBadgeClass($level)) ?>"><?= e($slaLevelLabel($level)) ?></span>
+                  <span class="muted"><?= e($formatPercent((float) ($row['critical_share_percent'] ?? 0))) ?></span>
+                </td>
+                <td><?= e(number_format((float) ($row['avg_days_in_status'] ?? 0), 2, ',', '.')) ?></td>
+                <td><?= e(number_format((float) ($row['severity_score'] ?? 0), 1, ',', '.')) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
   <?php endif; ?>
 </div>
 

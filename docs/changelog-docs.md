@@ -1,6 +1,81 @@
 # Changelog da Documentacao
 
 ## 2026-03-05
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar secao 6.4 (evolucao assistida por IA) como concluida no ciclo 9.19
+- Atualizacao de `README.md` com status da entrega 9.19 e nova rota `POST /people/documents/intelligence/run`
+- Atualizacao de `docs/02-architecture.md` para incluir `DocumentIntelligenceService` e tabelas `document_ai_*`
+- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint `POST /people/documents/intelligence/run`
+- Adicionado checklist `tests/checklist-etapa-9.19-ia-assistida.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar RF-45 e RNF-07 como concluidos (painel financeiro por status e observabilidade estruturada)
+- Atualizacao de `README.md` com status do ciclo 9.18, nova rota `GET /ops/health-panel` e painel financeiro por status no modulo de relatorios
+- Atualizacao de `docs/02-architecture.md` para incluir `OpsHealthPanelService` e evolucao do `ReportService` com consolidado financeiro por status
+- Atualizacao de `docs/07-security.md` com regra de acesso do endpoint `GET /ops/health-panel`
+- Atualizacao de `docs/05-operations.md` com referencia ao painel web de observabilidade
+- Adicionado checklist `tests/checklist-etapa-9.18-rf45-rnf07.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar lacuna de importacao CSV em massa (pessoas + orgaos) como concluida com entrega de orgaos no ciclo 9.17
+- Atualizacao de `README.md` com status da entrega 9.17 e nova rota `POST /organs/import-csv`
+- Atualizacao de `docs/02-architecture.md` para registrar `OrganService` com importacao CSV transacional
+- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint `POST /organs/import-csv`
+- Adicionado checklist `tests/checklist-etapa-9.17-importacao-csv-orgaos.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.3 "Simulacao previa antes da aprovacao final" como concluido no ciclo 9.16
+- Atualizacao de `README.md` com status da entrega 9.16 e rota `POST /invoices/payment-batches/final-approval/simulate`
+- Atualizacao de `docs/02-architecture.md` para detalhar simulacao previa obrigatoria no `InvoiceService` antes de status final de lote
+- Atualizacao de `docs/07-security.md` com regra de acesso e gate de simulacao para aprovacao final em lotes de pagamento
+- Adicionado checklist `tests/checklist-etapa-9.16-simulacao-previa-aprovacao-final.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.3 "Busca global por CPF/SEI/DOU/orgao/documento" como concluido no ciclo 9.15
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar RF-21 e RF-51 como concluidos com a busca global unificada
+- Atualizacao de `README.md` com status da entrega 9.15 e rota `GET /global-search`
+- Atualizacao de `docs/02-architecture.md` para incluir `GlobalSearchService`
+- Atualizacao de `docs/07-security.md` com controle de acesso e filtro de sensibilidade da busca global
+- Adicionado checklist `tests/checklist-etapa-9.15-busca-global.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.3 "Gestao de lotes de pagamento" como concluido no ciclo 9.14
+- Atualizacao de `README.md` com status da entrega 9.14 e novas rotas de lotes (`/invoices/payment-batches*`)
+- Atualizacao de `docs/02-architecture.md` para incluir `payment_batches`/`payment_batch_items` no modelo e escopo de lotes no `InvoiceService`
+- Atualizacao de `docs/07-security.md` com controle de acesso dos novos endpoints de lotes de pagamento
+- Adicionado checklist `tests/checklist-etapa-9.14-lotes-pagamento.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.3 "Controle de SLA e casos em atraso" como concluido no ciclo 9.13
+- Atualizacao de `README.md` com status da entrega 9.13 e nova rota `POST /sla-alerts/control/update`
+- Atualizacao de `docs/02-architecture.md` para incluir controle operacional de atrasos no `SlaAlertService` e tabela `sla_case_controls`
+- Adicionado checklist `tests/checklist-etapa-9.13-sla-controle-atrasos.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.3 "Painel executivo com gargalos e ranking de orgaos" como concluido no ciclo 9.12
+- Atualizacao de `README.md` com status da entrega 9.12 e painel executivo incorporado ao dashboard
+- Atualizacao de `docs/02-architecture.md` para detalhar o `DashboardService` com eixo executivo (gargalos + ranking de orgaos)
+- Adicionado checklist `tests/checklist-etapa-9.12-painel-executivo.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.2 "Controle de versao de documentos" como concluido no ciclo 9.11
+- Atualizacao de `README.md` com status da entrega 9.11 e novas rotas `POST /people/documents/version/store` e `GET /people/documents/version/download`
+- Atualizacao de `docs/07-security.md` com controle de acesso dos endpoints de versionamento documental
+- Atualizacao de `docs/02-architecture.md` para incluir o fluxo de historico em `DocumentService` e tabela `document_versions`
+- Adicionado checklist `tests/checklist-etapa-9.11-versionamento-documentos.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.2 "Relatorios prontos para auditoria (CGU/TCU)" e "Exportacao completa de dossie (ZIP/PDF + trilha)" como concluidos no ciclo 9.10
+- Atualizacao de `README.md` com status da entrega 9.10 e novas rotas `GET /reports/export/audit-zip` e `GET /people/dossier/export`
+- Atualizacao de `docs/07-security.md` com controles de acesso dos novos endpoints de exportacao de auditoria e dossie
+- Atualizacao de `docs/02-architecture.md` para incluir `PersonDossierExportService`
+- Adicionado checklist `tests/checklist-etapa-9.10-relatorios-auditoria-e-dossie.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.2 "Historico consolidado de pessoa e orgao" como concluido no ciclo 9.9
+- Atualizacao de `README.md` com status da entrega 9.9 e rota `GET /organs/audit/export`
+- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint de exportacao de auditoria consolidada por orgao
+- Atualizacao de `docs/02-architecture.md` para incluir `OrganAuditService`
+- Adicionado checklist `tests/checklist-etapa-9.9-historico-consolidado-pessoa-orgao.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.2 "Timeline administrativa completa por processo" como concluido no ciclo 9.8
+- Atualizacao de `README.md` com status da entrega 9.8 e novas rotas `POST /people/process-admin-timeline/*`
+- Atualizacao de `docs/07-security.md` com controle de acesso dos endpoints da timeline administrativa
+- Atualizacao de `docs/02-architecture.md` para incluir `ProcessAdminTimelineService` e tabela `process_admin_timeline_notes`
+- Adicionado checklist `tests/checklist-etapa-9.8-timeline-administrativa.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.1 "Comentarios internos por processo" como concluido no ciclo 9.7
+- Atualizacao de `README.md` com status da entrega 9.7 e novas rotas `POST /people/process-comments/*`
+- Atualizacao de `docs/07-security.md` com controle de acesso dos endpoints de comentarios internos
+- Atualizacao de `docs/02-architecture.md` para incluir `ProcessCommentService` e tabela `process_comments`
+- Adicionado checklist `tests/checklist-etapa-9.7-comentarios-processo.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.1 "Calculadora automatica de reembolso com memoria de calculo" como concluido no ciclo 9.6
+- Atualizacao de `README.md` com status da entrega 9.6 e suporte de calculadora no endpoint `POST /people/reimbursements/store`
+- Atualizacao de `docs/07-security.md` com controle de acesso dos endpoints de reembolso (`store` e `mark-paid`)
+- Atualizacao de `docs/02-architecture.md` para detalhar calculadora automatica no `ReimbursementService` e memoria em `reimbursement_entries`
+- Adicionado checklist `tests/checklist-etapa-9.6-calculadora-reembolso.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.1 "Central de pendencias" como concluido no ciclo 9.5
+- Atualizacao de `README.md` com rotas `GET /people/pending` e `POST /people/pending/status` e status da entrega 9.5
+- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint de status da central de pendencias
+- Atualizacao de `docs/02-architecture.md` para incluir `PendingCenterService` e tabela `analyst_pending_items`
+- Adicionado checklist `tests/checklist-etapa-9.5-central-pendencias.md`
 - Atualizacao de `docs/__planodedesenvolvimento.md` para marcar backlog 6.1 "Checklist automatico por tipo de caso" como concluido no ciclo 9.4
 - Atualizacao de `README.md` com rota `POST /people/pipeline/checklist/update` e status da entrega 9.4
 - Atualizacao de `docs/07-security.md` com controle de acesso do endpoint de checklist de pipeline

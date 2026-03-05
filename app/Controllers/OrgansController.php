@@ -6,7 +6,9 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\OrganAuditRepository;
 use App\Repositories\OrganRepository;
+use App\Services\OrganAuditService;
 use App\Services\OrganService;
 
 final class OrgansController extends Controller
@@ -69,9 +71,39 @@ final class OrgansController extends Controller
         $this->redirect('/organs/show?id=' . (int) $result['id']);
     }
 
+    public function importCsv(Request $request): void
+    {
+        $validateOnly = (string) $request->input('validate_only', '0') === '1';
+        $file = is_array($_FILES['csv_file'] ?? null) ? $_FILES['csv_file'] : null;
+
+        $result = $this->service()->importCsv(
+            file: $file,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+            validateOnly: $validateOnly
+        );
+
+        if (!$result['ok']) {
+            $errors = $result['errors'] ?? [];
+            if (count($errors) > 8) {
+                $extra = count($errors) - 8;
+                $errors = array_slice($errors, 0, 8);
+                $errors[] = sprintf('... e mais %d erro(s).', $extra);
+            }
+
+            flash('error', implode(' ', $errors));
+            $this->redirect('/organs');
+        }
+
+        flash('success', (string) ($result['message'] ?? 'Importação concluída.'));
+        $this->redirect('/organs');
+    }
+
     public function show(Request $request): void
     {
         $id = (int) $request->input('id', '0');
+        $auditPage = max(1, (int) $request->input('audit_page', '1'));
         if ($id <= 0) {
             flash('error', 'Órgão inválido.');
             $this->redirect('/organs');
@@ -83,11 +115,132 @@ final class OrgansController extends Controller
             $this->redirect('/organs');
         }
 
+        $canViewAudit = $this->app->auth()->hasPermission('audit.view');
+        $auditFilters = [
+            'entity' => (string) $request->input('audit_entity', ''),
+            'action' => (string) $request->input('audit_action', ''),
+            'q' => (string) $request->input('audit_q', ''),
+            'from_date' => (string) $request->input('audit_from', ''),
+            'to_date' => (string) $request->input('audit_to', ''),
+        ];
+
+        $audit = [
+            'items' => [],
+            'pagination' => [
+                'total' => 0,
+                'page' => 1,
+                'per_page' => 10,
+                'pages' => 1,
+            ],
+            'filters' => [
+                'entity' => '',
+                'action' => '',
+                'q' => '',
+                'from_date' => '',
+                'to_date' => '',
+            ],
+            'options' => [
+                'entities' => [],
+                'actions' => [],
+            ],
+        ];
+
+        if ($canViewAudit) {
+            $audit = $this->organAuditService()->profileData($id, $auditFilters, $auditPage, 10);
+        }
+
         $this->view('organs/show', [
             'title' => 'Detalhe do Órgão',
             'organ' => $organ,
             'canManage' => $this->app->auth()->hasPermission('organs.manage'),
+            'canViewAudit' => $canViewAudit,
+            'audit' => $audit,
         ]);
+    }
+
+    public function exportAudit(Request $request): void
+    {
+        $organId = (int) $request->input('organ_id', '0');
+        if ($organId <= 0) {
+            flash('error', 'Órgão inválido para exportação de auditoria.');
+            $this->redirect('/organs');
+        }
+
+        $organ = $this->service()->find($organId);
+        if ($organ === null) {
+            flash('error', 'Órgão não encontrado.');
+            $this->redirect('/organs');
+        }
+
+        $filters = [
+            'entity' => (string) $request->input('audit_entity', ''),
+            'action' => (string) $request->input('audit_action', ''),
+            'q' => (string) $request->input('audit_q', ''),
+            'from_date' => (string) $request->input('audit_from', ''),
+            'to_date' => (string) $request->input('audit_to', ''),
+        ];
+
+        $export = $this->organAuditService()->exportRows($organId, $filters, 3000);
+        $rows = $export['rows'];
+
+        $fileName = sprintf('auditoria-orgao-%d-%s.csv', $organId, date('Ymd_His'));
+
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="' . $fileName . '"');
+
+        $output = fopen('php://output', 'wb');
+        if ($output === false) {
+            exit;
+        }
+
+        fwrite($output, "\xEF\xBB\xBF");
+
+        fputcsv($output, [
+            'data_hora',
+            'entidade',
+            'entidade_id',
+            'acao',
+            'usuario',
+            'ip',
+            'user_agent',
+            'before_data',
+            'after_data',
+            'metadata',
+        ]);
+
+        $normalizePayload = static function (mixed $payload): string {
+            if (!is_string($payload) || trim($payload) === '') {
+                return '';
+            }
+
+            $decoded = json_decode($payload, true);
+            if (!is_array($decoded)) {
+                return $payload;
+            }
+
+            $encoded = json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            return is_string($encoded) ? $encoded : $payload;
+        };
+
+        foreach ($rows as $row) {
+            fputcsv($output, [
+                (string) ($row['created_at'] ?? ''),
+                (string) ($row['entity'] ?? ''),
+                isset($row['entity_id']) ? (string) $row['entity_id'] : '',
+                (string) ($row['action'] ?? ''),
+                (string) ($row['user_name'] ?? ''),
+                (string) ($row['ip'] ?? ''),
+                (string) ($row['user_agent'] ?? ''),
+                $normalizePayload($row['before_data'] ?? null),
+                $normalizePayload($row['after_data'] ?? null),
+                $normalizePayload($row['metadata'] ?? null),
+            ]);
+        }
+
+        fclose($output);
+        exit;
     }
 
     public function edit(Request $request): void
@@ -186,6 +339,13 @@ final class OrgansController extends Controller
             new OrganRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
+        );
+    }
+
+    private function organAuditService(): OrganAuditService
+    {
+        return new OrganAuditService(
+            new OrganAuditRepository($this->app->db())
         );
     }
 }

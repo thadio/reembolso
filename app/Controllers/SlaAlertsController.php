@@ -16,6 +16,7 @@ final class SlaAlertsController extends Controller
             'q' => (string) $request->input('q', ''),
             'status_code' => (string) $request->input('status_code', ''),
             'severity' => (string) $request->input('severity', ''),
+            'control_status' => (string) $request->input('control_status', ''),
             'sort' => (string) $request->input('sort', 'status_order'),
             'dir' => (string) $request->input('dir', 'asc'),
         ];
@@ -41,6 +42,8 @@ final class SlaAlertsController extends Controller
             ],
             'statusOptions' => $this->service()->statusOptions(),
             'severityOptions' => $this->service()->severityOptions(),
+            'controlStatusOptions' => $this->service()->controlStatusOptions(),
+            'controlOwnerOptions' => $this->service()->controlOwnerOptions(350),
             'severityLabel' => [$this->service(), 'severityLabel'],
             'recentLogs' => $this->service()->recentLogs(12),
             'canManage' => $this->app->auth()->hasPermission('sla.manage'),
@@ -96,6 +99,32 @@ final class SlaAlertsController extends Controller
 
         flash('success', (string) ($result['message'] ?? 'Disparo executado.'));
         $this->redirect('/sla-alerts');
+    }
+
+    public function updateControl(Request $request): void
+    {
+        $returnTo = (string) $request->input('return_to', '/sla-alerts');
+        if ($returnTo !== '/sla-alerts' && !str_starts_with($returnTo, '/sla-alerts?')) {
+            $returnTo = '/sla-alerts';
+        }
+
+        $result = $this->service()->updateCaseControl(
+            assignmentId: (int) $request->input('assignment_id', '0'),
+            controlStatus: (string) $request->input('control_status', 'aberto'),
+            ownerUserId: max(0, (int) $request->input('owner_user_id', '0')),
+            note: (string) $request->input('note', ''),
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect($returnTo);
+        }
+
+        flash('success', (string) ($result['message'] ?? 'Controle de atraso atualizado.'));
+        $this->redirect($returnTo);
     }
 
     private function service(): SlaAlertService

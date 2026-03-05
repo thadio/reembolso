@@ -68,6 +68,24 @@ $documentItems = $documents['items'] ?? [];
 $documentsPagination = $documents['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $documentTypes = $documents['document_types'] ?? [];
 $documentSensitivityOptions = $documents['sensitivity_options'] ?? [];
+$documentIntelligence = $documentIntelligence ?? [
+    'review' => null,
+    'extractions' => [],
+    'findings' => [],
+    'summary' => [
+        'documents_total' => 0,
+        'extractions_total' => 0,
+        'inconsistencies_total' => 0,
+        'suggestions_total' => 0,
+        'high_severity_total' => 0,
+    ],
+];
+$documentAiReview = is_array($documentIntelligence['review'] ?? null) ? $documentIntelligence['review'] : null;
+$documentAiExtractions = is_array($documentIntelligence['extractions'] ?? null) ? $documentIntelligence['extractions'] : [];
+$documentAiFindings = is_array($documentIntelligence['findings'] ?? null) ? $documentIntelligence['findings'] : [];
+$documentAiSummary = is_array($documentIntelligence['summary'] ?? null)
+    ? $documentIntelligence['summary']
+    : ['documents_total' => 0, 'extractions_total' => 0, 'inconsistencies_total' => 0, 'suggestions_total' => 0, 'high_severity_total' => 0];
 $canViewSensitiveDocuments = ($canViewSensitiveDocuments ?? false) === true;
 if ($documentSensitivityOptions === []) {
     $documentSensitivityOptions = [['value' => 'public', 'label' => 'Publico']];
@@ -142,6 +160,7 @@ $reimbursements = $reimbursements ?? [
         'adjustments_count' => 0,
     ],
     'items' => [],
+    'calculation_memories' => [],
 ];
 $reimbursementSummary = $reimbursements['summary'] ?? [
     'total_entries' => 0,
@@ -158,6 +177,71 @@ $reimbursementSummary = $reimbursements['summary'] ?? [
     'adjustments_count' => 0,
 ];
 $reimbursementItems = $reimbursements['items'] ?? [];
+$reimbursementCalculationMemories = $reimbursements['calculation_memories'] ?? [];
+$processComments = $processComments ?? [
+    'summary' => [
+        'total_comments' => 0,
+        'open_count' => 0,
+        'archived_count' => 0,
+        'pinned_count' => 0,
+    ],
+    'items' => [],
+];
+$processCommentSummary = $processComments['summary'] ?? [
+    'total_comments' => 0,
+    'open_count' => 0,
+    'archived_count' => 0,
+    'pinned_count' => 0,
+];
+$processCommentItems = $processComments['items'] ?? [];
+$processCommentStatusOptions = $processCommentStatusOptions ?? [
+    ['value' => 'aberto', 'label' => 'Aberto'],
+    ['value' => 'arquivado', 'label' => 'Arquivado'],
+];
+$adminTimeline = $adminTimeline ?? [
+    'summary' => [
+        'total' => 0,
+        'open_count' => 0,
+        'closed_count' => 0,
+        'manual_count' => 0,
+        'automated_count' => 0,
+    ],
+    'items' => [],
+    'pagination' => [
+        'total' => 0,
+        'page' => 1,
+        'per_page' => 14,
+        'pages' => 1,
+    ],
+    'filters' => [
+        'q' => '',
+        'source' => '',
+        'status_group' => '',
+    ],
+    'source_options' => [['value' => '', 'label' => 'Todas as origens']],
+    'status_group_options' => [['value' => '', 'label' => 'Todos os status']],
+];
+$adminTimelineSummary = $adminTimeline['summary'] ?? [
+    'total' => 0,
+    'open_count' => 0,
+    'closed_count' => 0,
+    'manual_count' => 0,
+    'automated_count' => 0,
+];
+$adminTimelineItems = $adminTimeline['items'] ?? [];
+$adminTimelinePagination = $adminTimeline['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 14, 'pages' => 1];
+$adminTimelineFilters = $adminTimeline['filters'] ?? ['q' => '', 'source' => '', 'status_group' => ''];
+$adminTimelineSourceOptions = $adminTimeline['source_options'] ?? [['value' => '', 'label' => 'Todas as origens']];
+$adminTimelineStatusGroupOptions = $adminTimeline['status_group_options'] ?? [['value' => '', 'label' => 'Todos os status']];
+$adminTimelineNoteStatusOptions = $adminTimelineNoteStatusOptions ?? [
+    ['value' => 'aberto', 'label' => 'Aberto'],
+    ['value' => 'concluido', 'label' => 'Concluido'],
+];
+$adminTimelineNoteSeverityOptions = $adminTimelineNoteSeverityOptions ?? [
+    ['value' => 'baixa', 'label' => 'Baixa'],
+    ['value' => 'media', 'label' => 'Media'],
+    ['value' => 'alta', 'label' => 'Alta'],
+];
 $audit = $audit ?? [
     'items' => [],
     'pagination' => [
@@ -213,6 +297,16 @@ $formatDateTime = static function (?string $value): string {
     $timestamp = strtotime($value);
 
     return $timestamp === false ? $value : date('d/m/Y H:i', $timestamp);
+};
+
+$formatDateTimeInput = static function (?string $value): string {
+    if ($value === null || trim($value) === '') {
+        return '';
+    }
+
+    $timestamp = strtotime($value);
+
+    return $timestamp === false ? '' : date('Y-m-d\TH:i', $timestamp);
 };
 
 $formatDate = static function (?string $value): string {
@@ -333,6 +427,46 @@ $reimbursementStatusClass = static function (string $status, bool $overdue = fal
     };
 };
 
+$formatPercent = static function (float|int|string|null $value): string {
+    $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
+
+    return number_format($numeric, 2, ',', '.') . '%';
+};
+
+$processCommentStatusLabel = static function (string $status): string {
+    return match ($status) {
+        'arquivado' => 'Arquivado',
+        default => 'Aberto',
+    };
+};
+
+$processCommentStatusBadgeClass = static function (string $status): string {
+    return match ($status) {
+        'arquivado' => 'badge-neutral',
+        default => 'badge-info',
+    };
+};
+
+$adminTimelineStatusBadgeClass = static function (string $statusGroup): string {
+    return $statusGroup === 'aberto' ? 'badge-warning' : 'badge-success';
+};
+
+$adminTimelineSeverityBadgeClass = static function (string $severity): string {
+    return match ($severity) {
+        'alta' => 'badge-danger',
+        'media' => 'badge-warning',
+        default => 'badge-neutral',
+    };
+};
+
+$adminTimelineSourceBadgeClass = static function (string $sourceKind): string {
+    return match ($sourceKind) {
+        'nota_manual', 'comentario_processo' => 'badge-info',
+        'pendencia_operacional' => 'badge-danger',
+        default => 'badge-neutral',
+    };
+};
+
 $documentSensitivityLabel = static function (string $sensitivity): string {
     return match ($sensitivity) {
         'restricted' => 'Restrito',
@@ -345,6 +479,22 @@ $documentSensitivityBadgeClass = static function (string $sensitivity): string {
     return match ($sensitivity) {
         'restricted' => 'badge-warning',
         'sensitive' => 'badge-danger',
+        default => 'badge-neutral',
+    };
+};
+
+$documentAiFindingTypeLabel = static function (string $type): string {
+    return match ($type) {
+        'suggestion' => 'Sugestao',
+        default => 'Inconsistencia',
+    };
+};
+
+$documentAiFindingSeverityClass = static function (string $severity): string {
+    return match ($severity) {
+        'alta' => 'badge-danger',
+        'media' => 'badge-warning',
+        'baixa' => 'badge-info',
         default => 'badge-neutral',
     };
 };
@@ -374,6 +524,7 @@ $checklistItemBadgeClass = static function (bool $isDone): string {
 $auditEntityLabel = static function (string $entity): string {
     return match ($entity) {
         'person' => 'Pessoa',
+        'organ' => 'Orgao',
         'assignment' => 'Movimentação',
         'assignment_checklist' => 'Checklist da movimentacao',
         'assignment_checklist_item' => 'Item de checklist',
@@ -382,6 +533,9 @@ $auditEntityLabel = static function (string $entity): string {
         'cost_plan' => 'Plano de custos',
         'cost_plan_item' => 'Item de custo',
         'reimbursement_entry' => 'Reembolso real',
+        'analyst_pending_item' => 'Pendencia operacional',
+        'process_comment' => 'Comentario interno',
+        'process_admin_timeline_note' => 'Timeline administrativa',
         default => ucfirst(str_replace('_', ' ', $entity)),
     };
 };
@@ -401,15 +555,20 @@ $prettyJson = static function (mixed $value): string {
     return is_string($pretty) && trim($pretty) !== '' ? $pretty : '-';
 };
 
-$buildProfileUrl = static function (array $overrides = [], array $remove = []) use ($personId, $timelinePagination, $documentsPagination, $auditPagination, $auditFilters): string {
+$buildProfileUrl = static function (array $overrides = [], array $remove = []) use ($personId, $timelinePagination, $documentsPagination, $adminTimelinePagination, $adminTimelineFilters, $auditPagination, $auditFilters): string {
     $timelinePage = max(1, (int) ($timelinePagination['page'] ?? 1));
     $documentsPage = max(1, (int) ($documentsPagination['page'] ?? 1));
+    $adminTimelinePage = max(1, (int) ($adminTimelinePagination['page'] ?? 1));
     $auditPage = max(1, (int) ($auditPagination['page'] ?? 1));
 
     $params = [
         'id' => $personId,
         'timeline_page' => $timelinePage,
         'documents_page' => $documentsPage,
+        'admin_timeline_page' => $adminTimelinePage,
+        'admin_timeline_q' => (string) ($adminTimelineFilters['q'] ?? ''),
+        'admin_timeline_source' => (string) ($adminTimelineFilters['source'] ?? ''),
+        'admin_timeline_status_group' => (string) ($adminTimelineFilters['status_group'] ?? ''),
         'audit_page' => $auditPage,
         'audit_entity' => (string) ($auditFilters['entity'] ?? ''),
         'audit_action' => (string) ($auditFilters['action'] ?? ''),
@@ -437,6 +596,7 @@ $buildProfileUrl = static function (array $overrides = [], array $remove = []) u
 
 $buildTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['timeline_page' => $targetPage]);
 $buildDocumentsPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['documents_page' => $targetPage]);
+$buildAdminTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['admin_timeline_page' => $targetPage]);
 $buildAuditPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['audit_page' => $targetPage]);
 $buildAuditExportUrl = static function () use ($personId, $auditFilters): string {
     $params = [
@@ -456,6 +616,7 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
 
     return url('/people/audit/export?' . http_build_query($params));
 };
+$buildDossierExportUrl = static fn (): string => url('/people/dossier/export?person_id=' . $personId);
 ?>
 <div class="card">
   <div class="header-row">
@@ -464,6 +625,7 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
       <p class="muted">Perfil 360</p>
     </div>
     <div class="actions-inline">
+      <a class="btn btn-outline" href="<?= e($buildDossierExportUrl()) ?>">Exportar dossie ZIP/PDF</a>
       <a class="btn btn-outline" href="<?= e(url('/people')) ?>">Voltar</a>
       <?php if (($canManage ?? false) === true): ?>
         <a class="btn btn-primary" href="<?= e(url('/people/edit?id=' . (int) ($person['id'] ?? 0))) ?>">Editar</a>
@@ -478,6 +640,8 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
     <span class="tab-chip">Custos</span>
     <span class="tab-chip">Conciliação</span>
     <span class="tab-chip">Financeiro real</span>
+    <span class="tab-chip">Comentarios internos</span>
+    <span class="tab-chip">Timeline administrativa</span>
     <span class="tab-chip">Auditoria</span>
   </div>
 
@@ -501,6 +665,78 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
     <div class="details-wide"><strong>Observações:</strong> <?= nl2br(e((string) ($person['notes'] ?? '-'))) ?></div>
   </div>
 </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var form = document.querySelector('.reimbursement-form');
+    if (!form) {
+      return;
+    }
+
+    var preview = document.getElementById('reimbursement_calc_total_preview');
+    var amountInput = document.getElementById('reimbursement_amount');
+    var toggle = document.getElementById('reimbursement_use_calculator');
+    var fields = [
+      'reimbursement_calc_base',
+      'reimbursement_calc_transport',
+      'reimbursement_calc_lodging',
+      'reimbursement_calc_food',
+      'reimbursement_calc_other',
+      'reimbursement_calc_discount',
+      'reimbursement_calc_adjustment'
+    ].map(function (id) {
+      return document.getElementById(id);
+    }).filter(Boolean);
+
+    var toNumber = function (value) {
+      var normalized = String(value || '').replace(',', '.').replace(/[^0-9.-]/g, '');
+      var numeric = Number(normalized);
+      return Number.isFinite(numeric) ? numeric : 0;
+    };
+
+    var formatMoney = function (value) {
+      return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    };
+
+    var recalc = function () {
+      var baseInput = document.getElementById('reimbursement_calc_base');
+      var transportInput = document.getElementById('reimbursement_calc_transport');
+      var lodgingInput = document.getElementById('reimbursement_calc_lodging');
+      var foodInput = document.getElementById('reimbursement_calc_food');
+      var otherInput = document.getElementById('reimbursement_calc_other');
+      var discountInput = document.getElementById('reimbursement_calc_discount');
+      var adjustmentInput = document.getElementById('reimbursement_calc_adjustment');
+      var base = toNumber(baseInput ? baseInput.value : '');
+      var transport = toNumber(transportInput ? transportInput.value : '');
+      var lodging = toNumber(lodgingInput ? lodgingInput.value : '');
+      var food = toNumber(foodInput ? foodInput.value : '');
+      var other = toNumber(otherInput ? otherInput.value : '');
+      var discount = toNumber(discountInput ? discountInput.value : '');
+      var adjustmentPercent = toNumber(adjustmentInput ? adjustmentInput.value : '');
+      var subtotal = base + transport + lodging + food + other;
+      var adjustment = subtotal * (adjustmentPercent / 100);
+      var total = subtotal + adjustment - discount;
+
+      if (preview) {
+        preview.textContent = formatMoney(total);
+      }
+
+      if (toggle && toggle.checked && amountInput) {
+        amountInput.value = total > 0 ? total.toFixed(2) : '';
+      }
+    };
+
+    fields.forEach(function (field) {
+      field.addEventListener('input', recalc);
+    });
+
+    if (toggle) {
+      toggle.addEventListener('change', recalc);
+    }
+
+    recalc();
+  });
+</script>
 
 <div class="card">
   <div class="header-row">
@@ -812,6 +1048,124 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
     <p class="muted">Somente documentos classificados como Publico sao exibidos para o seu perfil.</p>
   <?php endif; ?>
 
+  <div class="card" style="margin: 12px 0 16px; background: #f8fbff;">
+    <div class="header-row">
+      <div>
+        <h4 style="margin: 0;">Conferencia assistida por IA</h4>
+        <p class="muted" style="margin: 4px 0 0;">
+          Extrai campos do dossie, aponta inconsistencias e sugere justificativas para divergencias recorrentes.
+        </p>
+      </div>
+      <?php if (($canManage ?? false) === true): ?>
+        <form method="post" action="<?= e(url('/people/documents/intelligence/run')) ?>">
+          <?= csrf_field() ?>
+          <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+          <button type="submit" class="btn btn-outline">Executar conferencia assistida</button>
+        </form>
+      <?php endif; ?>
+    </div>
+
+    <?php if ($documentAiReview === null): ?>
+      <p class="muted" style="margin-top: 10px;">Nenhuma conferencia assistida executada para esta pessoa.</p>
+    <?php else: ?>
+      <p class="muted" style="margin-top: 10px;">
+        Ultima execucao: <?= e($formatDateTime((string) ($documentAiReview['created_at'] ?? ''))) ?>
+        <?php if (trim((string) ($documentAiReview['executed_by_name'] ?? '')) !== ''): ?>
+          por <?= e((string) ($documentAiReview['executed_by_name'] ?? '')) ?>
+        <?php endif; ?>
+      </p>
+      <div class="actions-inline" style="margin: 8px 0 12px;">
+        <span class="badge badge-neutral">Docs <?= e((string) ((int) ($documentAiSummary['documents_total'] ?? 0))) ?></span>
+        <span class="badge badge-info">Extracoes <?= e((string) ((int) ($documentAiSummary['extractions_total'] ?? 0))) ?></span>
+        <span class="badge badge-warning">Inconsistencias <?= e((string) ((int) ($documentAiSummary['inconsistencies_total'] ?? 0))) ?></span>
+        <span class="badge badge-success">Sugestoes <?= e((string) ((int) ($documentAiSummary['suggestions_total'] ?? 0))) ?></span>
+        <span class="badge badge-danger">Alta severidade <?= e((string) ((int) ($documentAiSummary['high_severity_total'] ?? 0))) ?></span>
+      </div>
+
+      <details>
+        <summary>Inconsistencias e sugestoes (<?= e((string) count($documentAiFindings)) ?>)</summary>
+        <?php if ($documentAiFindings === []): ?>
+          <p class="muted">Nao foram identificadas inconsistencias/sugestoes na ultima execucao.</p>
+        <?php else: ?>
+          <div class="table-wrap" style="margin-top: 10px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Severidade</th>
+                  <th>Titulo</th>
+                  <th>Detalhe</th>
+                  <th>Sugestao de justificativa</th>
+                  <th>Confianca</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($documentAiFindings as $finding): ?>
+                  <?php $findingType = mb_strtolower(trim((string) ($finding['finding_type'] ?? 'inconsistency'))); ?>
+                  <?php $findingSeverity = mb_strtolower(trim((string) ($finding['severity'] ?? 'media'))); ?>
+                  <tr>
+                    <td><?= e($documentAiFindingTypeLabel($findingType)) ?></td>
+                    <td><span class="badge <?= e($documentAiFindingSeverityClass($findingSeverity)) ?>"><?= e(ucfirst($findingSeverity)) ?></span></td>
+                    <td><?= e((string) ($finding['title'] ?? '-')) ?></td>
+                    <td>
+                      <?= nl2br(e((string) ($finding['description'] ?? '-'))) ?>
+                      <?php if (trim((string) ($finding['document_title'] ?? '')) !== ''): ?>
+                        <div class="muted">Documento: <?= e((string) ($finding['document_title'] ?? '')) ?></div>
+                      <?php endif; ?>
+                    </td>
+                    <td><?= nl2br(e((string) ($finding['suggested_justification'] ?? '-'))) ?></td>
+                    <td><?= e(number_format((float) ($finding['confidence_score'] ?? 0), 1, ',', '.')) ?>%</td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php endif; ?>
+      </details>
+
+      <details style="margin-top: 10px;">
+        <summary>Extracoes de campos (<?= e((string) count($documentAiExtractions)) ?>)</summary>
+        <?php if ($documentAiExtractions === []): ?>
+          <p class="muted">Nenhum campo extraido na ultima execucao.</p>
+        <?php else: ?>
+          <div class="table-wrap" style="margin-top: 10px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Documento</th>
+                  <th>SEI extraido</th>
+                  <th>Competencia</th>
+                  <th>Valor</th>
+                  <th>Confianca</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php foreach ($documentAiExtractions as $extraction): ?>
+                  <tr>
+                    <td>
+                      <?= e((string) ($extraction['document_title'] ?? ($extraction['original_name'] ?? '-'))) ?>
+                      <div class="muted"><?= e((string) ($extraction['document_type_name'] ?? '-')) ?></div>
+                    </td>
+                    <td><?= e((string) ($extraction['extracted_sei'] ?? '-')) ?></td>
+                    <td><?= e($formatMonth((string) ($extraction['extracted_competence'] ?? ''))) ?></td>
+                    <td>
+                      <?php if (($extraction['extracted_amount'] ?? null) !== null): ?>
+                        <?= e($formatMoney((float) ($extraction['extracted_amount'] ?? 0))) ?>
+                      <?php else: ?>
+                        -
+                      <?php endif; ?>
+                    </td>
+                    <td><?= e(number_format((float) ($extraction['confidence_score'] ?? 0), 1, ',', '.')) ?>%</td>
+                  </tr>
+                <?php endforeach; ?>
+              </tbody>
+            </table>
+          </div>
+        <?php endif; ?>
+      </details>
+    <?php endif; ?>
+  </div>
+
   <?php if (($canManage ?? false) === true): ?>
     <form method="post" action="<?= e(url('/people/documents/store')) ?>" enctype="multipart/form-data" class="document-form">
       <?= csrf_field() ?>
@@ -881,6 +1235,10 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
     <div class="document-list">
       <?php foreach ($documentItems as $document): ?>
         <?php $documentSensitivity = mb_strtolower(trim((string) ($document['sensitivity_level'] ?? 'public'))); ?>
+        <?php
+          $documentVersions = is_array($document['versions'] ?? null) ? $document['versions'] : [];
+          $documentCurrentVersion = max(1, (int) ($document['current_version_number'] ?? ($documentVersions[0]['version_number'] ?? 1)));
+        ?>
         <article class="document-item">
           <div class="document-item-header">
             <div class="document-title-wrap">
@@ -889,10 +1247,12 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
               <span class="badge <?= e($documentSensitivityBadgeClass($documentSensitivity)) ?>">
                 <?= e($documentSensitivityLabel($documentSensitivity)) ?>
               </span>
+              <span class="badge badge-info">V<?= e((string) $documentCurrentVersion) ?></span>
             </div>
             <a class="btn btn-ghost" href="<?= e(url('/people/documents/download?id=' . (int) ($document['id'] ?? 0) . '&person_id=' . $personId)) ?>">Baixar</a>
           </div>
           <p class="muted">Arquivo: <?= e((string) ($document['original_name'] ?? '-')) ?> (<?= e($formatBytes((int) ($document['file_size'] ?? 0))) ?>)</p>
+          <p class="muted">Versões registradas: <?= e((string) count($documentVersions)) ?></p>
           <?php if (trim((string) ($document['reference_sei'] ?? '')) !== ''): ?>
             <p class="muted">SEI: <?= e((string) $document['reference_sei']) ?></p>
           <?php endif; ?>
@@ -906,6 +1266,48 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
             <p class="muted">Observações: <?= nl2br(e((string) $document['notes'])) ?></p>
           <?php endif; ?>
           <p class="muted">Enviado por: <?= e((string) ($document['uploaded_by_name'] ?? 'Sistema')) ?> em <?= e($formatDateTime((string) ($document['created_at'] ?? ''))) ?></p>
+
+          <?php if (($canManage ?? false) === true): ?>
+            <form method="post" action="<?= e(url('/people/documents/version/store')) ?>" enctype="multipart/form-data" class="document-version-form">
+              <?= csrf_field() ?>
+              <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+              <input type="hidden" name="document_id" value="<?= e((string) ((int) ($document['id'] ?? 0))) ?>">
+              <div class="field">
+                <label for="document_version_file_<?= e((string) ((int) ($document['id'] ?? 0))) ?>">Nova versão (PDF/JPG/PNG até 10MB)</label>
+                <input id="document_version_file_<?= e((string) ((int) ($document['id'] ?? 0))) ?>" name="file" type="file" required accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-outline">Enviar nova versão</button>
+              </div>
+            </form>
+          <?php endif; ?>
+
+          <details class="document-version-history">
+            <summary>Histórico de versões</summary>
+            <?php if ($documentVersions === []): ?>
+              <p class="muted">Nenhuma versão registrada.</p>
+            <?php else: ?>
+              <ul class="document-version-list">
+                <?php foreach ($documentVersions as $version): ?>
+                  <?php $versionId = (int) ($version['id'] ?? 0); ?>
+                  <li class="document-version-item">
+                    <div>
+                      <strong>V<?= e((string) ((int) ($version['version_number'] ?? 1))) ?></strong>
+                      <span class="muted"><?= e((string) ($version['original_name'] ?? '-')) ?> (<?= e($formatBytes((int) ($version['file_size'] ?? 0))) ?>)</span>
+                    </div>
+                    <div class="actions-inline">
+                      <span class="muted">
+                        <?= e((string) ($version['uploaded_by_name'] ?? 'Sistema')) ?> em <?= e($formatDateTime((string) ($version['created_at'] ?? ''))) ?>
+                      </span>
+                      <?php if ($versionId > 0): ?>
+                        <a class="btn btn-ghost" href="<?= e(url('/people/documents/version/download?version_id=' . $versionId . '&document_id=' . (int) ($document['id'] ?? 0) . '&person_id=' . $personId)) ?>">Baixar versão</a>
+                      <?php endif; ?>
+                    </div>
+                  </li>
+                <?php endforeach; ?>
+              </ul>
+            <?php endif; ?>
+          </details>
         </article>
       <?php endforeach; ?>
     </div>
@@ -1231,9 +1633,47 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
           <label for="reimbursement_title">Título do lançamento</label>
           <input id="reimbursement_title" name="title" type="text" minlength="3" maxlength="190" required placeholder="Ex.: Boleto órgão de origem - março/2026">
         </div>
+        <div class="field field-wide">
+          <label for="reimbursement_use_calculator" style="display:flex; align-items:center; gap:8px;">
+            <input id="reimbursement_use_calculator" name="use_calculator" type="checkbox" value="1">
+            Usar calculadora automática com memória de cálculo
+          </label>
+          <p class="muted">Fórmula: (Base + Transporte + Hospedagem + Alimentação + Outros) + Ajuste - Desconto.</p>
+        </div>
+        <div class="field">
+          <label for="reimbursement_calc_base">Base</label>
+          <input id="reimbursement_calc_base" name="calc_base_amount" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field">
+          <label for="reimbursement_calc_transport">Transporte</label>
+          <input id="reimbursement_calc_transport" name="calc_transport_amount" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field">
+          <label for="reimbursement_calc_lodging">Hospedagem</label>
+          <input id="reimbursement_calc_lodging" name="calc_lodging_amount" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field">
+          <label for="reimbursement_calc_food">Alimentação</label>
+          <input id="reimbursement_calc_food" name="calc_food_amount" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field">
+          <label for="reimbursement_calc_other">Outros</label>
+          <input id="reimbursement_calc_other" name="calc_other_amount" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field">
+          <label for="reimbursement_calc_adjustment">Ajuste (%)</label>
+          <input id="reimbursement_calc_adjustment" name="calc_adjustment_percent" type="number" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field">
+          <label for="reimbursement_calc_discount">Desconto</label>
+          <input id="reimbursement_calc_discount" name="calc_discount_amount" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field field-wide">
+          <p class="muted">Total calculado: <strong id="reimbursement_calc_total_preview">R$ 0,00</strong></p>
+        </div>
         <div class="field">
           <label for="reimbursement_amount">Valor</label>
-          <input id="reimbursement_amount" name="amount" type="number" min="0" step="0.01" required>
+          <input id="reimbursement_amount" name="amount" type="number" min="0" step="0.01" placeholder="0,00">
         </div>
         <div class="field">
           <label for="reimbursement_reference_month">Competência</label>
@@ -1285,6 +1725,8 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
                   && trim($dueDateRaw) !== ''
                   && strtotime($dueDateRaw) !== false
                   && strtotime($dueDateRaw) < strtotime(date('Y-m-d'));
+              $entryCalculation = $decodeMetadata($entry['calculation_memory'] ?? null);
+              $hasCalculationMemory = $entryCalculation !== [];
               $canMarkAsPaid = (($canManage ?? false) === true)
                   && $entryStatus !== 'pago'
                   && $entryStatus !== 'cancelado';
@@ -1295,6 +1737,33 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
                 <strong><?= e((string) ($entry['title'] ?? '-')) ?></strong>
                 <?php if (trim((string) ($entry['notes'] ?? '')) !== ''): ?>
                   <div class="muted"><?= nl2br(e((string) $entry['notes'])) ?></div>
+                <?php endif; ?>
+                <?php if ($hasCalculationMemory): ?>
+                  <?php
+                    $components = is_array($entryCalculation['components'] ?? null) ? $entryCalculation['components'] : [];
+                    $base = (float) ($components['base'] ?? 0);
+                    $transporte = (float) ($components['transporte'] ?? 0);
+                    $hospedagem = (float) ($components['hospedagem'] ?? 0);
+                    $alimentacao = (float) ($components['alimentacao'] ?? 0);
+                    $outros = (float) ($components['outros'] ?? 0);
+                    $desconto = (float) ($components['desconto'] ?? 0);
+                    $subtotalMem = (float) ($entryCalculation['subtotal'] ?? 0);
+                    $adjustmentPercentMem = (float) ($entryCalculation['adjustment_percent'] ?? 0);
+                    $adjustmentAmountMem = (float) ($entryCalculation['adjustment_amount'] ?? 0);
+                    $totalMem = (float) ($entryCalculation['total'] ?? 0);
+                  ?>
+                  <details style="margin-top:8px;">
+                    <summary>Memória de cálculo</summary>
+                    <div class="muted">
+                      Base <?= e($formatMoney($base)) ?> + Transporte <?= e($formatMoney($transporte)) ?> + Hospedagem <?= e($formatMoney($hospedagem)) ?> + Alimentação <?= e($formatMoney($alimentacao)) ?> + Outros <?= e($formatMoney($outros)) ?>
+                    </div>
+                    <div class="muted">
+                      Subtotal <?= e($formatMoney($subtotalMem)) ?> | Ajuste <?= e($formatPercent($adjustmentPercentMem)) ?> (<?= e($formatMoney($adjustmentAmountMem)) ?>) | Desconto <?= e($formatMoney($desconto)) ?>
+                    </div>
+                    <div class="muted">
+                      Total calculado: <strong><?= e($formatMoney($totalMem)) ?></strong>
+                    </div>
+                  </details>
                 <?php endif; ?>
               </td>
               <td><?= e($formatDate((string) ($entry['reference_month'] ?? ''))) ?></td>
@@ -1326,6 +1795,455 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
       </table>
     </div>
   <?php endif; ?>
+
+  <div style="margin-top: 14px;">
+    <h4>Memórias de cálculo recentes</h4>
+    <?php if ($reimbursementCalculationMemories === []): ?>
+      <p class="muted">Nenhuma memória de cálculo registrada.</p>
+    <?php else: ?>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Lançamento</th>
+              <th>Tipo</th>
+              <th>Competência</th>
+              <th>Total</th>
+              <th>Criado em</th>
+              <th>Responsável</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($reimbursementCalculationMemories as $memoryRow): ?>
+              <?php
+                $memoryPayload = $decodeMetadata($memoryRow['calculation_memory'] ?? null);
+                $memoryTotal = (float) ($memoryPayload['total'] ?? ($memoryRow['amount'] ?? 0));
+              ?>
+              <tr>
+                <td>
+                  <strong><?= e((string) ($memoryRow['title'] ?? '-')) ?></strong>
+                  <?php if ($memoryPayload !== []): ?>
+                    <div class="muted">
+                      Subtotal <?= e($formatMoney((float) ($memoryPayload['subtotal'] ?? 0))) ?>
+                      | Ajuste <?= e($formatPercent((float) ($memoryPayload['adjustment_percent'] ?? 0))) ?>
+                      | Desconto <?= e($formatMoney((float) (($memoryPayload['components']['desconto'] ?? 0)))) ?>
+                    </div>
+                  <?php endif; ?>
+                </td>
+                <td><?= e($reimbursementTypeLabel((string) ($memoryRow['entry_type'] ?? ''))) ?></td>
+                <td><?= e($formatDate((string) ($memoryRow['reference_month'] ?? ''))) ?></td>
+                <td><?= e($formatMoney($memoryTotal)) ?></td>
+                <td><?= e($formatDateTime((string) ($memoryRow['created_at'] ?? ''))) ?></td>
+                <td><?= e((string) ($memoryRow['created_by_name'] ?? 'Sistema')) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
+  </div>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Comentarios internos do processo</h3>
+      <p class="muted">Notas operacionais internas da movimentacao desta pessoa.</p>
+    </div>
+  </div>
+
+  <div class="grid-kpi costs-kpi">
+    <article class="card kpi-card">
+      <p class="kpi-label">Total</p>
+      <p class="kpi-value"><?= e((string) ((int) ($processCommentSummary['total_comments'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Abertos</p>
+      <p class="kpi-value"><?= e((string) ((int) ($processCommentSummary['open_count'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Arquivados</p>
+      <p class="kpi-value"><?= e((string) ((int) ($processCommentSummary['archived_count'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Fixados</p>
+      <p class="kpi-value"><?= e((string) ((int) ($processCommentSummary['pinned_count'] ?? 0))) ?></p>
+    </article>
+  </div>
+
+  <?php if (($canManage ?? false) === true): ?>
+    <form method="post" action="<?= e(url('/people/process-comments/store')) ?>" class="process-comment-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+      <input type="hidden" name="assignment_id" value="<?= e((string) ((int) (is_array($assignment) ? ($assignment['id'] ?? 0) : 0))) ?>">
+      <div class="form-grid">
+        <div class="field field-wide">
+          <label for="process_comment_text">Novo comentario interno</label>
+          <textarea id="process_comment_text" name="comment_text" rows="3" minlength="3" maxlength="5000" required placeholder="Descreva observacoes internas, riscos e proximas acoes."></textarea>
+        </div>
+        <div class="field">
+          <label for="process_comment_status">Status</label>
+          <select id="process_comment_status" name="status">
+            <?php foreach ($processCommentStatusOptions as $statusOption): ?>
+              <?php $statusValue = (string) ($statusOption['value'] ?? 'aberto'); ?>
+              <option value="<?= e($statusValue) ?>"><?= e((string) ($statusOption['label'] ?? ucfirst($statusValue))) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="process_comment_pinned" style="display:flex; align-items:center; gap:8px;">
+            <input type="hidden" name="is_pinned" value="0">
+            <input id="process_comment_pinned" name="is_pinned" type="checkbox" value="1">
+            Fixar comentario no topo
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Registrar comentario</button>
+      </div>
+    </form>
+  <?php endif; ?>
+
+  <?php if ($processCommentItems === []): ?>
+    <p class="muted">Nenhum comentario interno registrado para este processo.</p>
+  <?php else: ?>
+    <div class="comment-list">
+      <?php foreach ($processCommentItems as $comment): ?>
+        <?php
+          $commentId = (int) ($comment['id'] ?? 0);
+          $commentStatus = (string) ($comment['status'] ?? 'aberto');
+          $isPinned = (int) ($comment['is_pinned'] ?? 0) === 1;
+          $commentText = (string) ($comment['comment_text'] ?? '');
+        ?>
+        <article class="comment-item">
+          <div class="comment-item-head">
+            <div class="comment-item-title">
+              <span class="badge <?= e($processCommentStatusBadgeClass($commentStatus)) ?>"><?= e($processCommentStatusLabel($commentStatus)) ?></span>
+              <?php if ($isPinned): ?>
+                <span class="badge badge-warning">Fixado</span>
+              <?php endif; ?>
+            </div>
+            <span class="muted"><?= e($formatDateTime((string) ($comment['created_at'] ?? ''))) ?></span>
+          </div>
+          <p><?= nl2br(e($commentText)) ?></p>
+          <div class="comment-meta">
+            <span><strong>Autor:</strong> <?= e((string) ($comment['created_by_name'] ?? 'Sistema')) ?></span>
+            <span><strong>Atualizacao:</strong> <?= e($formatDateTime((string) ($comment['updated_at'] ?? ''))) ?></span>
+          </div>
+
+          <?php if (($canManage ?? false) === true): ?>
+            <details class="comment-edit">
+              <summary>Editar comentario</summary>
+              <form method="post" action="<?= e(url('/people/process-comments/update')) ?>" class="form-grid">
+                <?= csrf_field() ?>
+                <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+                <input type="hidden" name="comment_id" value="<?= e((string) $commentId) ?>">
+                <div class="field field-wide">
+                  <label for="comment_text_<?= e((string) $commentId) ?>">Texto</label>
+                  <textarea id="comment_text_<?= e((string) $commentId) ?>" name="comment_text" rows="3" minlength="3" maxlength="5000" required><?= e($commentText) ?></textarea>
+                </div>
+                <div class="field">
+                  <label for="comment_status_<?= e((string) $commentId) ?>">Status</label>
+                  <select id="comment_status_<?= e((string) $commentId) ?>" name="status">
+                    <?php foreach ($processCommentStatusOptions as $statusOption): ?>
+                      <?php $statusValue = (string) ($statusOption['value'] ?? 'aberto'); ?>
+                      <option value="<?= e($statusValue) ?>" <?= $statusValue === $commentStatus ? 'selected' : '' ?>>
+                        <?= e((string) ($statusOption['label'] ?? ucfirst($statusValue))) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="comment_pinned_<?= e((string) $commentId) ?>" style="display:flex; align-items:center; gap:8px;">
+                    <input type="hidden" name="is_pinned" value="0">
+                    <input id="comment_pinned_<?= e((string) $commentId) ?>" name="is_pinned" type="checkbox" value="1" <?= $isPinned ? 'checked' : '' ?>>
+                    Fixado
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-outline">Salvar alteracoes</button>
+                </div>
+              </form>
+            </details>
+
+            <form method="post" action="<?= e(url('/people/process-comments/delete')) ?>" onsubmit="return confirm('Remover este comentario interno?');">
+              <?= csrf_field() ?>
+              <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+              <input type="hidden" name="comment_id" value="<?= e((string) $commentId) ?>">
+              <button type="submit" class="btn btn-ghost">Excluir comentario</button>
+            </form>
+          <?php endif; ?>
+        </article>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Timeline administrativa completa</h3>
+      <p class="muted">Consolidacao administrativa por processo (notas manuais + fontes operacionais e financeiras).</p>
+    </div>
+  </div>
+
+  <div class="grid-kpi costs-kpi">
+    <article class="card kpi-card">
+      <p class="kpi-label">Total</p>
+      <p class="kpi-value"><?= e((string) ((int) ($adminTimelineSummary['total'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Abertos</p>
+      <p class="kpi-value"><?= e((string) ((int) ($adminTimelineSummary['open_count'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Concluidos</p>
+      <p class="kpi-value"><?= e((string) ((int) ($adminTimelineSummary['closed_count'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Notas manuais</p>
+      <p class="kpi-value"><?= e((string) ((int) ($adminTimelineSummary['manual_count'] ?? 0))) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Entradas automaticas</p>
+      <p class="kpi-value"><?= e((string) ((int) ($adminTimelineSummary['automated_count'] ?? 0))) ?></p>
+    </article>
+  </div>
+
+  <form method="get" action="<?= e(url('/people/show')) ?>" class="admin-timeline-filters">
+    <input type="hidden" name="id" value="<?= e((string) $personId) ?>">
+    <input type="hidden" name="timeline_page" value="<?= e((string) ((int) ($timelinePagination['page'] ?? 1))) ?>">
+    <input type="hidden" name="documents_page" value="<?= e((string) ((int) ($documentsPagination['page'] ?? 1))) ?>">
+    <input type="hidden" name="audit_page" value="<?= e((string) ((int) ($auditPagination['page'] ?? 1))) ?>">
+    <input type="hidden" name="audit_entity" value="<?= e((string) ($auditFilters['entity'] ?? '')) ?>">
+    <input type="hidden" name="audit_action" value="<?= e((string) ($auditFilters['action'] ?? '')) ?>">
+    <input type="hidden" name="audit_q" value="<?= e((string) ($auditFilters['q'] ?? '')) ?>">
+    <input type="hidden" name="audit_from" value="<?= e((string) ($auditFilters['from_date'] ?? '')) ?>">
+    <input type="hidden" name="audit_to" value="<?= e((string) ($auditFilters['to_date'] ?? '')) ?>">
+    <input type="hidden" name="admin_timeline_page" value="1">
+    <div class="form-grid">
+      <div class="field field-wide">
+        <label for="admin_timeline_q">Busca</label>
+        <input id="admin_timeline_q" name="admin_timeline_q" type="text" value="<?= e((string) ($adminTimelineFilters['q'] ?? '')) ?>" placeholder="Titulo, descricao, ator ou status">
+      </div>
+      <div class="field">
+        <label for="admin_timeline_source">Origem</label>
+        <select id="admin_timeline_source" name="admin_timeline_source">
+          <?php foreach ($adminTimelineSourceOptions as $sourceOption): ?>
+            <?php $sourceValue = (string) ($sourceOption['value'] ?? ''); ?>
+            <option value="<?= e($sourceValue) ?>" <?= $sourceValue === (string) ($adminTimelineFilters['source'] ?? '') ? 'selected' : '' ?>>
+              <?= e((string) ($sourceOption['label'] ?? ($sourceValue === '' ? 'Todas' : $sourceValue))) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="field">
+        <label for="admin_timeline_status_group">Status</label>
+        <select id="admin_timeline_status_group" name="admin_timeline_status_group">
+          <?php foreach ($adminTimelineStatusGroupOptions as $statusOption): ?>
+            <?php $statusValue = (string) ($statusOption['value'] ?? ''); ?>
+            <option value="<?= e($statusValue) ?>" <?= $statusValue === (string) ($adminTimelineFilters['status_group'] ?? '') ? 'selected' : '' ?>>
+              <?= e((string) ($statusOption['label'] ?? ($statusValue === '' ? 'Todos' : $statusValue))) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <a class="btn btn-outline" href="<?= e($buildProfileUrl(['admin_timeline_page' => 1], ['admin_timeline_q', 'admin_timeline_source', 'admin_timeline_status_group'])) ?>">Limpar</a>
+      <button type="submit" class="btn btn-primary">Filtrar</button>
+    </div>
+  </form>
+
+  <?php if (($canManage ?? false) === true): ?>
+    <form method="post" action="<?= e(url('/people/process-admin-timeline/store')) ?>" class="admin-timeline-note-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+      <input type="hidden" name="assignment_id" value="<?= e((string) ((int) (is_array($assignment) ? ($assignment['id'] ?? 0) : 0))) ?>">
+      <div class="form-grid">
+        <div class="field field-wide">
+          <label for="admin_timeline_note_title">Nova nota administrativa</label>
+          <input id="admin_timeline_note_title" name="title" type="text" minlength="3" maxlength="190" required placeholder="Titulo objetivo da nota">
+        </div>
+        <div class="field field-wide">
+          <label for="admin_timeline_note_description">Descricao</label>
+          <textarea id="admin_timeline_note_description" name="description" rows="3" maxlength="5000" placeholder="Detalhes, contexto e proxima acao."></textarea>
+        </div>
+        <div class="field">
+          <label for="admin_timeline_note_status">Status</label>
+          <select id="admin_timeline_note_status" name="status">
+            <?php foreach ($adminTimelineNoteStatusOptions as $statusOption): ?>
+              <?php $statusValue = (string) ($statusOption['value'] ?? 'aberto'); ?>
+              <option value="<?= e($statusValue) ?>"><?= e((string) ($statusOption['label'] ?? ucfirst($statusValue))) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="admin_timeline_note_severity">Severidade</label>
+          <select id="admin_timeline_note_severity" name="severity">
+            <?php foreach ($adminTimelineNoteSeverityOptions as $severityOption): ?>
+              <?php $severityValue = (string) ($severityOption['value'] ?? 'media'); ?>
+              <option value="<?= e($severityValue) ?>"><?= e((string) ($severityOption['label'] ?? ucfirst($severityValue))) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="admin_timeline_note_event_at">Data/hora do evento</label>
+          <input id="admin_timeline_note_event_at" name="event_at" type="datetime-local" value="<?= e(date('Y-m-d\TH:i')) ?>">
+        </div>
+        <div class="field">
+          <label for="admin_timeline_note_pinned" style="display:flex; align-items:center; gap:8px;">
+            <input type="hidden" name="is_pinned" value="0">
+            <input id="admin_timeline_note_pinned" name="is_pinned" type="checkbox" value="1">
+            Fixar na timeline
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Registrar nota administrativa</button>
+      </div>
+    </form>
+  <?php endif; ?>
+
+  <?php if ($adminTimelineItems === []): ?>
+    <p class="muted">Nenhuma entrada disponivel para a timeline administrativa deste processo.</p>
+  <?php else: ?>
+    <div class="admin-timeline-list">
+      <?php foreach ($adminTimelineItems as $entry): ?>
+        <?php
+          $entrySourceKind = (string) ($entry['source_kind'] ?? '');
+          $entrySourceLabel = (string) ($entry['source_label'] ?? 'Origem');
+          $entryTitle = (string) ($entry['title'] ?? 'Entrada administrativa');
+          $entryDescription = (string) ($entry['description'] ?? '');
+          $entryStatusLabel = (string) ($entry['status_label'] ?? '-');
+          $entryStatusGroup = (string) ($entry['status_group'] ?? 'concluido');
+          $entrySeverity = (string) ($entry['severity'] ?? 'baixa');
+          $entrySeverityLabel = (string) ($entry['severity_label'] ?? ucfirst($entrySeverity));
+          $entryEventAt = (string) ($entry['event_at'] ?? '');
+          $entryActor = (string) ($entry['actor_name'] ?? 'Sistema');
+          $entryIsPinned = (int) ($entry['is_pinned'] ?? 0) === 1;
+          $entryIsManual = (int) ($entry['is_manual'] ?? 0) === 1;
+          $entryCanEdit = (int) ($entry['can_edit'] ?? 0) === 1;
+          $entrySourceId = (int) ($entry['source_id'] ?? 0);
+          $entryNoteId = $entryIsManual ? $entrySourceId : 0;
+          $entryAssignmentId = isset($entry['assignment_id']) ? (int) $entry['assignment_id'] : 0;
+          $entryEventAtInput = $formatDateTimeInput($entryEventAt);
+          $entryStatusRaw = (string) ($entry['status_raw'] ?? 'aberto');
+        ?>
+        <article class="admin-timeline-item<?= $entryIsManual ? ' is-manual' : '' ?>">
+          <div class="admin-timeline-item-head">
+            <div class="admin-timeline-item-title">
+              <span class="badge <?= e($adminTimelineSourceBadgeClass($entrySourceKind)) ?>"><?= e($entrySourceLabel) ?></span>
+              <span class="badge <?= e($adminTimelineStatusBadgeClass($entryStatusGroup)) ?>"><?= e($entryStatusLabel) ?></span>
+              <span class="badge <?= e($adminTimelineSeverityBadgeClass($entrySeverity)) ?>"><?= e($entrySeverityLabel) ?></span>
+              <?php if ($entryIsPinned): ?>
+                <span class="badge badge-warning">Fixado</span>
+              <?php endif; ?>
+              <strong><?= e($entryTitle) ?></strong>
+            </div>
+            <span class="muted"><?= e($formatDateTime($entryEventAt)) ?></span>
+          </div>
+
+          <?php if (trim($entryDescription) !== ''): ?>
+            <p class="admin-timeline-item-description"><?= nl2br(e($entryDescription)) ?></p>
+          <?php endif; ?>
+
+          <div class="admin-timeline-meta">
+            <span><strong>Responsavel:</strong> <?= e($entryActor) ?></span>
+            <?php if ($entryAssignmentId > 0): ?>
+              <span><strong>Movimentacao:</strong> #<?= e((string) $entryAssignmentId) ?></span>
+            <?php endif; ?>
+            <?php if ($entrySourceId > 0): ?>
+              <span><strong>ID origem:</strong> #<?= e((string) $entrySourceId) ?></span>
+            <?php endif; ?>
+          </div>
+
+          <?php if (($canManage ?? false) === true && $entryCanEdit && $entryNoteId > 0): ?>
+            <details class="admin-timeline-edit">
+              <summary>Editar nota manual</summary>
+              <form method="post" action="<?= e(url('/people/process-admin-timeline/update')) ?>" class="form-grid">
+                <?= csrf_field() ?>
+                <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+                <input type="hidden" name="note_id" value="<?= e((string) $entryNoteId) ?>">
+                <div class="field field-wide">
+                  <label for="admin_timeline_title_<?= e((string) $entryNoteId) ?>">Titulo</label>
+                  <input id="admin_timeline_title_<?= e((string) $entryNoteId) ?>" name="title" type="text" minlength="3" maxlength="190" required value="<?= e($entryTitle) ?>">
+                </div>
+                <div class="field field-wide">
+                  <label for="admin_timeline_description_<?= e((string) $entryNoteId) ?>">Descricao</label>
+                  <textarea id="admin_timeline_description_<?= e((string) $entryNoteId) ?>" name="description" rows="3" maxlength="5000"><?= e($entryDescription) ?></textarea>
+                </div>
+                <div class="field">
+                  <label for="admin_timeline_status_<?= e((string) $entryNoteId) ?>">Status</label>
+                  <select id="admin_timeline_status_<?= e((string) $entryNoteId) ?>" name="status">
+                    <?php foreach ($adminTimelineNoteStatusOptions as $statusOption): ?>
+                      <?php $statusValue = (string) ($statusOption['value'] ?? 'aberto'); ?>
+                      <option value="<?= e($statusValue) ?>" <?= $statusValue === $entryStatusRaw ? 'selected' : '' ?>>
+                        <?= e((string) ($statusOption['label'] ?? ucfirst($statusValue))) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="admin_timeline_severity_<?= e((string) $entryNoteId) ?>">Severidade</label>
+                  <select id="admin_timeline_severity_<?= e((string) $entryNoteId) ?>" name="severity">
+                    <?php foreach ($adminTimelineNoteSeverityOptions as $severityOption): ?>
+                      <?php $severityValue = (string) ($severityOption['value'] ?? 'media'); ?>
+                      <option value="<?= e($severityValue) ?>" <?= $severityValue === $entrySeverity ? 'selected' : '' ?>>
+                        <?= e((string) ($severityOption['label'] ?? ucfirst($severityValue))) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="admin_timeline_event_at_<?= e((string) $entryNoteId) ?>">Data/hora do evento</label>
+                  <input id="admin_timeline_event_at_<?= e((string) $entryNoteId) ?>" name="event_at" type="datetime-local" value="<?= e($entryEventAtInput) ?>">
+                </div>
+                <div class="field">
+                  <label for="admin_timeline_pinned_<?= e((string) $entryNoteId) ?>" style="display:flex; align-items:center; gap:8px;">
+                    <input type="hidden" name="is_pinned" value="0">
+                    <input id="admin_timeline_pinned_<?= e((string) $entryNoteId) ?>" name="is_pinned" type="checkbox" value="1" <?= $entryIsPinned ? 'checked' : '' ?>>
+                    Fixado
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-outline">Salvar alteracoes</button>
+                </div>
+              </form>
+            </details>
+
+            <form method="post" action="<?= e(url('/people/process-admin-timeline/delete')) ?>" onsubmit="return confirm('Remover esta nota administrativa?');">
+              <?= csrf_field() ?>
+              <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+              <input type="hidden" name="note_id" value="<?= e((string) $entryNoteId) ?>">
+              <button type="submit" class="btn btn-ghost">Excluir nota</button>
+            </form>
+          <?php endif; ?>
+        </article>
+      <?php endforeach; ?>
+    </div>
+
+    <?php
+      $adminTimelineTotal = (int) ($adminTimelinePagination['total'] ?? 0);
+      $adminTimelinePage = (int) ($adminTimelinePagination['page'] ?? 1);
+      $adminTimelinePerPage = max(1, (int) ($adminTimelinePagination['per_page'] ?? 14));
+      $adminTimelinePages = max(1, (int) ($adminTimelinePagination['pages'] ?? 1));
+      $adminTimelineStart = $adminTimelineTotal > 0 ? (($adminTimelinePage - 1) * $adminTimelinePerPage) + 1 : 0;
+      $adminTimelineEnd = min($adminTimelineTotal, $adminTimelinePage * $adminTimelinePerPage);
+    ?>
+    <div class="pagination-row">
+      <span class="muted">Exibindo <?= e((string) $adminTimelineStart) ?>-<?= e((string) $adminTimelineEnd) ?> de <?= e((string) $adminTimelineTotal) ?> entradas</span>
+      <div class="pagination-links">
+        <?php if ($adminTimelinePage > 1): ?>
+          <a class="btn btn-outline" href="<?= e($buildAdminTimelinePageUrl($adminTimelinePage - 1)) ?>">Anterior</a>
+        <?php endif; ?>
+        <span class="muted">Página <?= e((string) $adminTimelinePage) ?> de <?= e((string) $adminTimelinePages) ?></span>
+        <?php if ($adminTimelinePage < $adminTimelinePages): ?>
+          <a class="btn btn-outline" href="<?= e($buildAdminTimelinePageUrl($adminTimelinePage + 1)) ?>">Próxima</a>
+        <?php endif; ?>
+      </div>
+    </div>
+  <?php endif; ?>
 </div>
 
 <div class="card">
@@ -1343,6 +2261,10 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
       <input type="hidden" name="id" value="<?= e((string) $personId) ?>">
       <input type="hidden" name="timeline_page" value="<?= e((string) ((int) ($timelinePagination['page'] ?? 1))) ?>">
       <input type="hidden" name="documents_page" value="<?= e((string) ((int) ($documentsPagination['page'] ?? 1))) ?>">
+      <input type="hidden" name="admin_timeline_page" value="<?= e((string) ((int) ($adminTimelinePagination['page'] ?? 1))) ?>">
+      <input type="hidden" name="admin_timeline_q" value="<?= e((string) ($adminTimelineFilters['q'] ?? '')) ?>">
+      <input type="hidden" name="admin_timeline_source" value="<?= e((string) ($adminTimelineFilters['source'] ?? '')) ?>">
+      <input type="hidden" name="admin_timeline_status_group" value="<?= e((string) ($adminTimelineFilters['status_group'] ?? '')) ?>">
       <input type="hidden" name="audit_page" value="1">
       <div class="form-grid">
         <div class="field">

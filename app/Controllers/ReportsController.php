@@ -126,6 +126,44 @@ final class ReportsController extends Controller
         exit;
     }
 
+    public function exportAuditZip(Request $request): void
+    {
+        $service = $this->service();
+        $filters = $this->filtersFromRequest($request);
+
+        $export = $service->exportAuditZip(
+            inputFilters: $filters,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+        );
+
+        if (($export['ok'] ?? false) !== true) {
+            $errors = is_array($export['errors'] ?? null) ? $export['errors'] : ['Falha ao gerar pacote de auditoria.'];
+            flash('error', implode(' ', $errors));
+            $this->redirect('/reports?' . http_build_query($filters));
+        }
+
+        $path = (string) ($export['path'] ?? '');
+        $fileName = (string) ($export['file_name'] ?? 'auditoria-cgu-tcu.zip');
+
+        if ($path === '' || !is_file($path)) {
+            flash('error', 'Arquivo ZIP de auditoria nao encontrado para download.');
+            $this->redirect('/reports?' . http_build_query($filters));
+        }
+
+        if (!headers_sent()) {
+            header('Content-Type: application/zip');
+            header('X-Content-Type-Options: nosniff');
+            header('Content-Disposition: attachment; filename="' . $fileName . '"');
+            header('Content-Length: ' . (string) filesize($path));
+        }
+
+        readfile($path);
+        @unlink($path);
+        exit;
+    }
+
     /** @return array<string, mixed> */
     private function filtersFromRequest(Request $request): array
     {
