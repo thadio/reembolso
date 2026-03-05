@@ -18,7 +18,8 @@ final class DocumentService
         private AuditService $audit,
         private EventService $events,
         private Config $config,
-        private LgpdService $lgpd
+        private LgpdService $lgpd,
+        private SecuritySettingsService $security
     ) {
     }
 
@@ -114,6 +115,8 @@ final class DocumentService
 
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $createdIds = [];
+        $maxBytes = $this->maxUploadBytes();
+        $maxMb = max(1, (int) ceil($maxBytes / 1048576));
 
         foreach ($normalizedFiles as $file) {
             $name = (string) ($file['name'] ?? '');
@@ -130,8 +133,18 @@ final class DocumentService
                 continue;
             }
 
-            if ($size <= 0 || $size > self::MAX_FILE_SIZE) {
-                $warnings[] = 'Arquivo fora do limite permitido (10MB): ' . $name;
+            if (!UploadSecurityService::isSafeOriginalName($name)) {
+                $warnings[] = 'Nome de arquivo invalido: ' . $name;
+                continue;
+            }
+
+            if (!UploadSecurityService::isNativeUploadedFile($tmpName)) {
+                $warnings[] = 'Upload invalido ou nao confiavel: ' . $name;
+                continue;
+            }
+
+            if ($size <= 0 || $size > $maxBytes) {
+                $warnings[] = sprintf('Arquivo fora do limite permitido (%dMB): %s', $maxMb, $name);
                 continue;
             }
 
@@ -147,14 +160,17 @@ final class DocumentService
                 continue;
             }
 
+            if (!UploadSecurityService::matchesKnownSignature($tmpName, $mime)) {
+                $warnings[] = 'Assinatura binaria invalida para o tipo informado: ' . $name;
+                continue;
+            }
+
             $storedName = bin2hex(random_bytes(16)) . '.' . $ext;
             $targetPath = $targetDir . '/' . $storedName;
 
             if (!move_uploaded_file($tmpName, $targetPath)) {
-                if (!rename($tmpName, $targetPath)) {
-                    $warnings[] = 'Não foi possível salvar arquivo: ' . $name;
-                    continue;
-                }
+                $warnings[] = 'Não foi possível salvar arquivo: ' . $name;
+                continue;
             }
 
             $relativePath = $subDir . '/' . $storedName;
@@ -390,5 +406,12 @@ final class DocumentService
         $string = trim((string) $value);
 
         return $string === '' ? null : $string;
+    }
+
+    private function maxUploadBytes(): int
+    {
+        $globalLimit = max(1048576, $this->security->uploadMaxBytes());
+
+        return min(self::MAX_FILE_SIZE, $globalLimit);
     }
 }

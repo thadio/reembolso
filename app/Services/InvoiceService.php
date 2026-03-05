@@ -22,7 +22,8 @@ final class InvoiceService
         private AuditService $audit,
         private EventService $events,
         private Config $config,
-        private LgpdService $lgpd
+        private LgpdService $lgpd,
+        private SecuritySettingsService $security
     ) {
     }
 
@@ -1065,11 +1066,29 @@ final class InvoiceService
         $originalName = (string) ($file['name'] ?? '');
         $tmpName = (string) ($file['tmp_name'] ?? '');
         $size = (int) ($file['size'] ?? 0);
+        $maxBytes = $this->maxUploadBytes();
+        $maxMb = max(1, (int) ceil($maxBytes / 1048576));
 
-        if ($size <= 0 || $size > self::MAX_FILE_SIZE) {
+        if (!UploadSecurityService::isSafeOriginalName($originalName)) {
             return [
                 'ok' => false,
-                'error' => 'Arquivo PDF fora do limite permitido (15MB).',
+                'error' => 'Nome do arquivo PDF invalido.',
+                'meta' => null,
+            ];
+        }
+
+        if (!UploadSecurityService::isNativeUploadedFile($tmpName)) {
+            return [
+                'ok' => false,
+                'error' => 'Upload do PDF invalido ou nao confiavel.',
+                'meta' => null,
+            ];
+        }
+
+        if ($size <= 0 || $size > $maxBytes) {
+            return [
+                'ok' => false,
+                'error' => sprintf('Arquivo PDF fora do limite permitido (%dMB).', $maxMb),
                 'meta' => null,
             ];
         }
@@ -1093,6 +1112,14 @@ final class InvoiceService
             return [
                 'ok' => false,
                 'error' => 'Tipo de arquivo invalido. Envie um PDF valido.',
+                'meta' => null,
+            ];
+        }
+
+        if (!UploadSecurityService::matchesKnownSignature($tmpName, $mime)) {
+            return [
+                'ok' => false,
+                'error' => 'Assinatura binaria invalida para PDF.',
                 'meta' => null,
             ];
         }
@@ -1121,13 +1148,11 @@ final class InvoiceService
             $targetPath = $targetDir . '/' . $storedName;
 
             if (!move_uploaded_file($tmpName, $targetPath)) {
-                if (!rename($tmpName, $targetPath)) {
-                    return [
-                        'ok' => false,
-                        'error' => 'Nao foi possivel salvar PDF do boleto.',
-                        'meta' => null,
-                    ];
-                }
+                return [
+                    'ok' => false,
+                    'error' => 'Nao foi possivel salvar PDF do boleto.',
+                    'meta' => null,
+                ];
             }
         } catch (\Throwable $exception) {
             return [
@@ -1176,11 +1201,29 @@ final class InvoiceService
         $originalName = (string) ($file['name'] ?? '');
         $tmpName = (string) ($file['tmp_name'] ?? '');
         $size = (int) ($file['size'] ?? 0);
+        $maxBytes = $this->maxUploadBytes();
+        $maxMb = max(1, (int) ceil($maxBytes / 1048576));
 
-        if ($size <= 0 || $size > self::MAX_FILE_SIZE) {
+        if (!UploadSecurityService::isSafeOriginalName($originalName)) {
             return [
                 'ok' => false,
-                'error' => 'Comprovante fora do limite permitido (15MB).',
+                'error' => 'Nome do comprovante invalido.',
+                'meta' => null,
+            ];
+        }
+
+        if (!UploadSecurityService::isNativeUploadedFile($tmpName)) {
+            return [
+                'ok' => false,
+                'error' => 'Upload do comprovante invalido ou nao confiavel.',
+                'meta' => null,
+            ];
+        }
+
+        if ($size <= 0 || $size > $maxBytes) {
+            return [
+                'ok' => false,
+                'error' => sprintf('Comprovante fora do limite permitido (%dMB).', $maxMb),
                 'meta' => null,
             ];
         }
@@ -1204,6 +1247,14 @@ final class InvoiceService
             return [
                 'ok' => false,
                 'error' => 'Tipo de arquivo invalido para comprovante de pagamento.',
+                'meta' => null,
+            ];
+        }
+
+        if (!UploadSecurityService::matchesKnownSignature($tmpName, $mime)) {
+            return [
+                'ok' => false,
+                'error' => 'Assinatura binaria invalida para comprovante.',
                 'meta' => null,
             ];
         }
@@ -1233,13 +1284,11 @@ final class InvoiceService
             $targetPath = $targetDir . '/' . $storedName;
 
             if (!move_uploaded_file($tmpName, $targetPath)) {
-                if (!rename($tmpName, $targetPath)) {
-                    return [
-                        'ok' => false,
-                        'error' => 'Nao foi possivel salvar comprovante de pagamento.',
-                        'meta' => null,
-                    ];
-                }
+                return [
+                    'ok' => false,
+                    'error' => 'Nao foi possivel salvar comprovante de pagamento.',
+                    'meta' => null,
+                ];
             }
         } catch (\Throwable $exception) {
             return [
@@ -1288,6 +1337,13 @@ final class InvoiceService
         }
 
         return 'aberto';
+    }
+
+    private function maxUploadBytes(): int
+    {
+        $globalLimit = max(1048576, $this->security->uploadMaxBytes());
+
+        return min(self::MAX_FILE_SIZE, $globalLimit);
     }
 
     private function isFinalStatus(string $status): bool

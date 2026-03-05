@@ -5,6 +5,7 @@ declare(strict_types=1);
 $isActive = (int) ($user['is_active'] ?? 0) === 1;
 $roleNames = is_array($user['role_names'] ?? null) ? $user['role_names'] : [];
 $permissionNames = is_array($user['permission_names'] ?? null) ? $user['permission_names'] : [];
+$passwordRulesSummary = (string) ($passwordRulesSummary ?? '');
 ?>
 <div class="card">
   <div class="header-row">
@@ -28,6 +29,8 @@ $permissionNames = is_array($user['permission_names'] ?? null) ? $user['permissi
       <span class="badge <?= $isActive ? 'badge-success' : 'badge-danger' ?>"><?= $isActive ? 'Ativa' : 'Inativa' ?></span>
     </div>
     <div><strong>Ultimo login:</strong> <?= !empty($user['last_login_at']) ? e((string) $user['last_login_at']) : 'Nunca' ?></div>
+    <div><strong>Senha alterada em:</strong> <?= !empty($user['password_changed_at']) ? e((string) $user['password_changed_at']) : 'Nao registrado' ?></div>
+    <div><strong>Senha expira em:</strong> <?= !empty($user['password_expires_at']) ? e((string) $user['password_expires_at']) : 'Sem expiracao' ?></div>
     <div><strong>Criado em:</strong> <?= e((string) ($user['created_at'] ?? '-')) ?></div>
     <div><strong>Atualizado em:</strong> <?= e((string) ($user['updated_at'] ?? '-')) ?></div>
     <div class="details-wide">
@@ -90,6 +93,12 @@ $permissionNames = is_array($user['permission_names'] ?? null) ? $user['permissi
     <form method="post" action="<?= e(url('/users/reset-password')) ?>" class="form-grid">
       <?= csrf_field() ?>
       <input type="hidden" name="id" value="<?= e((string) ($user['id'] ?? 0)) ?>">
+
+      <?php if ($passwordRulesSummary !== ''): ?>
+        <div class="field field-wide">
+          <p class="muted"><strong>Regras de senha:</strong> <?= e($passwordRulesSummary) ?></p>
+        </div>
+      <?php endif; ?>
 
       <div class="field">
         <label for="reset_password">Nova senha *</label>

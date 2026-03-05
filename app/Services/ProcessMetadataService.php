@@ -23,7 +23,8 @@ final class ProcessMetadataService
         private AuditService $audit,
         private EventService $events,
         private Config $config,
-        private LgpdService $lgpd
+        private LgpdService $lgpd,
+        private SecuritySettingsService $security
     ) {
     }
 
@@ -461,10 +462,29 @@ final class ProcessMetadataService
         $tmpName = (string) ($file['tmp_name'] ?? '');
         $originalName = (string) ($file['name'] ?? '');
         $size = (int) ($file['size'] ?? 0);
-        if ($size <= 0 || $size > self::MAX_FILE_SIZE) {
+        $maxBytes = $this->maxUploadBytes();
+        $maxMb = max(1, (int) ceil($maxBytes / 1048576));
+
+        if (!UploadSecurityService::isSafeOriginalName($originalName)) {
             return [
                 'ok' => false,
-                'error' => 'Anexo DOU fora do limite permitido (15MB).',
+                'error' => 'Nome do anexo DOU invalido.',
+                'meta' => null,
+            ];
+        }
+
+        if (!UploadSecurityService::isNativeUploadedFile($tmpName)) {
+            return [
+                'ok' => false,
+                'error' => 'Upload do anexo DOU invalido ou nao confiavel.',
+                'meta' => null,
+            ];
+        }
+
+        if ($size <= 0 || $size > $maxBytes) {
+            return [
+                'ok' => false,
+                'error' => sprintf('Anexo DOU fora do limite permitido (%dMB).', $maxMb),
                 'meta' => null,
             ];
         }
@@ -492,6 +512,14 @@ final class ProcessMetadataService
             ];
         }
 
+        if (!UploadSecurityService::matchesKnownSignature($tmpName, $mime)) {
+            return [
+                'ok' => false,
+                'error' => 'Assinatura binaria invalida para anexo DOU.',
+                'meta' => null,
+            ];
+        }
+
         $baseUploads = rtrim((string) $this->config->get('paths.storage_uploads', ''), '/');
         if ($baseUploads === '') {
             return [
@@ -515,13 +543,11 @@ final class ProcessMetadataService
             $storedName = bin2hex(random_bytes(16)) . '.' . $ext;
             $targetPath = $targetDir . '/' . $storedName;
             if (!move_uploaded_file($tmpName, $targetPath)) {
-                if (!rename($tmpName, $targetPath)) {
-                    return [
-                        'ok' => false,
-                        'error' => 'Nao foi possivel salvar anexo DOU.',
-                        'meta' => null,
-                    ];
-                }
+                return [
+                    'ok' => false,
+                    'error' => 'Nao foi possivel salvar anexo DOU.',
+                    'meta' => null,
+                ];
             }
         } catch (\Throwable $exception) {
             return [
@@ -542,6 +568,13 @@ final class ProcessMetadataService
                 'dou_attachment_storage_path' => $subDir . '/' . $storedName,
             ],
         ];
+    }
+
+    private function maxUploadBytes(): int
+    {
+        $globalLimit = max(1048576, $this->security->uploadMaxBytes());
+
+        return min(self::MAX_FILE_SIZE, $globalLimit);
     }
 
     private function clean(mixed $value): ?string

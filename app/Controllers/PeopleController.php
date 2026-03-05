@@ -14,6 +14,7 @@ use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
 use App\Repositories\ReconciliationRepository;
 use App\Repositories\ReimbursementRepository;
+use App\Repositories\SecuritySettingsRepository;
 use App\Services\CostPlanService;
 use App\Services\DocumentService;
 use App\Services\LgpdService;
@@ -22,6 +23,7 @@ use App\Services\PipelineService;
 use App\Services\PeopleService;
 use App\Services\ReconciliationService;
 use App\Services\ReimbursementService;
+use App\Services\SecuritySettingsService;
 
 final class PeopleController extends Controller
 {
@@ -836,7 +838,8 @@ final class PeopleController extends Controller
             $this->app->audit(),
             $this->app->events(),
             $this->app->config(),
-            $this->lgpdService()
+            $this->lgpdService(),
+            $this->securityService()
         );
     }
 
@@ -847,7 +850,8 @@ final class PeopleController extends Controller
             $this->app->audit(),
             $this->app->events(),
             $this->app->config(),
-            $this->lgpdService()
+            $this->lgpdService(),
+            $this->securityService()
         );
     }
 
@@ -887,6 +891,16 @@ final class PeopleController extends Controller
     {
         return new LgpdService(
             new LgpdRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
+        );
+    }
+
+    private function securityService(): SecuritySettingsService
+    {
+        return new SecuritySettingsService(
+            new SecuritySettingsRepository($this->app->db()),
+            $this->app->config(),
             $this->app->audit(),
             $this->app->events()
         );

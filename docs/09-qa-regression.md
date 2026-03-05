@@ -10,6 +10,9 @@ Guia da regressao minima com dataset fixo (fase 7.3), executada sem interface we
 ## Artefatos
 - Fixture SQL: `tests/fixtures/qa_regression_dataset.sql`
 - Runner de regressao: `scripts/qa-regression.php`
+- Suite unitaria financeira: `scripts/financial-unit-tests.php`
+- Suite de integracao financeira: `scripts/financial-integration-tests.php`
+- Runner consolidado da etapa 7.3: `scripts/phase7-3-tests.php`
 
 ## Execucao
 Limpar dados de fixture:
@@ -34,6 +37,19 @@ Saida estruturada (JSON):
 
 ```bash
 ./scripts/qa-regression.php --output json
+```
+
+## Suite completa da etapa 7.3
+Executar todos os checks (unitario + integracao + regressao fixa):
+
+```bash
+./scripts/phase7-3-tests.php
+```
+
+Executar em JSON para pipeline:
+
+```bash
+./scripts/phase7-3-tests.php --output json
 ```
 
 ## Resultado esperado (delta da fixture)

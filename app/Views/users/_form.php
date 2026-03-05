@@ -29,6 +29,7 @@ $isEdit = ($isEdit ?? false) === true;
 
 $currentActive = (int) ($user['is_active'] ?? 1) === 1 ? '1' : '0';
 $activeValue = old('is_active', $currentActive);
+$passwordRulesSummary = (string) ($passwordRulesSummary ?? '');
 ?>
 <div class="card">
   <form method="post" action="<?= e($action) ?>" class="form-grid">
@@ -75,6 +76,12 @@ $activeValue = old('is_active', $currentActive);
         <label for="password_confirmation">Confirmacao de senha *</label>
         <input id="password_confirmation" name="password_confirmation" type="password" required>
       </div>
+
+      <?php if ($passwordRulesSummary !== ''): ?>
+        <div class="field field-wide">
+          <p class="muted"><strong>Regras de senha:</strong> <?= e($passwordRulesSummary) ?></p>
+        </div>
+      <?php endif; ?>
     <?php endif; ?>
 
     <div class="field field-wide">

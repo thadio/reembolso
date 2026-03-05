@@ -78,13 +78,14 @@ final class UserAdminRepository
                 u.cpf,
                 u.is_active,
                 u.last_login_at,
+                u.password_expires_at,
                 u.created_at,
                 GROUP_CONCAT(DISTINCT r.name ORDER BY r.name SEPARATOR ', ') AS role_names_csv
             FROM users u
             LEFT JOIN user_roles ur ON ur.user_id = u.id
             LEFT JOIN roles r ON r.id = ur.role_id
             {$where}
-            GROUP BY u.id, u.name, u.email, u.cpf, u.is_active, u.last_login_at, u.created_at
+            GROUP BY u.id, u.name, u.email, u.cpf, u.is_active, u.last_login_at, u.password_expires_at, u.created_at
             ORDER BY {$sortColumn} {$direction}, u.id DESC
             LIMIT :limit OFFSET :offset
         ";
@@ -126,6 +127,8 @@ final class UserAdminRepository
                 u.cpf,
                 u.is_active,
                 u.last_login_at,
+                u.password_changed_at,
+                u.password_expires_at,
                 u.created_at,
                 u.updated_at
              FROM users u
@@ -174,6 +177,8 @@ final class UserAdminRepository
                 password_hash,
                 cpf,
                 is_active,
+                password_changed_at,
+                password_expires_at,
                 created_at,
                 updated_at
             ) VALUES (
@@ -182,6 +187,8 @@ final class UserAdminRepository
                 :password_hash,
                 :cpf,
                 :is_active,
+                :password_changed_at,
+                :password_expires_at,
                 NOW(),
                 NOW()
             )'
@@ -193,6 +200,8 @@ final class UserAdminRepository
             'password_hash' => $data['password_hash'],
             'cpf' => $data['cpf'],
             'is_active' => $data['is_active'],
+            'password_changed_at' => $data['password_changed_at'],
+            'password_expires_at' => $data['password_expires_at'],
         ]);
 
         return (int) $this->db->lastInsertId();
@@ -456,17 +465,22 @@ final class UserAdminRepository
         return $hash === '' ? null : $hash;
     }
 
-    public function updatePasswordHash(int $userId, string $passwordHash): bool
+    public function updatePasswordHash(int $userId, string $passwordHash, ?string $passwordExpiresAt): bool
     {
         $stmt = $this->db->prepare(
             'UPDATE users
-             SET password_hash = :password_hash, updated_at = NOW()
+             SET
+                password_hash = :password_hash,
+                password_changed_at = NOW(),
+                password_expires_at = :password_expires_at,
+                updated_at = NOW()
              WHERE id = :id AND deleted_at IS NULL'
         );
 
         return $stmt->execute([
             'id' => $userId,
             'password_hash' => $passwordHash,
+            'password_expires_at' => $passwordExpiresAt,
         ]);
     }
 

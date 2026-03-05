@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Core;
 
+use App\Repositories\SecuritySettingsRepository;
 use App\Repositories\UserRepository;
 use App\Services\AuditService;
 use PDO;
@@ -17,10 +18,13 @@ final class Auth
 
     private RateLimiter $rateLimiter;
 
+    private SecuritySettingsRepository $securitySettings;
+
     public function __construct(private PDO $db, private Config $config, private AuditService $audit)
     {
         $this->users = new UserRepository($db);
         $this->rateLimiter = new RateLimiter($db);
+        $this->securitySettings = new SecuritySettingsRepository($db);
     }
 
     public function check(): bool
@@ -67,20 +71,51 @@ final class Auth
         return in_array($permission, $user['permissions'], true);
     }
 
+    public function passwordExpired(): bool
+    {
+        $user = $this->user();
+
+        return $user !== null && (int) ($user['password_expired'] ?? 0) === 1;
+    }
+
+    public function refresh(): void
+    {
+        $userId = $this->id();
+        if ($userId === null) {
+            return;
+        }
+
+        $loadedUser = $this->users->findWithPermissionsById($userId);
+        if ($loadedUser === null) {
+            return;
+        }
+
+        Session::set(self::SESSION_KEY, $loadedUser);
+    }
+
     public function attempt(string $email, string $password, string $ip, string $userAgent): bool
     {
+        $policy = $this->loginPolicy();
+        $maxAttempts = max(3, min(20, (int) ($policy['login_max_attempts'] ?? 5)));
+        $windowSeconds = max(60, min(86400, (int) ($policy['login_window_seconds'] ?? 900)));
+        $lockoutSeconds = max(60, min(86400, (int) ($policy['login_lockout_seconds'] ?? 900)));
+
         $throttleKey = sha1(mb_strtolower(trim($email)) . '|' . $ip);
 
-        $maxAttempts = (int) $this->config->get('rate_limit.login_max_attempts', 5);
-        $decay = (int) $this->config->get('rate_limit.login_decay_seconds', 900);
+        if ($this->rateLimiter->tooManyAttempts($throttleKey, $maxAttempts, $windowSeconds)) {
+            $remaining = $this->rateLimiter->lockoutRemainingSeconds($throttleKey);
+            if ($remaining > 0) {
+                throw new RuntimeException(
+                    sprintf('Muitas tentativas. Tente novamente em %d segundo(s).', $remaining)
+                );
+            }
 
-        if ($this->rateLimiter->tooManyAttempts($throttleKey, $maxAttempts, $decay)) {
             throw new RuntimeException('Muitas tentativas. Aguarde alguns minutos para tentar novamente.');
         }
 
         $user = $this->users->findActiveByEmail($email);
         if ($user === null || !password_verify($password, (string) $user['password_hash'])) {
-            $this->rateLimiter->hit($throttleKey);
+            $this->rateLimiter->hit($throttleKey, $maxAttempts, $windowSeconds, $lockoutSeconds);
             $this->audit->log(
                 entity: 'auth',
                 entityId: null,
@@ -113,7 +148,9 @@ final class Auth
             action: 'login.success',
             beforeData: null,
             afterData: ['email' => $loadedUser['email']],
-            metadata: null,
+            metadata: [
+                'password_expired' => (int) ($loadedUser['password_expired'] ?? 0),
+            ],
             userId: (int) $loadedUser['id'],
             ip: $ip,
             userAgent: $userAgent
@@ -142,5 +179,26 @@ final class Auth
 
         Session::remove(self::SESSION_KEY);
         Session::regenerate();
+    }
+
+    /** @return array<string, int> */
+    private function loginPolicy(): array
+    {
+        $defaults = [
+            'login_max_attempts' => max(3, (int) $this->config->get('security_policy.login_max_attempts', 5)),
+            'login_window_seconds' => max(60, (int) $this->config->get('security_policy.login_window_seconds', 900)),
+            'login_lockout_seconds' => max(60, (int) $this->config->get('security_policy.login_lockout_seconds', 900)),
+        ];
+
+        $stored = $this->securitySettings->defaultSettings();
+        if ($stored === null) {
+            return $defaults;
+        }
+
+        return [
+            'login_max_attempts' => max(3, (int) ($stored['login_max_attempts'] ?? $defaults['login_max_attempts'])),
+            'login_window_seconds' => max(60, (int) ($stored['login_window_seconds'] ?? $defaults['login_window_seconds'])),
+            'login_lockout_seconds' => max(60, (int) ($stored['login_lockout_seconds'] ?? $defaults['login_lockout_seconds'])),
+        ];
     }
 }

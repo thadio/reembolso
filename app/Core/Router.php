@@ -73,6 +73,22 @@ final class Router
                     return false;
                 }
 
+                if ($this->app->auth()->passwordExpired()) {
+                    $currentPath = $this->app->request()->path();
+                    $allowedPaths = [
+                        '/users/password',
+                        '/users/password/update',
+                        '/logout',
+                    ];
+
+                    if (!in_array($currentPath, $allowedPaths, true)) {
+                        flash('error', 'Sua senha expirou. Atualize a senha para continuar.');
+                        $this->redirect('/users/password');
+
+                        return false;
+                    }
+                }
+
                 continue;
             }
 

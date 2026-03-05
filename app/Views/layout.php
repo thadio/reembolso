@@ -8,6 +8,8 @@ $authPermissions = is_array($authUser['permissions'] ?? null) ? $authUser['permi
 $canViewDashboard = in_array('dashboard.view', $authPermissions, true);
 $canViewUsers = in_array('users.view', $authPermissions, true);
 $canManageUsers = in_array('users.manage', $authPermissions, true);
+$canViewSecurity = in_array('security.view', $authPermissions, true);
+$canManageSecurity = in_array('security.manage', $authPermissions, true);
 $canViewLgpd = in_array('lgpd.view', $authPermissions, true);
 $canManageLgpd = in_array('lgpd.manage', $authPermissions, true);
 $canViewBudget = in_array('budget.view', $authPermissions, true);
@@ -55,6 +57,11 @@ $renderMenuIcon = static function (string $icon): string {
         case 'lgpd':
             $body = '<path d="M12 3l8 4v5c0 5-3.4 9.3-8 10-4.6-.7-8-5-8-10V7z"></path>'
                 . '<path d="M9 12l2 2 4-4"></path>';
+            break;
+        case 'security':
+            $body = '<path d="M12 2l8 4v6c0 5-3.4 9.3-8 10-4.6-.7-8-5-8-10V6z"></path>'
+                . '<circle cx="12" cy="13" r="2"></circle>'
+                . '<path d="M12 15v3"></path>';
             break;
         case 'budget':
             $body = '<path d="M3 20h18"></path>'
@@ -148,6 +155,14 @@ if ($canViewUsers) {
         'href' => '/users',
         'icon' => 'users_admin',
         'active' => str_starts_with($path, '/users'),
+    ];
+}
+if ($canViewSecurity) {
+    $mainMenuItems[] = [
+        'label' => 'Seguranca',
+        'href' => '/security',
+        'icon' => 'security',
+        'active' => str_starts_with($path, '/security'),
     ];
 }
 if ($canViewLgpd) {
@@ -262,6 +277,14 @@ if ($canManageUsers) {
         'href' => '/users/create',
         'icon' => 'plus',
         'active' => $path === '/users/create',
+    ];
+}
+if ($canManageSecurity) {
+    $quickMenuItems[] = [
+        'label' => 'Seguranca',
+        'href' => '/security',
+        'icon' => 'plus',
+        'active' => str_starts_with($path, '/security'),
     ];
 }
 if ($canManageLgpd) {

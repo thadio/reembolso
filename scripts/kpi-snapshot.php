@@ -50,8 +50,8 @@ function main(array $argv): void
     $timelineLimit = (int) $options['timeline_limit'];
     $dryRun = (bool) $options['dry_run'];
 
-    $dashboard = new DashboardService(new DashboardRepository($app->db()));
-    $overview = $dashboard->overview($timelineLimit);
+    $dashboard = new DashboardService(new DashboardRepository($app->db()), $app->config());
+    $overview = $dashboard->overview($timelineLimit, false);
 
     $snapshot = buildSnapshotPayload($overview, $app);
     $targetFile = buildSnapshotPath($outputDir);

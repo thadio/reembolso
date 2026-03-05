@@ -8,8 +8,10 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\InvoiceRepository;
 use App\Repositories\LgpdRepository;
+use App\Repositories\SecuritySettingsRepository;
 use App\Services\InvoiceService;
 use App\Services\LgpdService;
+use App\Services\SecuritySettingsService;
 
 final class InvoicesController extends Controller
 {
@@ -370,6 +372,12 @@ final class InvoicesController extends Controller
             $this->app->config(),
             new LgpdService(
                 new LgpdRepository($this->app->db()),
+                $this->app->audit(),
+                $this->app->events()
+            ),
+            new SecuritySettingsService(
+                new SecuritySettingsRepository($this->app->db()),
+                $this->app->config(),
                 $this->app->audit(),
                 $this->app->events()
             )

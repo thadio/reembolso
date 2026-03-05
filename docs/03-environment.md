@@ -25,10 +25,21 @@ Arquivo de exemplo: `.env.example`
 - `SESSION_TTL_SECONDS`
 - `CSRF_TTL_SECONDS`
 - `LOGIN_MAX_ATTEMPTS`
-- `LOGIN_DECAY_SECONDS`
+- `LOGIN_WINDOW_SECONDS` (ou `LOGIN_DECAY_SECONDS` para retrocompatibilidade)
+- `LOGIN_LOCKOUT_SECONDS`
 - `SEED_ADMIN_NAME`
 - `SEED_ADMIN_EMAIL`
 - `SEED_ADMIN_PASSWORD`
+
+### Opcionais para politica de seguranca (fase 6.3)
+- `PASSWORD_MIN_LENGTH`
+- `PASSWORD_MAX_LENGTH`
+- `PASSWORD_REQUIRE_UPPER`
+- `PASSWORD_REQUIRE_LOWER`
+- `PASSWORD_REQUIRE_NUMBER`
+- `PASSWORD_REQUIRE_SYMBOL`
+- `PASSWORD_EXPIRATION_DAYS`
+- `UPLOAD_MAX_FILE_SIZE_MB`
 
 ### Opcionais para operacao/deploy
 - `DEPLOY_RESTART_COMMAND` (ex.: restart de PHP-FPM/Apache quando aplicavel)
@@ -42,6 +53,7 @@ Arquivo de exemplo: `.env.example`
 ### Opcionais para snapshots de KPI (fase 7.2)
 - `OPS_KPI_SNAPSHOT_DIR` (default: `storage/ops/kpi_snapshots`)
 - `OPS_KPI_SNAPSHOT_RETENTION_DAYS` (default: `30`)
+- `OPS_KPI_SNAPSHOT_MAX_AGE_MINUTES` (default: `240`, controla uso de snapshot no dashboard)
 
 ### Opcionais para upload FTP
 - `FTP_HOST`

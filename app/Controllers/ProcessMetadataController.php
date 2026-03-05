@@ -8,8 +8,10 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\LgpdRepository;
 use App\Repositories\ProcessMetadataRepository;
+use App\Repositories\SecuritySettingsRepository;
 use App\Services\LgpdService;
 use App\Services\ProcessMetadataService;
+use App\Services\SecuritySettingsService;
 
 final class ProcessMetadataController extends Controller
 {
@@ -241,6 +243,12 @@ final class ProcessMetadataController extends Controller
             $this->app->config(),
             new LgpdService(
                 new LgpdRepository($this->app->db()),
+                $this->app->audit(),
+                $this->app->events()
+            ),
+            new SecuritySettingsService(
+                new SecuritySettingsRepository($this->app->db()),
+                $this->app->config(),
                 $this->app->audit(),
                 $this->app->events()
             )

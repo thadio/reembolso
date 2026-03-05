@@ -22,6 +22,7 @@ reembolso/
     06-troubleshooting.md
     07-security.md
     14-lgpd-advanced.md
+    15-security-hardening.md
     changelog-docs.md
 
   scripts/

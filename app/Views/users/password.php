@@ -1,6 +1,8 @@
 <?php
 
 declare(strict_types=1);
+
+$passwordRulesSummary = (string) ($passwordRulesSummary ?? '');
 ?>
 <div class="card" style="max-width: 720px;">
   <div class="header-row">
@@ -15,6 +17,12 @@ declare(strict_types=1);
 
   <form method="post" action="<?= e(url('/users/password/update')) ?>" class="form-grid">
     <?= csrf_field() ?>
+
+    <?php if ($passwordRulesSummary !== ''): ?>
+      <div class="field field-wide">
+        <p class="muted"><strong>Regras de senha:</strong> <?= e($passwordRulesSummary) ?></p>
+      </div>
+    <?php endif; ?>
 
     <div class="field field-wide">
       <label for="current_password">Senha atual *</label>

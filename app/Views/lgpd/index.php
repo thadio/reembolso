@@ -359,8 +359,7 @@ $decodeRunSummary = static function (mixed $payload): array {
                       <?= csrf_field() ?>
                       <input type="hidden" name="policy_key" value="<?= e((string) ($policy['policy_key'] ?? '')) ?>">
                     </form>
-                    <button type="submit" class="btn btn-primary">Salvar</button>
-                  </button>
+                    <button form="<?= e($formId) ?>" type="submit" class="btn btn-primary">Salvar</button>
                 </td>
               <?php else: ?>
                 <td><?= e((string) ((int) ($policy['retention_days'] ?? 0))) ?></td>

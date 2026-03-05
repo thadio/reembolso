@@ -6,7 +6,9 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\SecuritySettingsRepository;
 use App\Repositories\UserAdminRepository;
+use App\Services\SecuritySettingsService;
 use App\Services\UserAdminService;
 
 final class UsersController extends Controller
@@ -51,6 +53,7 @@ final class UsersController extends Controller
             'title' => 'Novo Usuario',
             'user' => $this->emptyUser(),
             'roles' => $this->service()->roles(),
+            'passwordRulesSummary' => $this->service()->passwordRulesSummary(),
         ]);
     }
 
@@ -94,6 +97,7 @@ final class UsersController extends Controller
             'user' => $user,
             'canManage' => $this->app->auth()->hasPermission('users.manage'),
             'isSelf' => (int) ($this->app->auth()->id() ?? 0) === $id,
+            'passwordRulesSummary' => $this->service()->passwordRulesSummary(),
         ]);
     }
 
@@ -226,6 +230,7 @@ final class UsersController extends Controller
     {
         $this->view('users/password', [
             'title' => 'Trocar Senha',
+            'passwordRulesSummary' => $this->service()->passwordRulesSummary(),
         ]);
     }
 
@@ -249,6 +254,7 @@ final class UsersController extends Controller
             $this->redirect('/users/password');
         }
 
+        $this->app->auth()->refresh();
         flash('success', 'Senha alterada com sucesso.');
         $this->redirect('/dashboard');
     }
@@ -290,6 +296,17 @@ final class UsersController extends Controller
     {
         return new UserAdminService(
             new UserAdminRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events(),
+            $this->securityService()
+        );
+    }
+
+    private function securityService(): SecuritySettingsService
+    {
+        return new SecuritySettingsService(
+            new SecuritySettingsRepository($this->app->db()),
+            $this->app->config(),
             $this->app->audit(),
             $this->app->events()
         );

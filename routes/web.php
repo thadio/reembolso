@@ -17,6 +17,7 @@ use App\Controllers\OrgansController;
 use App\Controllers\PeopleController;
 use App\Controllers\ProcessMetadataController;
 use App\Controllers\ReportsController;
+use App\Controllers\SecurityController;
 use App\Controllers\SlaAlertsController;
 use App\Controllers\UsersController;
 
@@ -48,6 +49,8 @@ $router->get('/lgpd', [LgpdController::class, 'index'], ['auth', 'permission:lgp
 $router->get('/lgpd/export/access-csv', [LgpdController::class, 'exportAccessCsv'], ['auth', 'permission:lgpd.view']);
 $router->post('/lgpd/policies/upsert', [LgpdController::class, 'upsertPolicy'], ['auth', 'permission:lgpd.manage', 'csrf']);
 $router->post('/lgpd/retention/run', [LgpdController::class, 'runRetention'], ['auth', 'permission:lgpd.manage', 'csrf']);
+$router->get('/security', [SecurityController::class, 'index'], ['auth', 'permission:security.view']);
+$router->post('/security/update', [SecurityController::class, 'update'], ['auth', 'permission:security.manage', 'csrf']);
 $router->get('/budget', [BudgetController::class, 'index'], ['auth', 'permission:budget.view']);
 $router->post('/budget/simulate', [BudgetController::class, 'simulate'], ['auth', 'permission:budget.simulate', 'csrf']);
 $router->post('/budget/parameters/upsert', [BudgetController::class, 'upsertParameter'], ['auth', 'permission:budget.manage', 'csrf']);

@@ -12,7 +12,8 @@ final class UserAdminService
     public function __construct(
         private UserAdminRepository $users,
         private AuditService $audit,
-        private EventService $events
+        private EventService $events,
+        private SecuritySettingsService $security
     ) {
     }
 
@@ -47,6 +48,11 @@ final class UserAdminService
     public function permissions(): array
     {
         return $this->users->listPermissions();
+    }
+
+    public function passwordRulesSummary(): string
+    {
+        return $this->security->passwordRulesSummary();
     }
 
     /**
@@ -95,6 +101,8 @@ final class UserAdminService
 
         $payload = $validation['data'];
         $payload['password_hash'] = $passwordHash;
+        $payload['password_changed_at'] = date('Y-m-d H:i:s');
+        $payload['password_expires_at'] = $this->security->passwordExpiresAtFromNow();
 
         try {
             $id = $this->users->runInTransaction(function () use ($payload, $validation): int {
@@ -406,7 +414,7 @@ final class UserAdminService
             return ['ok' => false, 'errors' => ['Nao foi possivel atualizar a senha.']];
         }
 
-        $this->users->updatePasswordHash($userId, $newHash);
+        $this->users->updatePasswordHash($userId, $newHash, $this->security->passwordExpiresAtFromNow());
 
         $this->audit->log(
             entity: 'user_password',
@@ -460,7 +468,7 @@ final class UserAdminService
             return ['ok' => false, 'errors' => ['Nao foi possivel redefinir a senha.']];
         }
 
-        $this->users->updatePasswordHash($targetUserId, $newHash);
+        $this->users->updatePasswordHash($targetUserId, $newHash, $this->security->passwordExpiresAtFromNow());
 
         $this->audit->log(
             entity: 'user_password',
@@ -568,6 +576,14 @@ final class UserAdminService
     /** @return array<int, string> */
     private function validatePassword(string $password, string $confirmation): array
     {
+        $policy = $this->security->passwordPolicy();
+        $minLength = max(8, min(64, (int) ($policy['password_min_length'] ?? 8)));
+        $maxLength = max($minLength, min(256, (int) ($policy['password_max_length'] ?? 128)));
+        $requireUpper = (int) ($policy['password_require_upper'] ?? 0) === 1;
+        $requireLower = (int) ($policy['password_require_lower'] ?? 0) === 1;
+        $requireNumber = (int) ($policy['password_require_number'] ?? 1) === 1;
+        $requireSymbol = (int) ($policy['password_require_symbol'] ?? 0) === 1;
+
         $errors = [];
 
         if ($password === '') {
@@ -576,16 +592,28 @@ final class UserAdminService
             return $errors;
         }
 
-        if (mb_strlen($password) < 8) {
-            $errors[] = 'Senha deve ter ao menos 8 caracteres.';
+        if (mb_strlen($password) < $minLength) {
+            $errors[] = sprintf('Senha deve ter ao menos %d caracteres.', $minLength);
         }
 
-        if (mb_strlen($password) > 128) {
-            $errors[] = 'Senha deve ter no maximo 128 caracteres.';
+        if (mb_strlen($password) > $maxLength) {
+            $errors[] = sprintf('Senha deve ter no maximo %d caracteres.', $maxLength);
         }
 
-        if (!preg_match('/[A-Za-z]/', $password) || !preg_match('/\d/', $password)) {
-            $errors[] = 'Senha deve conter ao menos uma letra e um numero.';
+        if ($requireUpper && !preg_match('/[A-Z]/', $password)) {
+            $errors[] = 'Senha deve conter ao menos uma letra maiuscula.';
+        }
+
+        if ($requireLower && !preg_match('/[a-z]/', $password)) {
+            $errors[] = 'Senha deve conter ao menos uma letra minuscula.';
+        }
+
+        if ($requireNumber && !preg_match('/\d/', $password)) {
+            $errors[] = 'Senha deve conter ao menos um numero.';
+        }
+
+        if ($requireSymbol && !preg_match('/[^A-Za-z0-9]/', $password)) {
+            $errors[] = 'Senha deve conter ao menos um simbolo.';
         }
 
         if ($password !== $confirmation) {

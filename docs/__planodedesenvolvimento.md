@@ -1,6 +1,6 @@
 # REEMBOLSO - Especificacao Funcional e Plano de Desenvolvimento (v2.1)
 
-**Data de atualizacao:** 2026-03-04  
+**Data de atualizacao:** 2026-03-05  
 **Aplicacao:** Reembolso (Web App em PHP)  
 **Ambiente alvo:** HostGator Shared Hosting (cPanel, PHP 8.1+, MySQL/Percona 5.7+)  
 **Orgao atendido:** MTE - Ministerio do Trabalho e Emprego
@@ -26,7 +26,7 @@ Esta versao reorganiza a v2.0 com foco em:
 ### 0.2 Evidencias tecnicas consideradas
 
 - Rotas e controle de acesso: `routes/web.php`
-- Migrations: `db/migrations/001` a `012`
+- Migrations: `db/migrations/001` a `027`
 - Servicos e repositorios: `app/Services`, `app/Repositories`
 - Changelog tecnico: `CHANGELOG.md`
 - Estado documentado: `README.md`, `docs/02-architecture.md`
@@ -61,8 +61,8 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | Fase 3 - Nucleo financeiro estruturado | `[x]` | 3.1 a 3.5 concluidas (CDO, boletos, espelho, conciliacao e pagamentos) |
 | Fase 4 - Automacao administrativa | `[x]` | 4.1 (templates), 4.2 (metadados formais) e 4.3 (SLA/alertas) concluidas |
 | Fase 5 - Inteligencia orcamentaria e relatorios | `[x]` | 5.1, 5.2, 5.3 e 5.4 entregues (projecoes, gap, relatorios premium e capacidade) |
-| Fase 6 - Compliance e seguranca avancada | `[~]` | 6.1 e 6.2 concluidas (admin de usuarios + LGPD avancado); pendente 6.3 (hardening) |
-| Fase 7 - Operacao, performance e qualidade | `[~]` | base parcial (health/log), sem fechamento operacional completo |
+| Fase 6 - Compliance e seguranca avancada | `[x]` | 6.1, 6.2 e 6.3 concluidas (admin, LGPD avancado e hardening) |
+| Fase 7 - Operacao, performance e qualidade | `[x]` | 7.1 a 7.4 concluidas (backup, performance, suites QA e observabilidade operacional) |
 
 ### 2.2 Modulos concluidos
 
@@ -302,9 +302,9 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 6.3 - Seguranca reforcada
 
-- `[ ]` Politica de senha e expiracao configuravel
-- `[ ]` Bloqueio por tentativas excessivas com janela configuravel
-- `[ ]` Hardening de upload e validacoes adicionais
+- `[x]` Politica de senha e expiracao configuravel
+- `[x]` Bloqueio por tentativas excessivas com janela configuravel
+- `[x]` Hardening de upload e validacoes adicionais
 
 ### Fase 7 - Operacao, performance e qualidade
 
@@ -318,22 +318,22 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 7.2 - Performance e processamento
 
-- `[ ]` Indices adicionais para filtros de alto volume
-- `[ ]` Snapshots de KPIs/projecoes via cron
-- `[ ]` Otimizacao de consultas pesadas do dashboard
+- `[x]` Indices adicionais para filtros de alto volume
+- `[x]` Snapshots de KPIs/projecoes via cron
+- `[x]` Otimizacao de consultas pesadas do dashboard
 
 #### Etapa 7.3 - Qualidade e testes
 
-- `[ ]` Suite de testes unitarios para regras financeiras
-- `[ ]` Testes de integracao para fluxos criticos
-- `[ ]` Checklists manuais versionados por etapa
-- `[ ]` Regressao minima por dataset fixo de QA
+- `[x]` Suite de testes unitarios para regras financeiras
+- `[x]` Testes de integracao para fluxos criticos
+- `[x]` Checklists manuais versionados por etapa
+- `[x]` Regressao minima por dataset fixo de QA
 
 #### Etapa 7.4 - Observabilidade operacional
 
-- `[ ]` Painel de saude com indicadores tecnicos
-- `[ ]` Logs estruturados por severidade
-- `[ ]` Rotina de revisao de erros recorrentes
+- `[x]` Painel de saude com indicadores tecnicos
+- `[x]` Logs estruturados por severidade
+- `[x]` Rotina de revisao de erros recorrentes
 
 ---
 
@@ -532,10 +532,9 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 ## 9) Proximo ciclo recomendado (execucao imediata)
 
-1. Evoluir para **Fase 6.3** (hardening de seguranca com politica de senha e bloqueio configuravel).
-2. Enderecar lacunas remanescentes de compliance avancado com foco em dossie e monitoramento de acesso sensivel.
-3. Fortalecer qualidade da **Fase 7.3** (testes unitarios e integracao das regras financeiras).
-4. Consolidar observabilidade de **Fase 7.4** com rotina recorrente de revisao de erros.
+1. Enderecar lacunas remanescentes de compliance avancado com foco em dossie e monitoramento de acesso sensivel.
+2. Planejar entrega incremental de importacao CSV em massa (RF-04) com validacao e rollback operacional.
+3. Evoluir backlog de produtividade do analista (fila, checklist automatico e central de pendencias).
 
 ---
 

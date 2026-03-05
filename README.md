@@ -3,10 +3,10 @@
 Aplicacao web em PHP para gestao de movimentacao de forca de trabalho, pipeline de pessoas, timeline e reembolsos.
 
 ## Estado atual
-- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 5.4 (MVP de orcamento/capacidade), 6.1 (admin de usuarios/acessos) e 6.2 (LGPD avancado)
+- Fases implementadas: 0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 5.4 (MVP de orcamento/capacidade), 6.1 (admin de usuarios/acessos), 6.2 (LGPD avancado), 6.3 (seguranca reforcada), 7.1 (backup/restore), 7.2 (performance com indices + snapshot KPI + otimizacao do dashboard), 7.3 (qualidade com suites unitaria/integracao e regressao fixa QA) e 7.4 (observabilidade com painel tecnico, severidade de logs e revisao recorrente)
 - Stack: PHP 8.1+, MySQL/Percona 5.7+, Apache (shared hosting compativel)
 - Deploy alvo: execucao via bash no servidor
-- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos), conciliacao previsto x real por pessoa/competencia, CDO com vinculo 1..N de pessoas, boletos estruturados por orgao/competencia com baixa parcial/total e comprovante, espelho de custo detalhado por pessoa/competencia (manual + CSV), conciliacao avancada item a item com workflow de aprovacao e bloqueio, templates de oficio versionados com geracao de documento (HTML print + PDF nativo) e auditoria filtravel no Perfil 360, metadados formais de processo (oficio/DOU/entrada MTE) com anexo e trilha auditavel, painel de SLA com regras por etapa e notificacao opcional por email, dashboard orcamentario com simulador de contratacao e cenarios salvos, relatorios premium com filtros e exportacao CSV/PDF/ZIP, administracao de usuarios com papeis/permissoes via UI e fluxo de troca/reset de senha, painel LGPD com trilha de acesso sensivel, relatorio CSV e politicas de retencao/anonimizacao parametrizaveis
+- Modulos ativos: dashboard operacional com metricas reais, pipeline de pessoas, timeline completa, dossie documental com upload/download seguro, custos previstos com versionamento, financeiro real de reembolsos (boletos/pagamentos), conciliacao previsto x real por pessoa/competencia, CDO com vinculo 1..N de pessoas, boletos estruturados por orgao/competencia com baixa parcial/total e comprovante, espelho de custo detalhado por pessoa/competencia (manual + CSV), conciliacao avancada item a item com workflow de aprovacao e bloqueio, templates de oficio versionados com geracao de documento (HTML print + PDF nativo) e auditoria filtravel no Perfil 360, metadados formais de processo (oficio/DOU/entrada MTE) com anexo e trilha auditavel, painel de SLA com regras por etapa e notificacao opcional por email, dashboard orcamentario com simulador de contratacao e cenarios salvos, relatorios premium com filtros e exportacao CSV/PDF/ZIP, administracao de usuarios com papeis/permissoes via UI e fluxo de troca/reset de senha, painel LGPD com trilha de acesso sensivel, relatorio CSV e politicas de retencao/anonimizacao parametrizaveis, painel de seguranca com politica de senha/expiracao, lockout configuravel e hardening adicional de upload, observabilidade operacional com `ops-health-panel`, `log-severity`, `error-review` e `ops-quality-gate`
 
 ## Inicio rapido (local)
 1. Copie `.env.example` para `.env`.
@@ -58,6 +58,10 @@ php -S localhost:8000 -t public
 - `GET /lgpd/export/access-csv`
 - `POST /lgpd/policies/upsert`
 - `POST /lgpd/retention/run`
+
+## Rotas de Seguranca (resumo)
+- `GET /security`
+- `POST /security/update`
 
 ## Rotas de CDO (resumo)
 - `GET /cdos`
@@ -152,7 +156,9 @@ A documentacao oficial esta centralizada em `/docs`:
 - `docs/05-operations.md`
 - `docs/06-troubleshooting.md`
 - `docs/07-security.md`
+- `docs/09-qa-regression.md`
 - `docs/14-lgpd-advanced.md`
+- `docs/15-security-hardening.md`
 - `docs/changelog-docs.md`
 
 ## Deploy (resumo)

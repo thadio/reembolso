@@ -75,6 +75,11 @@ cd /var/www/reembolso
 ./scripts/kpi-snapshot.php
 ```
 
+Uso no dashboard:
+- quando existir snapshot recente em `OPS_KPI_SNAPSHOT_DIR`, o dashboard reutiliza esse snapshot;
+- se snapshot estiver ausente/desatualizado, o dashboard faz calculo ao vivo automaticamente.
+- janela de frescor configuravel por `OPS_KPI_SNAPSHOT_MAX_AGE_MINUTES` (default: `240`).
+
 Simulacao sem gravar:
 ```bash
 ./scripts/kpi-snapshot.php --dry-run
@@ -83,4 +88,52 @@ Simulacao sem gravar:
 Exemplo de cron (a cada 4 horas):
 ```cron
 0 */4 * * * cd /var/www/reembolso && ./scripts/kpi-snapshot.php >> storage/logs/kpi-snapshot.log 2>&1
+```
+
+## Suite de qualidade financeira (fase 7.3)
+Suite unitaria (regras de formula e bordas):
+```bash
+./scripts/financial-unit-tests.php
+```
+
+Suite de integracao (dashboard + simulacao orcamentaria com fixture):
+```bash
+./scripts/financial-integration-tests.php --cleanup-after
+```
+
+Runner consolidado da etapa 7.3:
+```bash
+./scripts/phase7-3-tests.php
+```
+
+Saida JSON para automacao:
+```bash
+./scripts/phase7-3-tests.php --output json
+```
+
+## Observabilidade operacional (fase 7.4)
+Resumo de severidade no log:
+```bash
+./scripts/log-severity.php --output table
+```
+
+Revisao de erros recorrentes:
+```bash
+./scripts/error-review.php --output table
+```
+
+Painel tecnico de saude (sem dependencia de endpoint HTTP):
+```bash
+./scripts/ops-health-panel.php --skip-health --output table
+```
+
+Gate operacional consolidado:
+```bash
+./scripts/ops-quality-gate.php --output table
+```
+
+Exemplo de rotina cron (a cada 2 horas):
+```cron
+0 */2 * * * cd /var/www/reembolso && ./scripts/ops-health-panel.php --skip-health --write-snapshot >> storage/logs/ops-health-panel.log 2>&1
+10 */2 * * * cd /var/www/reembolso && ./scripts/ops-quality-gate.php --skip-qa --output json >> storage/logs/ops-quality-gate.log 2>&1
 ```

@@ -26,3 +26,7 @@
 
 ## Observabilidade
 - [ ] Geracao real registra linha `kpi.snapshot.generated` em `storage/logs/app.log`
+
+## Dashboard otimizado por snapshot
+- [ ] Com snapshot recente existente, `GET /dashboard` indica fonte `snapshot KPI`
+- [ ] Sem snapshot recente (ou snapshot expirado), `GET /dashboard` indica fonte `calculo ao vivo`

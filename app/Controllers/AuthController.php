@@ -41,6 +41,11 @@ final class AuthController extends Controller
             $this->redirect('/login');
         }
 
+        if ($this->app->auth()->passwordExpired()) {
+            flash('error', 'Senha expirada. Atualize sua senha para continuar.');
+            $this->redirect('/users/password');
+        }
+
         flash('success', 'Login realizado com sucesso.');
         $this->redirect('/dashboard');
     }

@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Core\Config;
 use App\Repositories\DashboardRepository;
 
 final class DashboardService
 {
-    public function __construct(private DashboardRepository $repository)
+    public function __construct(private DashboardRepository $repository, private Config $config)
     {
     }
 
@@ -18,11 +19,35 @@ final class DashboardService
      *   status_distribution: array<int, array<string, int|float|string>>,
      *   recent_timeline: array<int, array<string, mixed>>,
      *   recommendation: array{title: string, description: string, label: string, path: string},
-     *   generated_at: string
+     *   generated_at: string,
+     *   data_source: string
      * }
      */
-    public function overview(int $timelineLimit = 8): array
+    public function overview(int $timelineLimit = 8, bool $preferSnapshot = true): array
     {
+        $snapshot = $preferSnapshot ? $this->freshSnapshot() : null;
+        if ($snapshot !== null) {
+            $summary = $this->normalizeSummary(
+                is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : []
+            );
+            $statusDistribution = $this->normalizeStatusDistribution(
+                is_array($snapshot['status_distribution'] ?? null) ? $snapshot['status_distribution'] : [],
+                (int) $summary['total_people']
+            );
+            $recommendation = is_array($snapshot['recommendation'] ?? null)
+                ? $this->normalizeRecommendation($snapshot['recommendation'])
+                : $this->recommendation($summary);
+
+            return [
+                'summary' => $summary,
+                'status_distribution' => $statusDistribution,
+                'recent_timeline' => $this->repository->recentTimeline($timelineLimit),
+                'recommendation' => $recommendation,
+                'generated_at' => (string) ($snapshot['captured_at'] ?? date('Y-m-d H:i:s')),
+                'data_source' => 'snapshot',
+            ];
+        }
+
         $summary = $this->normalizeSummary($this->repository->summary());
         $statusDistribution = $this->normalizeStatusDistribution(
             $this->repository->statusDistribution(),
@@ -35,6 +60,7 @@ final class DashboardService
             'recent_timeline' => $this->repository->recentTimeline($timelineLimit),
             'recommendation' => $this->recommendation($summary),
             'generated_at' => date('Y-m-d H:i:s'),
+            'data_source' => 'live',
         ];
     }
 
@@ -213,5 +239,93 @@ final class DashboardService
     private function money(float $value): string
     {
         return 'R$ ' . number_format($value, 2, ',', '.');
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array{title: string, description: string, label: string, path: string}
+     */
+    private function normalizeRecommendation(array $payload): array
+    {
+        return [
+            'title' => trim((string) ($payload['title'] ?? '')),
+            'description' => trim((string) ($payload['description'] ?? '')),
+            'label' => trim((string) ($payload['label'] ?? '')),
+            'path' => trim((string) ($payload['path'] ?? '')),
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function freshSnapshot(): ?array
+    {
+        $maxAgeMinutes = max(0, (int) $this->config->get('ops.kpi_snapshot_max_age_minutes', 240));
+        if ($maxAgeMinutes <= 0) {
+            return null;
+        }
+
+        $directory = $this->resolveSnapshotDir();
+        if (!is_dir($directory)) {
+            return null;
+        }
+
+        $files = glob(rtrim($directory, '/') . '/kpi_snapshot_*.json');
+        if (!is_array($files) || $files === []) {
+            return null;
+        }
+
+        $latestFile = null;
+        $latestMtime = 0;
+
+        foreach ($files as $file) {
+            if (!is_file($file)) {
+                continue;
+            }
+
+            $mtime = filemtime($file);
+            if ($mtime === false || $mtime <= $latestMtime) {
+                continue;
+            }
+
+            $latestMtime = $mtime;
+            $latestFile = $file;
+        }
+
+        if ($latestFile === null || $latestMtime <= 0) {
+            return null;
+        }
+
+        if ((time() - $latestMtime) > ($maxAgeMinutes * 60)) {
+            return null;
+        }
+
+        $content = file_get_contents($latestFile);
+        if (!is_string($content) || trim($content) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($content, true);
+        if (!is_array($decoded)) {
+            return null;
+        }
+
+        if (!isset($decoded['summary']) || !is_array($decoded['summary'])) {
+            return null;
+        }
+
+        return $decoded;
+    }
+
+    private function resolveSnapshotDir(): string
+    {
+        $configured = trim((string) $this->config->get('ops.kpi_snapshot_dir', 'storage/ops/kpi_snapshots'));
+        if ($configured === '') {
+            return BASE_PATH . '/storage/ops/kpi_snapshots';
+        }
+
+        if (str_starts_with($configured, '/')) {
+            return rtrim($configured, '/');
+        }
+
+        return rtrim(BASE_PATH . '/' . ltrim($configured, '/'), '/');
     }
 }

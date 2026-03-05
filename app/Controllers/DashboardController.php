@@ -23,7 +23,8 @@ final class DashboardController extends Controller
     private function service(): DashboardService
     {
         return new DashboardService(
-            new DashboardRepository($this->app->db())
+            new DashboardRepository($this->app->db()),
+            $this->app->config()
         );
     }
 }

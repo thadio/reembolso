@@ -19,8 +19,9 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `Database`: conexao PDO
 - `Auth`: autenticacao, rate limit e permissoes
 - `UserAdminService`: administracao de usuarios (CRUD, papeis/permissoes via UI, ativacao/desativacao e fluxo de senha)
+- `SecuritySettingsService`: politica de senha/expiracao, lockout de login configuravel e limite global de upload
 - `LgpdService`: trilha de acesso sensivel (CPF/documentos), relatorio de acesso e politicas de retencao/anonimizacao
-- `DashboardService`: consolidacao de metricas operacionais (pessoas, cobertura de dossie/custos e movimentacao recente)
+- `DashboardService`: consolidacao de metricas operacionais (pessoas, cobertura de dossie/custos e movimentacao recente), com reaproveitamento de snapshot KPI quando fresco
 - `AuditService`: trilha de auditoria
 - `EventService`: eventos de sistema
 - `PipelineService`: movimentacao/status/timeline da pessoa
@@ -42,6 +43,7 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 ## Modelo de dados (resumo)
 Tabelas principais:
 - `users`, `roles`, `permissions`, `role_permissions`, `user_roles`
+- `login_attempts`, `security_settings`
 - `organs`, `people`, `assignments`, `assignment_statuses`
 - `timeline_events`, `timeline_event_attachments`, `documents`
 - `cost_plans`, `cost_plan_items`, `reimbursement_entries`

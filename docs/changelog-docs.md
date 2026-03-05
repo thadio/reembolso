@@ -5,6 +5,21 @@
 - Atualizacao de `docs/02-architecture.md` para incluir `LgpdService` e tabelas LGPD
 - Atualizacao de `docs/07-security.md` com controles de acesso do modulo LGPD
 - Adicionado guia tecnico `docs/14-lgpd-advanced.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar fase 6.3 como concluida
+- Atualizacao de `README.md` com modulo/rotas de seguranca (`/security`)
+- Atualizacao de `docs/07-security.md` com politica de senha/expiracao, lockout configuravel e hardening adicional de upload
+- Adicionado guia tecnico `docs/15-security-hardening.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar etapa 7.2 como concluida
+- Atualizacao de `docs/03-environment.md` com `OPS_KPI_SNAPSHOT_MAX_AGE_MINUTES`
+- Atualizacao de `docs/05-operations.md` com orientacao de uso de snapshot no dashboard
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar etapa 7.3 como concluida e ajustar proximo ciclo
+- Atualizacao de `README.md` com conclusao da etapa 7.3
+- Atualizacao de `docs/05-operations.md` com runbook da suite financeira da etapa 7.3
+- Atualizacao de `docs/09-qa-regression.md` com scripts de unit/integration e runner consolidado
+- Atualizacao de `tests/checklist-etapa-7.3.md` com validacoes de suite unitaria, integracao e runner
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar etapa 7.4 e fechamento da fase 7
+- Atualizacao de `README.md` com conclusao da etapa 7.4 (observabilidade operacional)
+- Atualizacao de `docs/05-operations.md` com runbook de observabilidade (`log-severity`, `error-review`, `ops-health-panel`, `ops-quality-gate`)
 
 ## 2026-03-04
 - Reorganizacao para estrutura canonica numerada (`01` a `07`)

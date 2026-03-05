@@ -12,11 +12,16 @@ final class RateLimiter
     {
     }
 
-    public function tooManyAttempts(string $key, int $maxAttempts, int $decaySeconds): bool
+    public function tooManyAttempts(string $key, int $maxAttempts, int $windowSeconds): bool
     {
-        $this->cleanup($decaySeconds);
+        $this->cleanup(max($windowSeconds, 60));
 
-        $stmt = $this->db->prepare('SELECT attempts FROM login_attempts WHERE throttle_key = :throttle_key LIMIT 1');
+        $stmt = $this->db->prepare(
+            'SELECT attempts, first_attempt_at, lockout_until
+             FROM login_attempts
+             WHERE throttle_key = :throttle_key
+             LIMIT 1'
+        );
         $stmt->execute(['throttle_key' => $key]);
         $record = $stmt->fetch();
 
@@ -24,18 +29,117 @@ final class RateLimiter
             return false;
         }
 
-        return ((int) $record['attempts']) >= $maxAttempts;
+        $now = time();
+        $lockoutUntilRaw = (string) ($record['lockout_until'] ?? '');
+        if ($lockoutUntilRaw !== '') {
+            $lockoutUntil = strtotime($lockoutUntilRaw);
+            if ($lockoutUntil !== false && $lockoutUntil > $now) {
+                return true;
+            }
+
+            // Lockout expirado: reinicia contador para nao manter bloqueio dentro da janela antiga.
+            $this->clear($key);
+
+            return false;
+        }
+
+        $firstAttemptRaw = (string) ($record['first_attempt_at'] ?? '');
+        $firstAttemptAt = $firstAttemptRaw !== '' ? strtotime($firstAttemptRaw) : false;
+        if ($firstAttemptAt === false) {
+            return false;
+        }
+
+        if (($firstAttemptAt + $windowSeconds) < $now) {
+            return false;
+        }
+
+        return ((int) ($record['attempts'] ?? 0)) >= $maxAttempts;
     }
 
-    public function hit(string $key): void
+    public function lockoutRemainingSeconds(string $key): int
     {
         $stmt = $this->db->prepare(
-            'INSERT INTO login_attempts (throttle_key, attempts, first_attempt_at, last_attempt_at)
-             VALUES (:throttle_key, 1, NOW(), NOW())
-             ON DUPLICATE KEY UPDATE attempts = attempts + 1, last_attempt_at = NOW()'
+            'SELECT lockout_until
+             FROM login_attempts
+             WHERE throttle_key = :throttle_key
+             LIMIT 1'
+        );
+        $stmt->execute(['throttle_key' => $key]);
+        $record = $stmt->fetch();
+
+        if ($record === false) {
+            return 0;
+        }
+
+        $lockoutUntilRaw = (string) ($record['lockout_until'] ?? '');
+        $lockoutUntil = $lockoutUntilRaw !== '' ? strtotime($lockoutUntilRaw) : false;
+        if ($lockoutUntil === false) {
+            return 0;
+        }
+
+        $remaining = $lockoutUntil - time();
+
+        return $remaining > 0 ? $remaining : 0;
+    }
+
+    public function hit(string $key, int $maxAttempts, int $windowSeconds, int $lockoutSeconds): void
+    {
+        $this->cleanup(max($windowSeconds, $lockoutSeconds, 60));
+
+        $stmt = $this->db->prepare(
+            'SELECT attempts, first_attempt_at
+             FROM login_attempts
+             WHERE throttle_key = :throttle_key
+             LIMIT 1'
+        );
+        $stmt->execute(['throttle_key' => $key]);
+        $record = $stmt->fetch();
+
+        $now = date('Y-m-d H:i:s');
+        $attempts = 1;
+        $firstAttemptAt = $now;
+
+        if ($record !== false) {
+            $recordFirstRaw = (string) ($record['first_attempt_at'] ?? '');
+            $recordFirstAt = $recordFirstRaw !== '' ? strtotime($recordFirstRaw) : false;
+            if ($recordFirstAt !== false && ($recordFirstAt + $windowSeconds) >= time()) {
+                $attempts = ((int) ($record['attempts'] ?? 0)) + 1;
+                $firstAttemptAt = $recordFirstRaw;
+            }
+        }
+
+        $lockoutUntil = null;
+        if ($attempts >= $maxAttempts) {
+            $lockoutUntil = date('Y-m-d H:i:s', time() + $lockoutSeconds);
+        }
+
+        $upsert = $this->db->prepare(
+            'INSERT INTO login_attempts (
+                throttle_key,
+                attempts,
+                first_attempt_at,
+                last_attempt_at,
+                lockout_until
+            ) VALUES (
+                :throttle_key,
+                :attempts,
+                :first_attempt_at,
+                NOW(),
+                :lockout_until
+            )
+            ON DUPLICATE KEY UPDATE
+                attempts = VALUES(attempts),
+                first_attempt_at = VALUES(first_attempt_at),
+                last_attempt_at = NOW(),
+                lockout_until = VALUES(lockout_until)'
         );
 
-        $stmt->execute(['throttle_key' => $key]);
+        $upsert->execute([
+            'throttle_key' => $key,
+            'attempts' => $attempts,
+            'first_attempt_at' => $firstAttemptAt,
+            'lockout_until' => $lockoutUntil,
+        ]);
     }
 
     public function clear(string $key): void
@@ -44,12 +148,21 @@ final class RateLimiter
         $stmt->execute(['throttle_key' => $key]);
     }
 
-    private function cleanup(int $decaySeconds): void
+    private function cleanup(int $ttlSeconds): void
     {
         $stmt = $this->db->prepare(
-            'DELETE FROM login_attempts WHERE last_attempt_at < DATE_SUB(NOW(), INTERVAL :seconds SECOND)'
+            'DELETE FROM login_attempts
+             WHERE lockout_until IS NULL
+               AND last_attempt_at < DATE_SUB(NOW(), INTERVAL :seconds SECOND)'
         );
-        $stmt->bindValue(':seconds', $decaySeconds, PDO::PARAM_INT);
+        $stmt->bindValue(':seconds', $ttlSeconds, PDO::PARAM_INT);
         $stmt->execute();
+
+        $stmtLocked = $this->db->prepare(
+            'DELETE FROM login_attempts
+             WHERE lockout_until IS NOT NULL
+               AND lockout_until < NOW()'
+        );
+        $stmtLocked->execute();
     }
 }

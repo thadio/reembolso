@@ -50,9 +50,9 @@ function main(array $argv): void
 
     cleanupFixtureData($db);
 
-    $baseline = dashboardSummary($db);
+    $baseline = dashboardSummary($app);
     applyFixtureFile($db, $fixturePath);
-    $after = dashboardSummary($db);
+    $after = dashboardSummary($app);
     $delta = buildDelta($baseline, $after);
     $assertions = validateDelta($delta);
     $passed = !in_array(false, array_column($assertions, 'pass'), true);
@@ -252,10 +252,10 @@ function applyFixtureFile(PDO $db, string $fixturePath): void
 /**
  * @return array<string, int|float>
  */
-function dashboardSummary(PDO $db): array
+function dashboardSummary(App $app): array
 {
-    $service = new DashboardService(new DashboardRepository($db));
-    $overview = $service->overview(8);
+    $service = new DashboardService(new DashboardRepository($app->db()), $app->config());
+    $overview = $service->overview(8, false);
     $summary = $overview['summary'] ?? [];
 
     if (!is_array($summary)) {

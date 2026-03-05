@@ -36,6 +36,7 @@ $dashboard = $dashboard ?? [
         'path' => '/people',
     ],
     'generated_at' => '',
+    'data_source' => 'live',
 ];
 
 $summary = is_array($dashboard['summary'] ?? null) ? $dashboard['summary'] : [];
@@ -43,6 +44,7 @@ $statusDistribution = is_array($dashboard['status_distribution'] ?? null) ? $das
 $recentTimeline = is_array($dashboard['recent_timeline'] ?? null) ? $dashboard['recent_timeline'] : [];
 $recommendation = is_array($dashboard['recommendation'] ?? null) ? $dashboard['recommendation'] : [];
 $generatedAt = (string) ($dashboard['generated_at'] ?? '');
+$dataSource = (string) ($dashboard['data_source'] ?? 'live');
 
 $formatDateTime = static function (?string $value): string {
     if ($value === null || trim($value) === '') {
@@ -179,9 +181,16 @@ $eventTypeLabel = static function (string $value): string {
 <div class="card">
   <div class="header-row">
     <h2><?= e((string) ($recommendation['title'] ?? 'Próxima ação')) ?></h2>
-    <?php if ($generatedAt !== ''): ?>
-      <span class="muted">Atualizado em <?= e($formatDateTime($generatedAt)) ?></span>
-    <?php endif; ?>
+    <span class="muted">
+      <?php if ($generatedAt !== ''): ?>
+        Atualizado em <?= e($formatDateTime($generatedAt)) ?>
+      <?php endif; ?>
+      <?php if ($dataSource === 'snapshot'): ?>
+        · Fonte: snapshot KPI
+      <?php else: ?>
+        · Fonte: calculo ao vivo
+      <?php endif; ?>
+    </span>
   </div>
   <p><?= e((string) ($recommendation['description'] ?? 'Sem recomendação no momento.')) ?></p>
   <?php if (!empty($recommendation['path'])): ?>

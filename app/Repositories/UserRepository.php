@@ -16,16 +16,26 @@ final class UserRepository
     public function findActiveByEmail(string $email): ?array
     {
         $stmt = $this->db->prepare(
-            'SELECT id, name, email, password_hash, cpf, is_active
+            'SELECT
+                id,
+                name,
+                email,
+                password_hash,
+                cpf,
+                is_active,
+                password_changed_at,
+                password_expires_at
              FROM users
-             WHERE email = :email AND deleted_at IS NULL
+             WHERE email = :email
+               AND deleted_at IS NULL
+               AND is_active = 1
              LIMIT 1'
         );
         $stmt->execute(['email' => mb_strtolower(trim($email))]);
 
         $user = $stmt->fetch();
 
-        if ($user === false || (int) $user['is_active'] !== 1) {
+        if ($user === false) {
             return null;
         }
 
@@ -36,9 +46,16 @@ final class UserRepository
     public function findWithPermissionsById(int $userId): ?array
     {
         $stmt = $this->db->prepare(
-            'SELECT u.id, u.name, u.email, u.cpf
+            'SELECT
+                u.id,
+                u.name,
+                u.email,
+                u.cpf,
+                u.password_expires_at
              FROM users u
-             WHERE u.id = :id AND u.deleted_at IS NULL AND u.is_active = 1
+             WHERE u.id = :id
+               AND u.deleted_at IS NULL
+               AND u.is_active = 1
              LIMIT 1'
         );
         $stmt->execute(['id' => $userId]);
@@ -69,6 +86,14 @@ final class UserRepository
 
         $user['roles'] = $roles;
         $user['permissions'] = $permissions;
+
+        $expiresAt = trim((string) ($user['password_expires_at'] ?? ''));
+        if ($expiresAt === '') {
+            $user['password_expired'] = 0;
+        } else {
+            $timestamp = strtotime($expiresAt);
+            $user['password_expired'] = ($timestamp !== false && $timestamp <= time()) ? 1 : 0;
+        }
 
         return $user;
     }

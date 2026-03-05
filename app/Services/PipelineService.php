@@ -18,7 +18,8 @@ final class PipelineService
         private AuditService $audit,
         private EventService $events,
         private Config $config,
-        private LgpdService $lgpd
+        private LgpdService $lgpd,
+        private SecuritySettingsService $security
     ) {
     }
 
@@ -506,6 +507,8 @@ final class PipelineService
         }
 
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $maxBytes = $this->maxAttachmentBytes();
+        $maxMb = max(1, (int) ceil($maxBytes / 1048576));
 
         foreach ($normalizedFiles as $file) {
             $name = (string) ($file['name'] ?? '');
@@ -522,8 +525,18 @@ final class PipelineService
                 continue;
             }
 
-            if ($size <= 0 || $size > self::MAX_ATTACHMENT_SIZE) {
-                $warnings[] = 'Arquivo fora do limite permitido (10MB): ' . $name;
+            if (!UploadSecurityService::isSafeOriginalName($name)) {
+                $warnings[] = 'Nome de arquivo invalido: ' . $name;
+                continue;
+            }
+
+            if (!UploadSecurityService::isNativeUploadedFile($tmpName)) {
+                $warnings[] = 'Upload invalido ou nao confiavel: ' . $name;
+                continue;
+            }
+
+            if ($size <= 0 || $size > $maxBytes) {
+                $warnings[] = sprintf('Arquivo fora do limite permitido (%dMB): %s', $maxMb, $name);
                 continue;
             }
 
@@ -539,14 +552,17 @@ final class PipelineService
                 continue;
             }
 
+            if (!UploadSecurityService::matchesKnownSignature($tmpName, $mime)) {
+                $warnings[] = 'Assinatura binaria invalida para o tipo informado: ' . $name;
+                continue;
+            }
+
             $storedName = bin2hex(random_bytes(16)) . '.' . $ext;
             $targetPath = $targetDir . '/' . $storedName;
 
             if (!move_uploaded_file($tmpName, $targetPath)) {
-                if (!rename($tmpName, $targetPath)) {
-                    $warnings[] = 'Não foi possível salvar anexo: ' . $name;
-                    continue;
-                }
+                $warnings[] = 'Não foi possível salvar anexo: ' . $name;
+                continue;
             }
 
             $relativePath = $subDir . '/' . $storedName;
@@ -620,5 +636,12 @@ final class PipelineService
         }
 
         return date('Y-m-d H:i:s', $time);
+    }
+
+    private function maxAttachmentBytes(): int
+    {
+        $globalLimit = max(1048576, $this->security->uploadMaxBytes());
+
+        return min(self::MAX_ATTACHMENT_SIZE, $globalLimit);
     }
 }

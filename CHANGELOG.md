@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-03-05 — Etapa 7.4 concluida (Observabilidade operacional)
+- Fechamento da etapa 7.4 com os tres eixos previstos:
+  - painel tecnico de saude em `scripts/ops-health-panel.php` (health endpoint, severidade de logs, recorrencia e frescor de KPI snapshot)
+  - logs estruturados por severidade em `scripts/log-severity.php` (totais, serie temporal, top mensagens, snapshot e limiar de falha)
+  - revisao de erros recorrentes em `scripts/error-review.php` (agrupamento por assinatura, recorrencia e relatorio markdown)
+- Gate operacional consolidado em `scripts/ops-quality-gate.php` para execucao recorrente dos checks de QA/logs.
+- Documentacao operacional atualizada com runbook de observabilidade e fase 7 marcada como concluida no plano.
+
+## 2026-03-05 — Etapa 7.3 concluida (Qualidade e testes)
+- Entregue suite automatizada da etapa 7.3 para regras financeiras:
+  - `scripts/financial-unit-tests.php` com assertions unitarias de formulas/bordas em `DashboardService` e `BudgetService`
+  - `scripts/financial-integration-tests.php` com fixture fixa (`tests/fixtures/qa_regression_dataset.sql`) para validar deltas de KPI e fluxo de simulacao orcamentaria
+  - `scripts/phase7-3-tests.php` como runner consolidado (`unit + integration + qa-regression`)
+- Ajuste de determinismo no QA:
+  - `scripts/qa-regression.php` passou a forcar leitura live (`overview(..., false)`), evitando interferencia de snapshot KPI na validacao de delta
+- Documentacao/checklist atualizados para fechar oficialmente a etapa 7.3.
+
+## 2026-03-05 — Etapa 7.2 concluida (Performance e processamento)
+- Consolidacao da etapa 7.2 com os tres eixos previstos:
+  - indices adicionais para filtros de alto volume (migration `014_phase7_performance_indexes.sql`)
+  - snapshots de KPI/projecoes via cron (`scripts/kpi-snapshot.php`)
+  - otimizacao de consultas pesadas do dashboard por reaproveitamento de snapshot fresco
+- Dashboard otimizado:
+  - `DashboardService` passou a ler snapshot em `storage/ops/kpi_snapshots` quando dentro da janela de frescor
+  - fallback automatico para calculo ao vivo quando snapshot estiver ausente/expirado
+  - indicador de fonte de dados no dashboard (`snapshot KPI` ou `calculo ao vivo`)
+- Configuracao operacional adicionada:
+  - `OPS_KPI_SNAPSHOT_MAX_AGE_MINUTES` para controlar idade maxima aceita do snapshot no dashboard
+
+## 2026-03-05 — Fase 6.3 concluida (Seguranca reforcada: politica de senha, lockout configuravel e hardening de upload)
+- Criada migration `027_phase6_security_hardening.sql` com:
+  - novas colunas em `users`: `password_changed_at` e `password_expires_at`
+  - nova coluna em `login_attempts`: `lockout_until`
+  - nova tabela `security_settings` para politica de senha, lockout de login e limite global de upload
+  - permissoes `security.view` e `security.manage` para `sist_admin` e `admin`
+- Implementado modulo de seguranca:
+  - `SecuritySettingsRepository`, `SecuritySettingsService` e `SecurityController`
+  - view `app/Views/security/index.php` com gerenciamento da politica de senha, bloqueio e upload
+  - rotas protegidas:
+    - `GET /security`
+    - `POST /security/update`
+- Hardening de autenticacao:
+  - `RateLimiter` atualizado para lockout explicito por janela configuravel
+  - `Auth` atualizado para consumir politica dinamica de lockout e carregar expiracao de senha
+  - forca troca de senha expirada via middleware (`/users/password`)
+- Hardening de upload aplicado:
+  - validacao de nome seguro, upload nativo HTTP e assinatura binaria (PDF/PNG/JPEG)
+  - remocao de fallback `rename` em uploads de documentos, timeline, boleto/comprovante e anexo DOU
+  - integracao de limite global de upload (fase 6.3) com teto por modulo
+- Fluxo de usuarios reforcado:
+  - `UserAdminService` passou a validar senha via politica configuravel
+  - criacao/reset/troca de senha agora atualizam expiracao dinamica
+  - views de usuario exibem regras de senha e metadados de expiracao
+- Navegacao e seed atualizados:
+  - menu lateral com item `Seguranca` condicionado a `security.view`
+  - `db/seed.php` atualizado com `security.view`/`security.manage`
+- Checklist da etapa adicionado em `tests/checklist-etapa-6.3.md`
+
 ## 2026-03-05 — Fase 6.2 concluida (LGPD avancado: trilha sensivel + retencao/anonimizacao)
 - Criada migration `026_phase6_lgpd_advanced.sql` com:
   - tabela `sensitive_access_logs` para registro de visualizacao/acesso de dados sensiveis
