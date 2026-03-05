@@ -269,9 +269,17 @@ final class SlaAlertRepository
      */
     public function notificationCandidates(string $severity = 'all', int $limit = 120): array
     {
+        $normalizedSeverity = in_array($severity, ['all', 'em_risco', 'vencido'], true)
+            ? $severity
+            : 'all';
+
         $params = [];
-        $where = $this->buildWhere(['severity' => $severity], $params, true)
+        $where = $this->buildWhere(['severity' => $normalizedSeverity], $params, true)
             . ' AND sr.id IS NOT NULL AND sr.is_active = 1 AND sr.notify_email = 1 AND sr.notify_recipients IS NOT NULL AND sr.notify_recipients <> ""';
+
+        if ($normalizedSeverity === 'all') {
+            $where .= ' AND ' . $this->slaLevelExpression() . ' IN ("em_risco", "vencido")';
+        }
 
         $stmt = $this->db->prepare(
             "SELECT

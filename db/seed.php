@@ -14,6 +14,10 @@ $roles = [
 
 $permissions = [
     ['name' => 'dashboard.view', 'description' => 'Visualizar dashboard'],
+    ['name' => 'users.view', 'description' => 'Visualizar modulo administrativo de usuarios e acessos'],
+    ['name' => 'users.manage', 'description' => 'Gerenciar usuarios, papeis/permissoes e reset de senha'],
+    ['name' => 'lgpd.view', 'description' => 'Visualizar acessos sensiveis e politicas LGPD'],
+    ['name' => 'lgpd.manage', 'description' => 'Gerenciar politicas LGPD e executar retencao/anonimizacao'],
     ['name' => 'budget.view', 'description' => 'Visualizar dashboard orcamentario e capacidade'],
     ['name' => 'budget.manage', 'description' => 'Gerenciar parametros orcamentarios e ciclo'],
     ['name' => 'budget.simulate', 'description' => 'Executar simulacoes de contratacao'],
@@ -30,6 +34,7 @@ $permissions = [
     ['name' => 'process_meta.manage', 'description' => 'Gerenciar metadados formais de processo'],
     ['name' => 'sla.view', 'description' => 'Visualizar painel de SLA e pendencias'],
     ['name' => 'sla.manage', 'description' => 'Gerenciar regras de SLA e notificacoes'],
+    ['name' => 'report.view', 'description' => 'Visualizar relatorios premium com exportacao CSV/PDF'],
     ['name' => 'people.view', 'description' => 'Visualizar pessoas'],
     ['name' => 'people.manage', 'description' => 'Gerenciar cadastro de pessoas'],
     ['name' => 'people.cpf.full', 'description' => 'Visualizar CPF completo'],
@@ -42,8 +47,8 @@ $permissions = [
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'mte_destinations.view', 'mte_destinations.manage', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
-    'admin' => ['dashboard.view', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'people.view', 'people.manage', 'people.cpf.full', 'mte_destinations.view', 'mte_destinations.manage', 'organs.view', 'organs.manage', 'audit.view'],
+    'sist_admin' => ['dashboard.view', 'users.view', 'users.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'mte_destinations.view', 'mte_destinations.manage', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
+    'admin' => ['dashboard.view', 'users.view', 'users.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'mte_destinations.view', 'mte_destinations.manage', 'organs.view', 'organs.manage', 'audit.view'],
     'user' => ['dashboard.view', 'people.view', 'mte_destinations.view', 'organs.view'],
 ];
 

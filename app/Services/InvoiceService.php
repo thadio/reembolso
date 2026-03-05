@@ -21,7 +21,8 @@ final class InvoiceService
         private InvoiceRepository $invoices,
         private AuditService $audit,
         private EventService $events,
-        private Config $config
+        private Config $config,
+        private LgpdService $lgpd
     ) {
     }
 
@@ -861,6 +862,23 @@ final class InvoiceService
             userId: $userId
         );
 
+        $this->lgpd->registerSensitiveAccess(
+            entity: 'payment',
+            entityId: (int) ($payment['id'] ?? 0),
+            action: 'payment_proof_download',
+            sensitivity: 'payment_proof',
+            subjectPersonId: null,
+            subjectLabel: (string) ($payment['invoice_number'] ?? ''),
+            contextPath: '/invoices/payments/proof',
+            metadata: [
+                'invoice_id' => (int) ($payment['invoice_id'] ?? 0),
+                'invoice_number' => (string) ($payment['invoice_number'] ?? ''),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
         return [
             'path' => $path,
             'original_name' => (string) ($payment['proof_original_name'] ?? ('comprovante_pagamento_' . $paymentId . '.pdf')),
@@ -914,6 +932,23 @@ final class InvoiceService
             ],
             entityId: (int) ($invoice['id'] ?? 0),
             userId: $userId
+        );
+
+        $this->lgpd->registerSensitiveAccess(
+            entity: 'invoice',
+            entityId: (int) ($invoice['id'] ?? 0),
+            action: 'invoice_pdf_download',
+            sensitivity: 'document',
+            subjectPersonId: null,
+            subjectLabel: (string) ($invoice['invoice_number'] ?? ''),
+            contextPath: '/invoices/pdf',
+            metadata: [
+                'invoice_number' => (string) ($invoice['invoice_number'] ?? ''),
+                'pdf_original_name' => (string) ($invoice['pdf_original_name'] ?? ''),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
         );
 
         return [

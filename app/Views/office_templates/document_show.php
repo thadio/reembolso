@@ -24,6 +24,7 @@ $formatDate = static function (?string $value): string {
     </div>
     <div class="actions-inline">
       <a class="btn btn-outline" href="<?= e(url('/office-templates/show?id=' . (int) ($document['template_id'] ?? 0))) ?>">Voltar</a>
+      <a class="btn btn-outline" href="<?= e(url('/office-documents/pdf?id=' . (int) ($document['id'] ?? 0))) ?>">Baixar PDF</a>
       <a class="btn btn-primary" href="<?= e(url('/office-documents/print?id=' . (int) ($document['id'] ?? 0))) ?>" target="_blank" rel="noopener">Abrir para impressao</a>
     </div>
   </div>

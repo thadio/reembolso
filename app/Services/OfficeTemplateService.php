@@ -13,7 +13,9 @@ final class OfficeTemplateService
     public function __construct(
         private OfficeTemplateRepository $templates,
         private AuditService $audit,
-        private EventService $events
+        private EventService $events,
+        private OfficeDocumentPdfBuilder $pdfBuilder,
+        private LgpdService $lgpd
     ) {
     }
 
@@ -54,6 +56,108 @@ final class OfficeTemplateService
     public function findDocument(int $id): ?array
     {
         return $this->templates->findDocumentById($id);
+    }
+
+    /**
+     * @return array{binary: string, file_name: string, document_id: int}|null
+     */
+    public function documentPdf(int $documentId, int $userId, string $ip, string $userAgent): ?array
+    {
+        $document = $this->templates->findDocumentById($documentId);
+        if ($document === null) {
+            return null;
+        }
+
+        $binary = $this->pdfBuilder->build($document);
+        $id = (int) ($document['id'] ?? 0);
+        $versionNumber = max(1, (int) ($document['version_number'] ?? 1));
+        $personId = max(0, (int) ($document['person_id'] ?? 0));
+
+        $fileName = sprintf('oficio_%d_v%d_pessoa_%d.pdf', $id, $versionNumber, $personId);
+
+        $this->audit->log(
+            entity: 'office_document',
+            entityId: $id,
+            action: 'export_pdf',
+            beforeData: null,
+            afterData: [
+                'template_id' => (int) ($document['template_id'] ?? 0),
+                'template_version_id' => (int) ($document['template_version_id'] ?? 0),
+                'person_id' => $personId,
+            ],
+            metadata: null,
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'office_template',
+            type: 'office_document.pdf_exported',
+            payload: [
+                'document_id' => $id,
+                'template_key' => (string) ($document['template_key'] ?? ''),
+                'template_version' => $versionNumber,
+                'person_id' => $personId,
+            ],
+            entityId: (int) ($document['template_id'] ?? 0),
+            userId: $userId
+        );
+
+        $this->lgpd->registerSensitiveAccess(
+            entity: 'office_document',
+            entityId: $id,
+            action: 'office_document_pdf_export',
+            sensitivity: 'office_document',
+            subjectPersonId: $personId > 0 ? $personId : null,
+            subjectLabel: (string) ($document['template_key'] ?? ''),
+            contextPath: '/office-documents/pdf',
+            metadata: [
+                'template_id' => (int) ($document['template_id'] ?? 0),
+                'template_version' => $versionNumber,
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        return [
+            'binary' => $binary,
+            'file_name' => $fileName,
+            'document_id' => $id,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     */
+    public function registerDocumentAccess(array $document, string $channel, int $userId, string $ip, string $userAgent): void
+    {
+        $documentId = (int) ($document['id'] ?? 0);
+        if ($documentId <= 0) {
+            return;
+        }
+
+        $action = $channel === 'print' ? 'office_document_print' : 'office_document_view';
+        $contextPath = $channel === 'print' ? '/office-documents/print' : '/office-documents/show';
+        $personId = max(0, (int) ($document['person_id'] ?? 0));
+
+        $this->lgpd->registerSensitiveAccess(
+            entity: 'office_document',
+            entityId: $documentId,
+            action: $action,
+            sensitivity: 'office_document',
+            subjectPersonId: $personId > 0 ? $personId : null,
+            subjectLabel: (string) ($document['template_key'] ?? ''),
+            contextPath: $contextPath,
+            metadata: [
+                'template_id' => (int) ($document['template_id'] ?? 0),
+                'template_version_id' => (int) ($document['template_version_id'] ?? 0),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
     }
 
     /**

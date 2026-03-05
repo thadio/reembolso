@@ -8,6 +8,7 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\CostPlanRepository;
 use App\Repositories\DocumentRepository;
+use App\Repositories\LgpdRepository;
 use App\Repositories\PersonAuditRepository;
 use App\Repositories\PipelineRepository;
 use App\Repositories\PeopleRepository;
@@ -15,6 +16,7 @@ use App\Repositories\ReconciliationRepository;
 use App\Repositories\ReimbursementRepository;
 use App\Services\CostPlanService;
 use App\Services\DocumentService;
+use App\Services\LgpdService;
 use App\Services\PersonAuditService;
 use App\Services\PipelineService;
 use App\Services\PeopleService;
@@ -41,6 +43,7 @@ final class PeopleController extends Controller
 
         $result = $this->service()->paginate($filters, $page, $perPage);
         $previewPerson = null;
+        $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
 
         foreach ($result['items'] as $item) {
             if ((int) ($item['id'] ?? 0) === $previewId) {
@@ -51,6 +54,30 @@ final class PeopleController extends Controller
 
         if ($previewPerson === null && $result['items'] !== []) {
             $previewPerson = $result['items'][0];
+        }
+
+        if ($canViewCpfFull && $result['items'] !== []) {
+            $personIds = array_values(array_filter(array_map(
+                static fn (array $row): int => (int) ($row['id'] ?? 0),
+                $result['items']
+            )));
+
+            $this->lgpdService()->registerSensitiveAccess(
+                entity: 'person',
+                entityId: $previewPerson !== null ? (int) ($previewPerson['id'] ?? 0) : null,
+                action: 'cpf_view_list',
+                sensitivity: 'cpf',
+                subjectPersonId: $previewPerson !== null ? (int) ($previewPerson['id'] ?? 0) : null,
+                subjectLabel: 'Listagem de pessoas',
+                contextPath: '/people',
+                metadata: [
+                    'visible_people_count' => count($personIds),
+                    'person_ids' => array_slice($personIds, 0, 100),
+                ],
+                userId: (int) ($this->app->auth()->id() ?? 0),
+                ip: $request->ip(),
+                userAgent: $request->userAgent()
+            );
         }
 
         $this->view('people/index', [
@@ -68,7 +95,7 @@ final class PeopleController extends Controller
             'organs' => $this->service()->activeOrgans(),
             'modalities' => $this->service()->activeModalities(),
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
-            'canViewCpfFull' => $this->app->auth()->hasPermission('people.cpf.full'),
+            'canViewCpfFull' => $canViewCpfFull,
         ]);
     }
 
@@ -145,6 +172,25 @@ final class PeopleController extends Controller
         $conciliation = $this->conciliationService()->profileData($id, 8);
         $reimbursements = $this->reimbursementService()->profileData($id, 80);
         $canViewAudit = $this->app->auth()->hasPermission('audit.view');
+        $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
+
+        if ($canViewCpfFull && trim((string) ($person['cpf'] ?? '')) !== '') {
+            $this->lgpdService()->registerSensitiveAccess(
+                entity: 'person',
+                entityId: $id,
+                action: 'cpf_view_profile',
+                sensitivity: 'cpf',
+                subjectPersonId: $id,
+                subjectLabel: (string) ($person['name'] ?? ''),
+                contextPath: '/people/show',
+                metadata: [
+                    'status' => (string) ($person['status'] ?? ''),
+                ],
+                userId: (int) ($this->app->auth()->id() ?? 0),
+                ip: $request->ip(),
+                userAgent: $request->userAgent()
+            );
+        }
 
         $auditFilters = [
             'entity' => (string) $request->input('audit_entity', ''),
@@ -189,7 +235,7 @@ final class PeopleController extends Controller
             'reimbursements' => $reimbursements,
             'audit' => $audit,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
-            'canViewCpfFull' => $this->app->auth()->hasPermission('people.cpf.full'),
+            'canViewCpfFull' => $canViewCpfFull,
             'canViewAudit' => $canViewAudit,
         ]);
     }
@@ -398,7 +444,13 @@ final class PeopleController extends Controller
             $this->redirect('/people');
         }
 
-        $file = $this->pipelineService()->attachmentForDownload($attachmentId, $personId);
+        $file = $this->pipelineService()->attachmentForDownload(
+            attachmentId: $attachmentId,
+            personId: $personId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
         if ($file === null) {
             flash('error', 'Anexo não encontrado ou acesso não autorizado.');
             $this->redirect('/people/show?id=' . $personId);
@@ -426,6 +478,24 @@ final class PeopleController extends Controller
         }
 
         $timeline = $this->pipelineService()->fullTimeline($personId, 400);
+
+        if ($this->app->auth()->hasPermission('people.cpf.full') && trim((string) ($person['cpf'] ?? '')) !== '') {
+            $this->lgpdService()->registerSensitiveAccess(
+                entity: 'person',
+                entityId: $personId,
+                action: 'cpf_view_timeline_print',
+                sensitivity: 'cpf',
+                subjectPersonId: $personId,
+                subjectLabel: (string) ($person['name'] ?? ''),
+                contextPath: '/people/timeline/print',
+                metadata: [
+                    'timeline_items' => count($timeline),
+                ],
+                userId: (int) ($this->app->auth()->id() ?? 0),
+                ip: $request->ip(),
+                userAgent: $request->userAgent()
+            );
+        }
 
         $this->app->view()->render('people/timeline_print', [
             'title' => 'Timeline',
@@ -765,7 +835,8 @@ final class PeopleController extends Controller
             new PipelineRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events(),
-            $this->app->config()
+            $this->app->config(),
+            $this->lgpdService()
         );
     }
 
@@ -775,7 +846,8 @@ final class PeopleController extends Controller
             new DocumentRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events(),
-            $this->app->config()
+            $this->app->config(),
+            $this->lgpdService()
         );
     }
 
@@ -808,6 +880,15 @@ final class PeopleController extends Controller
     {
         return new PersonAuditService(
             new PersonAuditRepository($this->app->db())
+        );
+    }
+
+    private function lgpdService(): LgpdService
+    {
+        return new LgpdService(
+            new LgpdRepository($this->app->db()),
+            $this->app->audit(),
+            $this->app->events()
         );
     }
 }

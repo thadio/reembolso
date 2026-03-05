@@ -6,6 +6,10 @@ $isAuthenticated = isset($authUser) && is_array($authUser);
 $path = (string) ($currentPath ?? '');
 $authPermissions = is_array($authUser['permissions'] ?? null) ? $authUser['permissions'] : [];
 $canViewDashboard = in_array('dashboard.view', $authPermissions, true);
+$canViewUsers = in_array('users.view', $authPermissions, true);
+$canManageUsers = in_array('users.manage', $authPermissions, true);
+$canViewLgpd = in_array('lgpd.view', $authPermissions, true);
+$canManageLgpd = in_array('lgpd.manage', $authPermissions, true);
 $canViewBudget = in_array('budget.view', $authPermissions, true);
 $canManageBudget = in_array('budget.manage', $authPermissions, true);
 $canViewPeople = in_array('people.view', $authPermissions, true);
@@ -26,6 +30,7 @@ $canViewProcessMeta = in_array('process_meta.view', $authPermissions, true);
 $canManageProcessMeta = in_array('process_meta.manage', $authPermissions, true);
 $canViewSla = in_array('sla.view', $authPermissions, true);
 $canManageSla = in_array('sla.manage', $authPermissions, true);
+$canViewReports = in_array('report.view', $authPermissions, true);
 
 $renderMenuIcon = static function (string $icon): string {
     switch ($icon) {
@@ -40,6 +45,16 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<circle cx="9" cy="7" r="4"></circle>'
                 . '<path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>'
                 . '<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>';
+            break;
+        case 'users_admin':
+            $body = '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>'
+                . '<circle cx="9" cy="7" r="4"></circle>'
+                . '<path d="M20 8l2 2-4 4-2-2z"></path>'
+                . '<path d="M18 12l-1 3 3-1"></path>';
+            break;
+        case 'lgpd':
+            $body = '<path d="M12 3l8 4v5c0 5-3.4 9.3-8 10-4.6-.7-8-5-8-10V7z"></path>'
+                . '<path d="M9 12l2 2 4-4"></path>';
             break;
         case 'budget':
             $body = '<path d="M3 20h18"></path>'
@@ -93,10 +108,22 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<path d="M12 7v5l3 2"></path>'
                 . '<path d="M17 3h4v4"></path>';
             break;
+        case 'report':
+            $body = '<path d="M4 4h16v16H4z"></path>'
+                . '<path d="M8 8h8"></path>'
+                . '<path d="M8 12h8"></path>'
+                . '<path d="M8 16h5"></path>';
+            break;
         case 'plus':
             $body = '<circle cx="12" cy="12" r="9"></circle>'
                 . '<path d="M12 8v8"></path>'
                 . '<path d="M8 12h8"></path>';
+            break;
+        case 'key':
+            $body = '<circle cx="8" cy="15" r="3"></circle>'
+                . '<path d="M11 15h10"></path>'
+                . '<path d="M17 15v-2"></path>'
+                . '<path d="M20 15v-2"></path>';
             break;
         default:
             $body = '<circle cx="12" cy="12" r="9"></circle>';
@@ -113,6 +140,22 @@ if ($canViewDashboard) {
         'href' => '/dashboard',
         'icon' => 'dashboard',
         'active' => $path === '/dashboard' || $path === '/',
+    ];
+}
+if ($canViewUsers) {
+    $mainMenuItems[] = [
+        'label' => 'Usuarios',
+        'href' => '/users',
+        'icon' => 'users_admin',
+        'active' => str_starts_with($path, '/users'),
+    ];
+}
+if ($canViewLgpd) {
+    $mainMenuItems[] = [
+        'label' => 'LGPD',
+        'href' => '/lgpd',
+        'icon' => 'lgpd',
+        'active' => str_starts_with($path, '/lgpd'),
     ];
 }
 if ($canViewBudget) {
@@ -195,6 +238,14 @@ if ($canViewSla) {
         'active' => str_starts_with($path, '/sla-alerts'),
     ];
 }
+if ($canViewReports) {
+    $mainMenuItems[] = [
+        'label' => 'Relatorios',
+        'href' => '/reports',
+        'icon' => 'report',
+        'active' => str_starts_with($path, '/reports'),
+    ];
+}
 
 $quickMenuItems = [];
 if ($canManagePeople) {
@@ -203,6 +254,22 @@ if ($canManagePeople) {
         'href' => '/people/create',
         'icon' => 'plus',
         'active' => $path === '/people/create',
+    ];
+}
+if ($canManageUsers) {
+    $quickMenuItems[] = [
+        'label' => 'Novo usuario',
+        'href' => '/users/create',
+        'icon' => 'plus',
+        'active' => $path === '/users/create',
+    ];
+}
+if ($canManageLgpd) {
+    $quickMenuItems[] = [
+        'label' => 'LGPD',
+        'href' => '/lgpd',
+        'icon' => 'plus',
+        'active' => str_starts_with($path, '/lgpd'),
     ];
 }
 if ($canManageMteDestinations) {
@@ -275,6 +342,14 @@ if ($canManageSla) {
         'href' => '/sla-alerts/rules',
         'icon' => 'plus',
         'active' => $path === '/sla-alerts/rules',
+    ];
+}
+if ($isAuthenticated) {
+    $quickMenuItems[] = [
+        'label' => 'Trocar senha',
+        'href' => '/users/password',
+        'icon' => 'key',
+        'active' => $path === '/users/password',
     ];
 }
 ?>

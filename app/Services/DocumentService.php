@@ -17,7 +17,8 @@ final class DocumentService
         private DocumentRepository $documents,
         private AuditService $audit,
         private EventService $events,
-        private Config $config
+        private Config $config,
+        private LgpdService $lgpd
     ) {
     }
 
@@ -281,6 +282,23 @@ final class DocumentService
             ],
             entityId: $personId,
             userId: $userId
+        );
+
+        $this->lgpd->registerSensitiveAccess(
+            entity: 'document',
+            entityId: (int) ($document['id'] ?? 0),
+            action: 'document_download',
+            sensitivity: 'document',
+            subjectPersonId: $personId,
+            subjectLabel: (string) ($document['title'] ?? ''),
+            contextPath: '/people/documents/download',
+            metadata: [
+                'document_type_id' => (int) ($document['document_type_id'] ?? 0),
+                'document_type_name' => (string) ($document['document_type_name'] ?? ''),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
         );
 
         return [

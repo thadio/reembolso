@@ -18,6 +18,8 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `Config`: carrega variaveis de ambiente
 - `Database`: conexao PDO
 - `Auth`: autenticacao, rate limit e permissoes
+- `UserAdminService`: administracao de usuarios (CRUD, papeis/permissoes via UI, ativacao/desativacao e fluxo de senha)
+- `LgpdService`: trilha de acesso sensivel (CPF/documentos), relatorio de acesso e politicas de retencao/anonimizacao
 - `DashboardService`: consolidacao de metricas operacionais (pessoas, cobertura de dossie/custos e movimentacao recente)
 - `AuditService`: trilha de auditoria
 - `EventService`: eventos de sistema
@@ -31,7 +33,10 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `CostMirrorService`: espelho de custo detalhado por pessoa/competencia, cadastro manual de itens e importacao CSV
 - `CostMirrorReconciliationService`: conciliacao item a item (previsto x espelho), divergencias e aprovacao com bloqueio
 - `BudgetService`: dashboard orcamentario anual, projecoes mensal/anual, gap mensal por risco, ranking de ofensores, alertas ativos, parametros por orgao/cargo/setor/modalidade e simulador multiparametrico de contratacao
-- `OfficeTemplateService`: templates versionados de oficio com merge de variaveis e geracao de documento HTML
+- `ReportService`: relatorios premium (operacional + financeiro), filtros por periodo/orgao/SLA e exportacoes CSV/PDF/ZIP de prestacao
+- `OfficeTemplateService`: templates versionados de oficio com merge de variaveis e geracao de documento (HTML print + PDF nativo)
+- `ProcessMetadataService`: metadados formais de processo (oficio, DOU e entrada oficial no MTE) com validacoes, upload/download de anexo e trilha auditavel
+- `SlaAlertService`: regras de SLA por etapa, painel de pendencias (no prazo/em risco/vencido) e disparo opcional de notificacoes por email
 - `PersonAuditService`: trilha auditavel por pessoa com filtros e exportacao CSV
 
 ## Modelo de dados (resumo)
@@ -45,6 +50,9 @@ Tabelas principais:
 - `cost_mirrors`, `cost_mirror_items`, `cost_mirror_reconciliations`, `cost_mirror_divergences`
 - `budget_cycles`, `org_cost_parameters`, `budget_scenario_parameters`, `hiring_scenarios`, `hiring_scenario_items`
 - `office_templates`, `office_template_versions`, `office_documents`
+- `process_metadata`
+- `sla_rules`, `sla_notification_logs`
+- `sensitive_access_logs`, `lgpd_retention_policies`, `lgpd_retention_runs`
 - `audit_log`, `system_events`, `migrations`
 
 ## Compatibilidade operacional

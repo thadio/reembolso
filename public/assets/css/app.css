@@ -376,6 +376,10 @@ textarea:focus {
   grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }
 
+.filters-reports {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .filters-sla-dispatch {
   grid-template-columns: 1fr auto 2fr;
 }
@@ -389,9 +393,17 @@ textarea:focus {
   grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr auto auto;
 }
 
+.filters-users {
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr auto auto;
+}
+
 .sla-kpi-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 14px;
+}
+
+.reports-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .table-wrap {
@@ -468,6 +480,45 @@ th a {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.roles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.permission-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.role-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fbfdff;
+}
+
+.role-option input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.role-description {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.82rem;
+}
+
+.chips-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .actions-inline {
@@ -903,6 +954,10 @@ th a {
     grid-template-columns: 1fr 1fr 1fr;
   }
 
+  .filters-reports {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
   .filters-sla-dispatch {
     grid-template-columns: 1fr;
   }
@@ -974,6 +1029,10 @@ th a {
   }
 
   .filters-sla {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-reports {
     grid-template-columns: 1fr;
   }
 

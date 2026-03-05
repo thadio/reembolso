@@ -1,5 +1,11 @@
 # Changelog da Documentacao
 
+## 2026-03-05
+- Atualizacao de `README.md` para refletir conclusao da fase 6.2 (LGPD avancado) e novas rotas `/lgpd*`
+- Atualizacao de `docs/02-architecture.md` para incluir `LgpdService` e tabelas LGPD
+- Atualizacao de `docs/07-security.md` com controles de acesso do modulo LGPD
+- Adicionado guia tecnico `docs/14-lgpd-advanced.md`
+
 ## 2026-03-04
 - Reorganizacao para estrutura canonica numerada (`01` a `07`)
 - Adicionados `docs/00-audit-report.md` e `docs/00-repository-map.md`
@@ -19,4 +25,8 @@
 - Atualizacao arquitetural para incluir fase 3.2 (boletos estruturados por orgao, PDF e rateio por pessoa)
 - Atualizacao arquitetural para incluir fase 3.3 (espelho de custo detalhado por pessoa/competencia com importacao CSV)
 - Atualizacao arquitetural para incluir fase 4.1 (templates de oficio versionados com merge de variaveis e geracao HTML)
+- Atualizacao arquitetural para refletir fechamento da fase 4.1 com PDF nativo de oficio
+- Atualizacao arquitetural para incluir fase 4.2 (metadados formais de processo com DOU/entrada MTE e anexo)
+- Atualizacao arquitetural para incluir fase 4.3 (SLA por etapa, painel de pendencias e logs de notificacao)
 - Atualizacao operacional para incluir etapa 7.1 (backup/restore com scripts e runbook de contingencia)
+- Atualizacao arquitetural para incluir fase 6.1 (admin de usuarios/acessos, papeis/permissoes via UI e fluxo de senha)

@@ -17,7 +17,8 @@ final class PipelineService
         private PipelineRepository $pipeline,
         private AuditService $audit,
         private EventService $events,
-        private Config $config
+        private Config $config,
+        private LgpdService $lgpd
     ) {
     }
 
@@ -406,7 +407,7 @@ final class PipelineService
     }
 
     /** @return array{path: string, original_name: string, mime_type: string}|null */
-    public function attachmentForDownload(int $attachmentId, int $personId): ?array
+    public function attachmentForDownload(int $attachmentId, int $personId, int $userId, string $ip, string $userAgent): ?array
     {
         $attachment = $this->pipeline->findAttachmentById($attachmentId);
         if ($attachment === null) {
@@ -428,6 +429,49 @@ final class PipelineService
         if (!is_file($path)) {
             return null;
         }
+
+        $this->audit->log(
+            entity: 'timeline_attachment',
+            entityId: (int) ($attachment['id'] ?? 0),
+            action: 'download',
+            beforeData: null,
+            afterData: [
+                'person_id' => $personId,
+                'timeline_event_id' => (int) ($attachment['timeline_event_id'] ?? 0),
+                'original_name' => (string) ($attachment['original_name'] ?? ''),
+            ],
+            metadata: null,
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'person',
+            type: 'timeline.attachment_downloaded',
+            payload: [
+                'attachment_id' => (int) ($attachment['id'] ?? 0),
+                'timeline_event_id' => (int) ($attachment['timeline_event_id'] ?? 0),
+            ],
+            entityId: $personId,
+            userId: $userId
+        );
+
+        $this->lgpd->registerSensitiveAccess(
+            entity: 'timeline_attachment',
+            entityId: (int) ($attachment['id'] ?? 0),
+            action: 'timeline_attachment_download',
+            sensitivity: 'attachment',
+            subjectPersonId: $personId,
+            subjectLabel: (string) ($attachment['original_name'] ?? ''),
+            contextPath: '/people/timeline/attachment',
+            metadata: [
+                'timeline_event_id' => (int) ($attachment['timeline_event_id'] ?? 0),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
 
         return [
             'path' => $path,

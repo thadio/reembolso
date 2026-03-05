@@ -6,7 +6,10 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\LgpdRepository;
 use App\Repositories\OfficeTemplateRepository;
+use App\Services\LgpdService;
+use App\Services\OfficeDocumentPdfBuilder;
 use App\Services\OfficeTemplateService;
 
 final class OfficeTemplatesController extends Controller
@@ -240,6 +243,14 @@ final class OfficeTemplatesController extends Controller
             $this->redirect('/office-templates');
         }
 
+        $this->service()->registerDocumentAccess(
+            document: $document,
+            channel: 'show',
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
         $this->view('office_templates/document_show', [
             'title' => 'Oficio gerado',
             'document' => $document,
@@ -260,12 +271,54 @@ final class OfficeTemplatesController extends Controller
             $this->redirect('/office-templates');
         }
 
+        $this->service()->registerDocumentAccess(
+            document: $document,
+            channel: 'print',
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
         $this->app->view()->render('office_templates/document_print', [
             'title' => 'Oficio',
             'document' => $document,
             'authUser' => $this->app->auth()->user(),
             'currentPath' => '/office-documents/print',
         ], 'print_layout');
+    }
+
+    public function downloadDocumentPdf(Request $request): void
+    {
+        $documentId = (int) $request->input('id', '0');
+        if ($documentId <= 0) {
+            flash('error', 'Documento de oficio invalido para PDF.');
+            $this->redirect('/office-templates');
+        }
+
+        $pdf = $this->service()->documentPdf(
+            documentId: $documentId,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        if ($pdf === null) {
+            flash('error', 'Documento de oficio nao encontrado.');
+            $this->redirect('/office-templates');
+        }
+
+        $binary = (string) ($pdf['binary'] ?? '');
+        $fileName = (string) ($pdf['file_name'] ?? ('oficio_' . $documentId . '.pdf'));
+
+        if (!headers_sent()) {
+            header('Content-Type: application/pdf');
+            header('X-Content-Type-Options: nosniff');
+            header('Content-Disposition: attachment; filename="' . rawurlencode($fileName) . '"');
+            header('Content-Length: ' . (string) strlen($binary));
+        }
+
+        echo $binary;
+        exit;
     }
 
     /** @return array<string, mixed> */
@@ -289,7 +342,13 @@ final class OfficeTemplatesController extends Controller
         return new OfficeTemplateService(
             new OfficeTemplateRepository($this->app->db()),
             $this->app->audit(),
-            $this->app->events()
+            $this->app->events(),
+            new OfficeDocumentPdfBuilder(),
+            new LgpdService(
+                new LgpdRepository($this->app->db()),
+                $this->app->audit(),
+                $this->app->events()
+            )
         );
     }
 }

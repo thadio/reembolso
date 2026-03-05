@@ -28,11 +28,16 @@
 - [ ] `GET /office-documents/print?id={id}` abre versao print-friendly do oficio
 - [ ] Conteudo renderizado no print corresponde ao documento salvo
 
+## PDF nativo
+- [ ] `GET /office-documents/pdf?id={id}` baixa PDF nativo do oficio
+- [ ] Conteudo textual do PDF corresponde ao documento renderizado
+
 ## Auditoria e eventos
 - [ ] `audit_log` registra `office_template:create/update/delete`
 - [ ] `audit_log` registra `office_template_version:create`
 - [ ] `audit_log` registra `office_document:generate`
-- [ ] `system_events` registra `office_template.created`, `office_template.version_created`, `office_document.generated`
+- [ ] `audit_log` registra `office_document:export_pdf`
+- [ ] `system_events` registra `office_template.created`, `office_template.version_created`, `office_document.generated`, `office_document.pdf_exported`
 
 ## Seguranca de acesso
 - [ ] Usuario sem `office_template.view` nao acessa `/office-templates`

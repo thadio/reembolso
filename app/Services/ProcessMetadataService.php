@@ -22,7 +22,8 @@ final class ProcessMetadataService
         private ProcessMetadataRepository $meta,
         private AuditService $audit,
         private EventService $events,
-        private Config $config
+        private Config $config,
+        private LgpdService $lgpd
     ) {
     }
 
@@ -317,6 +318,23 @@ final class ProcessMetadataService
             ],
             entityId: (int) ($row['id'] ?? 0),
             userId: $userId
+        );
+
+        $this->lgpd->registerSensitiveAccess(
+            entity: 'process_metadata',
+            entityId: (int) ($row['id'] ?? 0),
+            action: 'process_meta_attachment_download',
+            sensitivity: 'attachment',
+            subjectPersonId: (int) ($row['person_id'] ?? 0),
+            subjectLabel: (string) ($row['dou_attachment_original_name'] ?? ''),
+            contextPath: '/process-meta/dou-attachment',
+            metadata: [
+                'person_id' => (int) ($row['person_id'] ?? 0),
+                'office_number' => (string) ($row['office_number'] ?? ''),
+            ],
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
         );
 
         return [

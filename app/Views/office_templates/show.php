@@ -269,6 +269,7 @@ if ($activeVersion === null && $versions !== []) {
               <td><?= e($formatDate((string) ($document['created_at'] ?? ''))) ?></td>
               <td class="actions-cell">
                 <a class="btn btn-ghost" href="<?= e(url('/office-documents/show?id=' . (int) ($document['id'] ?? 0))) ?>">Ver</a>
+                <a class="btn btn-ghost" href="<?= e(url('/office-documents/pdf?id=' . (int) ($document['id'] ?? 0))) ?>">PDF</a>
                 <a class="btn btn-ghost" href="<?= e(url('/office-documents/print?id=' . (int) ($document['id'] ?? 0))) ?>" target="_blank" rel="noopener">Print</a>
               </td>
             </tr>

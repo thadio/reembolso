@@ -59,9 +59,9 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | Fase 1 - Pipeline operacional | `[x]` | Orgaos, pessoas, pipeline, timeline, dossie |
 | Fase 2 - Financeiro base | `[x]` | custos, auditoria por pessoa, dashboard, reembolso, conciliacao |
 | Fase 3 - Nucleo financeiro estruturado | `[x]` | 3.1 a 3.5 concluidas (CDO, boletos, espelho, conciliacao e pagamentos) |
-| Fase 4 - Automacao administrativa | `[~]` | 4.1 parcial concluida (catalogo/versionamento/merge/HTML); 4.2 e 4.3 pendentes |
-| Fase 5 - Inteligencia orcamentaria e relatorios | `[~]` | 5.1, 5.2 e 5.4 entregues (projecoes, gap, capacidade e alertas); 5.3 pendente |
-| Fase 6 - Compliance e seguranca avancada | `[ ]` | admin de usuarios via UI, LGPD avancado, hardening |
+| Fase 4 - Automacao administrativa | `[x]` | 4.1 (templates), 4.2 (metadados formais) e 4.3 (SLA/alertas) concluidas |
+| Fase 5 - Inteligencia orcamentaria e relatorios | `[x]` | 5.1, 5.2, 5.3 e 5.4 entregues (projecoes, gap, relatorios premium e capacidade) |
+| Fase 6 - Compliance e seguranca avancada | `[~]` | 6.1 e 6.2 concluidas (admin de usuarios + LGPD avancado); pendente 6.3 (hardening) |
 | Fase 7 - Operacao, performance e qualidade | `[~]` | base parcial (health/log), sem fechamento operacional completo |
 
 ### 2.2 Modulos concluidos
@@ -85,12 +85,12 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 ### 2.3 Itens parciais relevantes
 
-- `[~]` RF-12 templates de oficio (catalogo/versionamento/merge/HTML print)
-- `[~]` RF-13 metadados completos de oficio/SEI
-- `[~]` RF-14 metadados formais de DOU/entrada oficial
+- `[x]` RF-12 templates de oficio (catalogo/versionamento/merge/HTML print/PDF nativo)
+- `[x]` RF-13 metadados completos de oficio/SEI
+- `[x]` RF-14 metadados formais de DOU/entrada oficial
 - `[~]` RF-45 painel financeiro global (abertos/vencidos/pagos/conciliados)
-- `[~]` RF-52 exportacoes executivas completas (CSV/PDF)
-- `[~]` RNF-05 LGPD avancado (trilhas de visualizacao e retencao)
+- `[x]` RF-52 exportacoes executivas completas (CSV/PDF/ZIP no modulo premium)
+- `[x]` RNF-05 LGPD avancado (trilhas de visualizacao e retencao)
 - `[~]` RNF-07 observabilidade operacional estruturada
 
 ### 2.4 Lacunas criticas pendentes
@@ -98,10 +98,10 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Espelho de custo item a item por competencia
 - `[x]` Conciliacao item a item com justificativa e aprovacao
 - `[x]` Pagamentos completos com comprovante e conciliacao por titulo
-- `[~]` Geracao de oficios por templates versionados
+- `[x]` Geracao de oficios por templates versionados
 - `[ ]` Importacao CSV em massa (pessoas e orgaos)
-- `[ ]` Gestao administrativa de usuarios/papeis via UI
-- `[ ]` Relatorios executivos e financeiros completos
+- `[x]` Gestao administrativa de usuarios/papeis via UI
+- `[x]` Relatorios executivos e financeiros (modulo premium com filtros e exportacao CSV/PDF/ZIP)
 
 ---
 
@@ -117,9 +117,9 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-04 | Importacao em massa de pessoas (CSV) | `[ ]` | Ainda nao existe rota/servico de importacao |
 | RF-10 | Pipeline de status configuravel | `[x]` | `assignment_statuses` + acao de avance |
 | RF-11 | Timeline automatica/manual | `[x]` | Eventos automaticos/manuais com anexos e retificacao |
-| RF-12 | Geracao de oficios por template | `[~]` | Catalogo/versionamento/merge/HTML print implementados; PDF nativo pendente |
-| RF-13 | Metadados de oficio/SEI/anexos | `[~]` | Base existe; sem modulo formal de oficio |
-| RF-14 | Registro DOU + entrada oficial no MTE | `[~]` | Fluxo por status existe; faltam metadados formais |
+| RF-12 | Geracao de oficios por template | `[x]` | Catalogo/versionamento/merge/HTML print/PDF nativo implementados |
+| RF-13 | Metadados de oficio/SEI/anexos | `[x]` | Modulo formal entregue com CRUD, validacoes, upload/download de anexo DOU e auditoria |
+| RF-14 | Registro DOU + entrada oficial no MTE | `[x]` | Metadados formais completos (edicao/data/link/anexo DOU + data oficial MTE) |
 | RF-20 | Dossie documental por pessoa/processo | `[x]` | Upload/download seguro e metadados |
 | RF-21 | Classificacao por tipo/tags + busca | `[~]` | Tipo/tags existem; busca dedicada limitada |
 | RF-22 | Controle de acesso a docs sensiveis | `[~]` | Controle geral existe; falta granularidade por sensibilidade |
@@ -134,8 +134,8 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-44 | Registro de pagamento com comprovante/processo | `[x]` | Implementada baixa parcial/total com comprovante e vinculo por titulo |
 | RF-45 | Painel financeiro completo de status | `[~]` | KPI parcial; falta modulo financeiro consolidado |
 | RF-50 | Dashboard executivo (KPIs + operacional) | `[x]` | Implementado |
-| RF-51 | Relatorios filtraveis por multiplos eixos | `[ ]` | Nao implementado como modulo dedicado |
-| RF-52 | Exportacao CSV/PDF | `[~]` | CSV de auditoria + timeline print; pacote completo pendente |
+| RF-51 | Relatorios filtraveis por multiplos eixos | `[~]` | Modulo dedicado `/reports` com filtros por periodo/orgao/etapa/SLA e tabelas operacionais/financeiras |
+| RF-52 | Exportacao CSV/PDF | `[x]` | Exportacoes CSV e PDF implementadas no modulo premium; pacote ZIP de prestacao entregue na etapa 5.3 |
 | RF-60 | Auditoria de acoes criticas | `[x]` | Presente nos modulos principais |
 | RF-61 | Controle de acesso por perfil (RBAC) | `[x]` | Permissoes por rota/acao implementadas |
 | RF-62 | Mascaramento de CPF em listagens | `[x]` | Implementado com permissao de visualizacao completa |
@@ -148,7 +148,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RNF-02 | Interface responsiva | `[x]` | Presente nas views principais |
 | RNF-03 | Performance com paginacao e indices | `[x]` | Paginacao e indices nas tabelas centrais |
 | RNF-04 | Seguranca base (CSRF/upload/SQLi/hash) | `[x]` | Implementado |
-| RNF-05 | LGPD avancado | `[~]` | Base implementada; faltam trilhas e retencao |
+| RNF-05 | LGPD avancado | `[x]` | Trilha de visualizacao sensivel e politicas de retencao/anonimizacao implementadas |
 | RNF-06 | Backups e restore operacional | `[x]` | Scripts, checklist e runbook operacional implementados |
 | RNF-07 | Observabilidade operacional | `[~]` | Health/logs existem; sem painel estruturado |
 
@@ -237,19 +237,19 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Catalogo de templates (orgao, MGI, cobranca, resposta)
 - `[x]` Merge de variaveis (pessoa, orgao, processo, custo, CDO)
 - `[x]` Versionamento e historico de template
-- `[~]` Geracao em HTML print e PDF (HTML print implementado; PDF nativo pendente)
+- `[x]` Geracao em HTML print e PDF
 
 #### Etapa 4.2 - Metadados formais de processo
 
-- `[ ]` Numero de oficio, data de envio, canal e protocolo
-- `[ ]` Publicacao DOU (edicao, data, link, anexo)
-- `[ ]` Data oficial de entrada no MTE
+- `[x]` Numero de oficio, data de envio, canal e protocolo
+- `[x]` Publicacao DOU (edicao, data, link, anexo)
+- `[x]` Data oficial de entrada no MTE
 
 #### Etapa 4.3 - SLA e alertas de pendencia
 
-- `[ ]` Regras de alerta configuraveis por etapa
-- `[ ]` Painel de pendencias (vencido, em risco, no prazo)
-- `[ ]` Notificacao opcional por email (SMTP cPanel)
+- `[x]` Regras de alerta configuraveis por etapa
+- `[x]` Painel de pendencias (vencido, em risco, no prazo)
+- `[x]` Notificacao opcional por email (SMTP cPanel)
 
 ### Fase 5 - Inteligencia orcamentaria e relatorios executivos
 
@@ -269,10 +269,10 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 5.3 - Relatorios premium
 
-- `[ ]` Relatorios operacionais (SLA, gargalos, tempos medios)
-- `[ ]` Relatorios financeiros (previsto x efetivo, pago x a pagar)
-- `[ ]` Exportacao CSV/PDF por filtros
-- `[ ]` Pacote ZIP de prestacao de contas
+- `[x]` Relatorios operacionais (SLA, gargalos, tempos medios)
+- `[x]` Relatorios financeiros (previsto x efetivo, pago x a pagar)
+- `[x]` Exportacao CSV/PDF por filtros
+- `[x]` Pacote ZIP de prestacao de contas
 
 #### Etapa 5.4 - Modulo Orcamento e Capacidade de Contratacao (novo na v2.1)
 
@@ -289,16 +289,16 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 
 #### Etapa 6.1 - Admin de usuarios e acessos
 
-- `[ ]` CRUD de usuarios
-- `[ ]` Vinculo de papeis/permissoes via UI
-- `[ ]` Ativacao/desativacao de conta
-- `[ ]` Fluxo de troca e reset de senha
+- `[x]` CRUD de usuarios
+- `[x]` Vinculo de papeis/permissoes via UI
+- `[x]` Ativacao/desativacao de conta
+- `[x]` Fluxo de troca e reset de senha
 
 #### Etapa 6.2 - LGPD avancado
 
-- `[ ]` Registro de visualizacao de dados sensiveis
-- `[ ]` Relatorio de acesso a CPF/documentos sensiveis
-- `[ ]` Politica de retencao e anonimizacao parametrizavel
+- `[x]` Registro de visualizacao de dados sensiveis
+- `[x]` Relatorio de acesso a CPF/documentos sensiveis
+- `[x]` Politica de retencao e anonimizacao parametrizavel
 
 #### Etapa 6.3 - Seguranca reforcada
 
@@ -532,10 +532,10 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 ## 9) Proximo ciclo recomendado (execucao imediata)
 
-1. Consolidar **Fase 5.3 (relatorios premium)** com filtros e exportacao CSV/PDF.
-2. Enderecar pendencias de automacao administrativa (metadados formais completos + PDF nativo de oficio).
-3. Iniciar trilha de **Fase 6.1** (admin de usuarios e acessos via UI).
-4. Fortalecer qualidade da **Fase 7.3** (testes unitarios e integracao das regras financeiras).
+1. Evoluir para **Fase 6.3** (hardening de seguranca com politica de senha e bloqueio configuravel).
+2. Enderecar lacunas remanescentes de compliance avancado com foco em dossie e monitoramento de acesso sensivel.
+3. Fortalecer qualidade da **Fase 7.3** (testes unitarios e integracao das regras financeiras).
+4. Consolidar observabilidade de **Fase 7.4** com rotina recorrente de revisao de erros.
 
 ---
 

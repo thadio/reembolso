@@ -42,3 +42,13 @@ Se segredo entrou no historico do Git:
   - `POST /people/timeline/store` e `POST /people/timeline/rectify` exigem `people.manage`
   - `POST /people/documents/store` exige `people.manage`
   - `GET /people/timeline/attachment`, `GET /people/timeline/print` e `GET /people/documents/download` exigem `people.view`
+  - `GET /lgpd` e `GET /lgpd/export/access-csv` exigem `lgpd.view`
+  - `POST /lgpd/policies/upsert` e `POST /lgpd/retention/run` exigem `lgpd.manage`
+  - `GET /users` exige `users.view`
+  - `POST /users/store`, `POST /users/update`, `POST /users/delete`, `POST /users/toggle-active`, `POST /users/roles/update` e `POST /users/reset-password` exigem `users.manage`
+  - `POST /users/password/update` exige sessao autenticada e validacao da senha atual
+
+## LGPD avancado (fase 6.2)
+- Trilhas de acesso sensivel gravadas em `sensitive_access_logs` (CPF e downloads de documentos/anexos).
+- Politicas de retencao e anonimizacao parametrizadas em `lgpd_retention_policies`.
+- Execucoes de rotina registradas em `lgpd_retention_runs` para auditoria operacional.

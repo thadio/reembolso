@@ -1,5 +1,139 @@
 # Changelog
 
+## 2026-03-05 — Fase 6.2 concluida (LGPD avancado: trilha sensivel + retencao/anonimizacao)
+- Criada migration `026_phase6_lgpd_advanced.sql` com:
+  - tabela `sensitive_access_logs` para registro de visualizacao/acesso de dados sensiveis
+  - tabela `lgpd_retention_policies` para politicas parametrizaveis de retencao/anonimizacao
+  - tabela `lgpd_retention_runs` para historico de execucoes (preview/apply)
+  - permissoes `lgpd.view` e `lgpd.manage` com vinculo aos papeis `sist_admin` e `admin`
+  - politicas padrao: `sensitive_access_logs`, `audit_log`, `people_soft_deleted`, `users_soft_deleted`
+- Implementado modulo LGPD:
+  - `LgpdRepository` e `LgpdService` com painel filtravel, exportacao CSV e motor de retencao/anonimizacao
+  - `LgpdController` com rotas:
+    - `GET /lgpd`
+    - `GET /lgpd/export/access-csv`
+    - `POST /lgpd/policies/upsert`
+    - `POST /lgpd/retention/run`
+  - view `app/Views/lgpd/index.php` com KPIs, trilha, politicas e historico de execucoes
+- Integracoes de trilha sensivel aplicadas em fluxos existentes:
+  - visualizacao de CPF completo em listagem/perfil/timeline print de pessoas
+  - downloads de dossie (`document_download`) e anexo de timeline (`timeline_attachment_download`)
+  - downloads de comprovante e PDF de boleto (`payment_proof_download`, `invoice_pdf_download`)
+  - download de anexo DOU (`process_meta_attachment_download`)
+  - visualizacao/print/PDF de oficio gerado (`office_document_*`)
+- Navegacao e seed atualizados:
+  - menu lateral com item `LGPD` condicionado a `lgpd.view`
+  - `db/seed.php` atualizado com permissoes LGPD e concessao para `sist_admin`/`admin`
+- Checklist da etapa adicionado em `tests/checklist-etapa-6.2.md`
+
+## 2026-03-04 — Fase 6.1 concluida (Admin de usuarios e acessos via UI)
+- Criada migration `024_phase6_user_admin_access.sql` com:
+  - permissoes `users.view` e `users.manage`
+  - vinculo das permissoes aos papeis `sist_admin` e `admin`
+- Implementado modulo administrativo de usuarios:
+  - `UserAdminRepository`, `UserAdminService` e `UsersController`
+  - rotas protegidas:
+    - `GET /users`
+    - `GET /users/create`
+    - `POST /users/store`
+    - `GET /users/show?id={id}`
+    - `GET /users/edit?id={id}`
+    - `POST /users/update`
+    - `POST /users/delete`
+    - `POST /users/toggle-active`
+    - `GET /users/roles`
+    - `POST /users/roles/update`
+    - `POST /users/reset-password`
+- Fluxo de senha entregue:
+  - `GET /users/password`
+  - `POST /users/password/update` (troca da propria senha com validacao da senha atual)
+  - reset administrativo de senha na tela de detalhe do usuario
+- Governanca de acesso entregue:
+  - vinculo de papeis por usuario no formulario de create/edit
+  - vinculo de permissoes por papel na tela `/users/roles`
+- Navegacao atualizada:
+  - item de menu `Usuarios` condicionado a `users.view`
+  - acoes rapidas para `Novo usuario` e `Trocar senha`
+- Seed atualizado com permissoes `users.view` e `users.manage` para papeis `sist_admin` e `admin`
+- Checklist da etapa adicionado em `tests/checklist-etapa-6.1.md`
+
+## 2026-03-04 — Fase 4.3 concluida (SLA por etapa + painel de pendencias)
+- Consolidado modulo de SLA administrativo:
+  - regras configuraveis por etapa em `sla_rules` (risco, vencido, ativo, notificacao e destinatarios)
+  - painel de pendencias em `/sla-alerts` com KPIs e filtros por busca/status/severidade
+  - cadastro de regras em `/sla-alerts/rules` e disparo opcional de email em `/sla-alerts/dispatch-email`
+- Ajuste de regra de disparo:
+  - severidade `all` passou a considerar apenas pendencias `em_risco` e `vencido` (exclui `no_prazo`)
+- Trilha auditavel:
+  - `audit_log`: `sla_rule:upsert` e `sla:dispatch_notifications`
+  - `system_events`: `sla.rule_upserted` e `sla.notifications_dispatched`
+  - log detalhado de envios em `sla_notification_logs`
+- Checklist da etapa atualizado em `tests/checklist-etapa-4.3.md`
+
+## 2026-03-04 — Fase 4.1 concluida (PDF nativo de oficio)
+- Implementada geracao de PDF nativo para documentos de oficio:
+  - novo `OfficeDocumentPdfBuilder` para transformar documento renderizado (HTML) em PDF textual
+  - `OfficeTemplateService::documentPdf` com trilha de auditoria e evento de exportacao
+  - nova rota `GET /office-documents/pdf?id={id}` em `OfficeTemplatesController`
+- Fluxo de visualizacao atualizado:
+  - botao de download PDF em `app/Views/office_templates/document_show.php`
+  - acao `PDF` na tabela de oficios gerados em `app/Views/office_templates/show.php`
+- Auditoria e eventos adicionados para exportacao:
+  - `audit_log`: `office_document:export_pdf`
+  - `system_events`: `office_document.pdf_exported`
+- Checklist da etapa 4.1 atualizado para incluir validacao de PDF nativo em `tests/checklist-etapa-4.1.md`
+
+## 2026-03-04 — Fase 4.2 concluida (metadados formais completos de processo)
+- Criada migration `013_phase4_process_metadata.sql` com:
+  - tabela `process_metadata` (oficio, DOU, entrada oficial MTE e metadados de anexo)
+  - permissoes `process_meta.view` e `process_meta.manage` para perfis `sist_admin` e `admin`
+- Implementado modulo de metadados formais:
+  - `ProcessMetadataRepository` (CRUD, filtros/paginacao, busca e consultas de anexo)
+  - `ProcessMetadataService` com validacoes de fase 4.2:
+    - oficio: numero, data de envio, canal e protocolo
+    - DOU: edicao, data, link e anexo
+    - entrada oficial no MTE com regra de consistencia temporal
+    - upload seguro de anexo DOU (`PDF/PNG/JPG`, limite 15MB, validacao de MIME)
+  - `ProcessMetadataController` com rotas:
+    - `GET /process-meta`
+    - `GET /process-meta/create`
+    - `POST /process-meta/store`
+    - `GET /process-meta/show?id={id}`
+    - `GET /process-meta/edit?id={id}`
+    - `POST /process-meta/update`
+    - `POST /process-meta/delete`
+    - `GET /process-meta/dou-attachment?id={id}`
+- Views do modulo adicionadas em `app/Views/process_metadata/*` (lista, create/edit e detalhe)
+- Menu lateral atualizado com acesso por permissao ao modulo de metadados formais
+- Checklist da etapa adicionado em `tests/checklist-etapa-4.2.md`
+
+## 2026-03-04 — Fase 5.3 concluida (Relatorios premium com filtros + exportacao CSV/PDF/ZIP)
+- Criada migration `023_phase5_premium_reports.sql` com:
+  - permissao `report.view` para acesso ao modulo de relatorios
+  - vinculo da permissao aos perfis `sist_admin` e `admin`
+- Implementado modulo de relatorios premium:
+  - `ReportRepository` com consolidacao operacional (SLA, gargalos, tempos) e financeira (previsto x efetivo, pago x a pagar)
+  - `ReportService` com normalizacao de filtros por periodo/orgao/etapa/SLA e montagem de datasets de exportacao
+  - `ReportPdfBuilder` para geracao de PDF nativo simples sem dependencia externa
+  - `ReportsController` com rotas:
+    - `GET /reports`
+    - `GET /reports/export/csv`
+    - `GET /reports/export/pdf`
+    - `GET /reports/export/zip`
+- Pacote ZIP de prestacao de contas implementado com:
+  - inclusao de relatorio consolidado (`CSV` + `PDF`) no pacote
+  - anexos de boletos (`invoices.pdf_storage_path`) e comprovantes (`payments.proof_storage_path`) conforme filtros
+  - manifestacao de conteudo e contagem de anexos encontrados/ausentes (`manifesto.txt`)
+  - auditoria `report:export_zip` e evento `report.export_zip`
+- View `app/Views/reports/index.php` adicionada com:
+  - filtros combinados (busca, orgao, etapa, SLA, ano e faixa mensal)
+  - KPIs e tabelas operacionais (gargalos + detalhe paginado)
+  - KPIs e tabela financeira mensal (previsto/efetivo/pago/a pagar)
+  - botoes de exportacao CSV/PDF preservando os filtros aplicados
+- Menu lateral atualizado com item `Relatorios` condicionado a `report.view`
+- Seed atualizado para incluir a permissao `report.view`
+- Checklist da etapa adicionado em `tests/checklist-etapa-5.3.md`
+
 ## 2026-03-04 — Fase 5.4 consolidada (parametrizacao por cargo/setor + alertas ativos)
 - Criada migration `022_phase5_budget_param_scope_alerts.sql` com:
   - escopo `cargo` e `setor` em `org_cost_parameters`

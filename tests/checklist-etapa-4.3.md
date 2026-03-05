@@ -20,7 +20,8 @@
 
 ## Notificacao opcional por email
 - [ ] `POST /sla-alerts/dispatch-email` dispara notificacoes para itens elegiveis
-- [ ] Disparo respeita filtro de severidade (`all`, `em_risco`, `vencido`)
+- [ ] Disparo respeita filtro de severidade (`all` = `em_risco` + `vencido`, `em_risco`, `vencido`)
+- [ ] Disparo `all` nao envia item `no_prazo`
 - [ ] Disparo registra logs em `sla_notification_logs`
 - [ ] Ausencia de destinatario invalida envio da regra
 

@@ -7,7 +7,9 @@ namespace App\Controllers;
 use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\InvoiceRepository;
+use App\Repositories\LgpdRepository;
 use App\Services\InvoiceService;
+use App\Services\LgpdService;
 
 final class InvoicesController extends Controller
 {
@@ -365,7 +367,12 @@ final class InvoicesController extends Controller
             new InvoiceRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events(),
-            $this->app->config()
+            $this->app->config(),
+            new LgpdService(
+                new LgpdRepository($this->app->db()),
+                $this->app->audit(),
+                $this->app->events()
+            )
         );
     }
 }

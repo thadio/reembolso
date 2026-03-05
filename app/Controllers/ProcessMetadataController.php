@@ -6,7 +6,9 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\LgpdRepository;
 use App\Repositories\ProcessMetadataRepository;
+use App\Services\LgpdService;
 use App\Services\ProcessMetadataService;
 
 final class ProcessMetadataController extends Controller
@@ -236,7 +238,12 @@ final class ProcessMetadataController extends Controller
             new ProcessMetadataRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events(),
-            $this->app->config()
+            $this->app->config(),
+            new LgpdService(
+                new LgpdRepository($this->app->db()),
+                $this->app->audit(),
+                $this->app->events()
+            )
         );
     }
 }
