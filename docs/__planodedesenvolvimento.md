@@ -26,7 +26,7 @@ Esta versao reorganiza a v2.0 com foco em:
 ### 0.2 Evidencias tecnicas consideradas
 
 - Rotas e controle de acesso: `routes/web.php`
-- Migrations: `db/migrations/001` a `027`
+- Migrations: `db/migrations/001` a `028`
 - Servicos e repositorios: `app/Services`, `app/Repositories`
 - Changelog tecnico: `CHANGELOG.md`
 - Estado documentado: `README.md`, `docs/02-architecture.md`
@@ -99,7 +99,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` Conciliacao item a item com justificativa e aprovacao
 - `[x]` Pagamentos completos com comprovante e conciliacao por titulo
 - `[x]` Geracao de oficios por templates versionados
-- `[ ]` Importacao CSV em massa (pessoas e orgaos)
+- `[~]` Importacao CSV em massa (pessoas e orgaos) (pessoas concluido no ciclo 9.2; orgaos pendente)
 - `[x]` Gestao administrativa de usuarios/papeis via UI
 - `[x]` Relatorios executivos e financeiros (modulo premium com filtros e exportacao CSV/PDF/ZIP)
 
@@ -114,7 +114,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-01 | CRUD de Orgaos | `[x]` | Implementado com listagem, detalhe, edicao e exclusao logica |
 | RF-02 | CRUD de Pessoas | `[x]` | Implementado com filtros, busca, Perfil 360 e soft delete |
 | RF-03 | Vinculo obrigatorio pessoa-orgao | `[x]` | `people.organ_id` obrigatorio com FK |
-| RF-04 | Importacao em massa de pessoas (CSV) | `[ ]` | Ainda nao existe rota/servico de importacao |
+| RF-04 | Importacao em massa de pessoas (CSV) | `[x]` | Endpoint `POST /people/import-csv` com validacao, simulacao e rollback transacional |
 | RF-10 | Pipeline de status configuravel | `[x]` | `assignment_statuses` + acao de avance |
 | RF-11 | Timeline automatica/manual | `[x]` | Eventos automaticos/manuais com anexos e retificacao |
 | RF-12 | Geracao de oficios por template | `[x]` | Catalogo/versionamento/merge/HTML print/PDF nativo implementados |
@@ -122,7 +122,7 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 | RF-14 | Registro DOU + entrada oficial no MTE | `[x]` | Metadados formais completos (edicao/data/link/anexo DOU + data oficial MTE) |
 | RF-20 | Dossie documental por pessoa/processo | `[x]` | Upload/download seguro e metadados |
 | RF-21 | Classificacao por tipo/tags + busca | `[~]` | Tipo/tags existem; busca dedicada limitada |
-| RF-22 | Controle de acesso a docs sensiveis | `[~]` | Controle geral existe; falta granularidade por sensibilidade |
+| RF-22 | Controle de acesso a docs sensiveis | `[x]` | Granularidade por `documents.sensitivity_level` com permissao dedicada e trilha de negacao/auditoria |
 | RF-30 | Cadastro de CDO | `[x]` | Implementado com `cdos`, CRUD e trilha auditavel |
 | RF-31 | Vinculo CDO x pessoas | `[x]` | Implementado com `cdo_people` e bloqueio por saldo |
 | RF-32 | Custo previsto por pessoa | `[x]` | Implementado com versionamento e itens |
@@ -487,7 +487,7 @@ Integracao com entidades existentes:
 - `[ ]` Relatorios prontos para auditoria (CGU/TCU)
 - `[ ]` Exportacao completa de dossie (ZIP/PDF + trilha)
 - `[ ]` Controle de versao de documentos
-- `[ ]` Controle de acesso por sensibilidade documental
+- `[x]` Controle de acesso por sensibilidade documental
 
 ### 6.3 Gestao executiva
 
@@ -532,8 +532,8 @@ Cada etapa so pode ser marcada como concluida quando cumprir todos os itens:
 
 ## 9) Proximo ciclo recomendado (execucao imediata)
 
-1. Enderecar lacunas remanescentes de compliance avancado com foco em dossie e monitoramento de acesso sensivel.
-2. Planejar entrega incremental de importacao CSV em massa (RF-04) com validacao e rollback operacional.
+1. `[x]` Enderecar lacunas remanescentes de compliance avancado com foco em dossie e monitoramento de acesso sensivel (RF-22 concluido em 2026-03-05).
+2. `[x]` Planejar entrega incremental de importacao CSV em massa (RF-04) com validacao e rollback operacional (ciclo 9.2: pessoas concluido).
 3. Evoluir backlog de produtividade do analista (fila, checklist automatico e central de pendencias).
 
 ---

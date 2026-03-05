@@ -142,6 +142,47 @@ final class PeopleController extends Controller
         $this->redirect('/people/show?id=' . (int) $result['id']);
     }
 
+    public function importCsv(Request $request): void
+    {
+        $validateOnly = (string) $request->input('validate_only', '0') === '1';
+        $file = is_array($_FILES['csv_file'] ?? null) ? $_FILES['csv_file'] : null;
+
+        $result = $this->service()->importCsv(
+            file: $file,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent(),
+            validateOnly: $validateOnly
+        );
+
+        if (!$result['ok']) {
+            $errors = $result['errors'] ?? [];
+            if (count($errors) > 8) {
+                $extra = count($errors) - 8;
+                $errors = array_slice($errors, 0, 8);
+                $errors[] = sprintf('... e mais %d erro(s).', $extra);
+            }
+
+            flash('error', implode(' ', $errors));
+            $this->redirect('/people');
+        }
+
+        if (!$validateOnly) {
+            foreach ($result['created_people'] as $person) {
+                $this->pipelineService()->ensureAssignment(
+                    personId: (int) ($person['id'] ?? 0),
+                    modalityId: isset($person['desired_modality_id']) ? (int) $person['desired_modality_id'] : null,
+                    userId: (int) ($this->app->auth()->id() ?? 0),
+                    ip: $request->ip(),
+                    userAgent: $request->userAgent()
+                );
+            }
+        }
+
+        flash('success', (string) ($result['message'] ?? 'Importacao concluida.'));
+        $this->redirect('/people');
+    }
+
     public function show(Request $request): void
     {
         $id = (int) $request->input('id', '0');
@@ -169,12 +210,13 @@ final class PeopleController extends Controller
 
         $person = $this->service()->find($id) ?? $person;
         $pipeline = $this->pipelineService()->profileData($id, $timelinePage, 8);
-        $documents = $this->documentService()->profileData($id, $documentsPage, 8);
+        $canViewAudit = $this->app->auth()->hasPermission('audit.view');
+        $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
+        $canViewSensitiveDocuments = $this->app->auth()->hasPermission('people.documents.sensitive');
+        $documents = $this->documentService()->profileData($id, $documentsPage, 8, $canViewSensitiveDocuments);
         $costs = $this->costService()->profileData($id);
         $conciliation = $this->conciliationService()->profileData($id, 8);
         $reimbursements = $this->reimbursementService()->profileData($id, 80);
-        $canViewAudit = $this->app->auth()->hasPermission('audit.view');
-        $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
 
         if ($canViewCpfFull && trim((string) ($person['cpf'] ?? '')) !== '') {
             $this->lgpdService()->registerSensitiveAccess(
@@ -239,6 +281,7 @@ final class PeopleController extends Controller
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
             'canViewCpfFull' => $canViewCpfFull,
             'canViewAudit' => $canViewAudit,
+            'canViewSensitiveDocuments' => $canViewSensitiveDocuments,
         ]);
     }
 
@@ -528,7 +571,8 @@ final class PeopleController extends Controller
             files: $_FILES,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
-            userAgent: $request->userAgent()
+            userAgent: $request->userAgent(),
+            canAssignSensitiveDocuments: $this->app->auth()->hasPermission('people.documents.sensitive')
         );
 
         if (!$result['ok']) {
@@ -560,7 +604,8 @@ final class PeopleController extends Controller
             personId: $personId,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
-            userAgent: $request->userAgent()
+            userAgent: $request->userAgent(),
+            canAccessSensitiveDocuments: $this->app->auth()->hasPermission('people.documents.sensitive')
         );
         if ($file === null) {
             flash('error', 'Documento não encontrado ou acesso não autorizado.');

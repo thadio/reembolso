@@ -12,6 +12,14 @@ final class DocumentService
     private const ALLOWED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
     private const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png'];
     private const MAX_FILE_SIZE = 10485760; // 10MB
+    private const SENSITIVITY_PUBLIC = 'public';
+    private const SENSITIVITY_RESTRICTED = 'restricted';
+    private const SENSITIVITY_SENSITIVE = 'sensitive';
+    private const SENSITIVITY_LEVELS = [
+        self::SENSITIVITY_PUBLIC,
+        self::SENSITIVITY_RESTRICTED,
+        self::SENSITIVITY_SENSITIVE,
+    ];
 
     public function __construct(
         private DocumentRepository $documents,
@@ -24,11 +32,21 @@ final class DocumentService
     }
 
     /**
-     * @return array{items: array<int, array<string, mixed>>, pagination: array<string, int>, document_types: array<int, array<string, mixed>>}
+     * @return array{
+     *   items: array<int, array<string, mixed>>,
+     *   pagination: array<string, int>,
+     *   document_types: array<int, array<string, mixed>>,
+     *   sensitivity_options: array<int, array{value: string, label: string}>
+     * }
      */
-    public function profileData(int $personId, int $page = 1, int $perPage = 10): array
+    public function profileData(
+        int $personId,
+        int $page = 1,
+        int $perPage = 10,
+        bool $canViewSensitiveDocuments = false
+    ): array
     {
-        $result = $this->documents->paginateByPerson($personId, $page, $perPage);
+        $result = $this->documents->paginateByPerson($personId, $page, $perPage, $canViewSensitiveDocuments);
 
         return [
             'items' => $result['items'],
@@ -39,6 +57,7 @@ final class DocumentService
                 'pages' => $result['pages'],
             ],
             'document_types' => $this->documents->activeDocumentTypes(),
+            'sensitivity_options' => $this->sensitivityOptions($canViewSensitiveDocuments),
         ];
     }
 
@@ -51,7 +70,8 @@ final class DocumentService
         array $files,
         int $userId,
         string $ip,
-        string $userAgent
+        string $userAgent,
+        bool $canAssignSensitiveDocuments = false
     ): array {
         $documentTypeId = (int) ($input['document_type_id'] ?? 0);
         $titleInput = trim((string) ($input['title'] ?? ''));
@@ -59,6 +79,7 @@ final class DocumentService
         $documentDate = $this->normalizeDate($this->clean($input['document_date'] ?? null));
         $tags = $this->normalizeTags($this->clean($input['tags'] ?? null));
         $notes = $this->clean($input['notes'] ?? null);
+        $sensitivityLevel = $this->normalizeSensitivityLevel($input['sensitivity_level'] ?? null);
 
         $errors = [];
         $warnings = [];
@@ -72,6 +93,18 @@ final class DocumentService
 
         if ($this->clean($input['document_date'] ?? null) !== null && $documentDate === null) {
             $errors[] = 'Data do documento inválida.';
+        }
+
+        if ($sensitivityLevel === null) {
+            $errors[] = 'Nível de sensibilidade inválido.';
+        }
+
+        if (
+            $sensitivityLevel !== null
+            && $sensitivityLevel !== self::SENSITIVITY_PUBLIC
+            && !$canAssignSensitiveDocuments
+        ) {
+            $errors[] = 'Você não tem permissão para classificar documentos como restritos ou sensíveis.';
         }
 
         $normalizedFiles = $this->normalizeFilesArray($files['files'] ?? null);
@@ -184,6 +217,7 @@ final class DocumentService
                 'document_date' => $documentDate,
                 'tags' => $tags,
                 'notes' => $notes,
+                'sensitivity_level' => $sensitivityLevel,
                 'original_name' => $name,
                 'stored_name' => $storedName,
                 'mime_type' => $mime,
@@ -206,6 +240,7 @@ final class DocumentService
                     'original_name' => $name,
                     'mime_type' => $mime,
                     'file_size' => $size,
+                    'sensitivity_level' => $sensitivityLevel,
                 ],
                 metadata: [
                     'reference_sei' => $referenceSei,
@@ -238,6 +273,7 @@ final class DocumentService
             payload: [
                 'count' => count($createdIds),
                 'document_type_id' => $documentTypeId,
+                'sensitivity_level' => $sensitivityLevel,
                 'document_ids' => $createdIds,
             ],
             entityId: $personId,
@@ -254,10 +290,76 @@ final class DocumentService
     }
 
     /** @return array{path: string, original_name: string, mime_type: string, id: int, title: string}|null */
-    public function documentForDownload(int $documentId, int $personId, int $userId, string $ip, string $userAgent): ?array
+    public function documentForDownload(
+        int $documentId,
+        int $personId,
+        int $userId,
+        string $ip,
+        string $userAgent,
+        bool $canAccessSensitiveDocuments = false
+    ): ?array
     {
         $document = $this->documents->findByIdForPerson($documentId, $personId);
         if ($document === null) {
+            return null;
+        }
+
+        $sensitivityLevel = $this->normalizeSensitivityLevel($document['sensitivity_level'] ?? null) ?? self::SENSITIVITY_PUBLIC;
+        $requiresSensitivePermission = $sensitivityLevel !== self::SENSITIVITY_PUBLIC;
+
+        if ($requiresSensitivePermission && !$canAccessSensitiveDocuments) {
+            $this->audit->log(
+                entity: 'document',
+                entityId: (int) ($document['id'] ?? 0),
+                action: 'download_denied',
+                beforeData: null,
+                afterData: [
+                    'person_id' => $personId,
+                    'title' => (string) ($document['title'] ?? ''),
+                    'sensitivity_level' => $sensitivityLevel,
+                ],
+                metadata: [
+                    'reason' => 'missing_sensitive_permission',
+                    'required_permission' => 'people.documents.sensitive',
+                ],
+                userId: $userId,
+                ip: $ip,
+                userAgent: $userAgent
+            );
+
+            $this->events->recordEvent(
+                entity: 'person',
+                type: 'document.download_denied',
+                payload: [
+                    'document_id' => (int) ($document['id'] ?? 0),
+                    'title' => (string) ($document['title'] ?? ''),
+                    'sensitivity_level' => $sensitivityLevel,
+                    'required_permission' => 'people.documents.sensitive',
+                ],
+                entityId: $personId,
+                userId: $userId
+            );
+
+            $this->lgpd->registerSensitiveAccess(
+                entity: 'document',
+                entityId: (int) ($document['id'] ?? 0),
+                action: 'document_download_denied',
+                sensitivity: $this->lgpdSensitivity($sensitivityLevel),
+                subjectPersonId: $personId,
+                subjectLabel: (string) ($document['title'] ?? ''),
+                contextPath: '/people/documents/download',
+                metadata: [
+                    'document_type_id' => (int) ($document['document_type_id'] ?? 0),
+                    'document_type_name' => (string) ($document['document_type_name'] ?? ''),
+                    'sensitivity_level' => $sensitivityLevel,
+                    'required_permission' => 'people.documents.sensitive',
+                    'access_granted' => false,
+                ],
+                userId: $userId,
+                ip: $ip,
+                userAgent: $userAgent
+            );
+
             return null;
         }
 
@@ -282,8 +384,11 @@ final class DocumentService
                 'person_id' => $personId,
                 'title' => (string) ($document['title'] ?? ''),
                 'original_name' => (string) ($document['original_name'] ?? ''),
+                'sensitivity_level' => $sensitivityLevel,
             ],
-            metadata: null,
+            metadata: [
+                'sensitivity_label' => $this->sensitivityLabel($sensitivityLevel),
+            ],
             userId: $userId,
             ip: $ip,
             userAgent: $userAgent
@@ -295,6 +400,7 @@ final class DocumentService
             payload: [
                 'document_id' => (int) ($document['id'] ?? 0),
                 'title' => (string) ($document['title'] ?? ''),
+                'sensitivity_level' => $sensitivityLevel,
             ],
             entityId: $personId,
             userId: $userId
@@ -304,13 +410,15 @@ final class DocumentService
             entity: 'document',
             entityId: (int) ($document['id'] ?? 0),
             action: 'document_download',
-            sensitivity: 'document',
+            sensitivity: $this->lgpdSensitivity($sensitivityLevel),
             subjectPersonId: $personId,
             subjectLabel: (string) ($document['title'] ?? ''),
             contextPath: '/people/documents/download',
             metadata: [
                 'document_type_id' => (int) ($document['document_type_id'] ?? 0),
                 'document_type_name' => (string) ($document['document_type_name'] ?? ''),
+                'sensitivity_level' => $sensitivityLevel,
+                'access_granted' => true,
             ],
             userId: $userId,
             ip: $ip,
@@ -413,5 +521,49 @@ final class DocumentService
         $globalLimit = max(1048576, $this->security->uploadMaxBytes());
 
         return min(self::MAX_FILE_SIZE, $globalLimit);
+    }
+
+    /** @return array<int, array{value: string, label: string}> */
+    private function sensitivityOptions(bool $includeSensitiveLevels): array
+    {
+        if (!$includeSensitiveLevels) {
+            return [['value' => self::SENSITIVITY_PUBLIC, 'label' => $this->sensitivityLabel(self::SENSITIVITY_PUBLIC)]];
+        }
+
+        return [
+            ['value' => self::SENSITIVITY_PUBLIC, 'label' => $this->sensitivityLabel(self::SENSITIVITY_PUBLIC)],
+            ['value' => self::SENSITIVITY_RESTRICTED, 'label' => $this->sensitivityLabel(self::SENSITIVITY_RESTRICTED)],
+            ['value' => self::SENSITIVITY_SENSITIVE, 'label' => $this->sensitivityLabel(self::SENSITIVITY_SENSITIVE)],
+        ];
+    }
+
+    private function sensitivityLabel(string $sensitivityLevel): string
+    {
+        return match ($sensitivityLevel) {
+            self::SENSITIVITY_PUBLIC => 'Publico',
+            self::SENSITIVITY_RESTRICTED => 'Restrito',
+            self::SENSITIVITY_SENSITIVE => 'Sensivel',
+            default => 'Publico',
+        };
+    }
+
+    private function lgpdSensitivity(string $sensitivityLevel): string
+    {
+        return match ($sensitivityLevel) {
+            self::SENSITIVITY_RESTRICTED => 'document_restricted',
+            self::SENSITIVITY_SENSITIVE => 'document_sensitive',
+            default => 'document_public',
+        };
+    }
+
+    private function normalizeSensitivityLevel(mixed $value): ?string
+    {
+        $normalized = mb_strtolower(trim((string) $value));
+
+        if (!in_array($normalized, self::SENSITIVITY_LEVELS, true)) {
+            return null;
+        }
+
+        return $normalized;
     }
 }

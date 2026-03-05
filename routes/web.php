@@ -121,6 +121,7 @@ $router->get('/reports/export/zip', [ReportsController::class, 'exportZip'], ['a
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);
+$router->post('/people/import-csv', [PeopleController::class, 'importCsv'], ['auth', 'permission:people.manage', 'csrf']);
 $router->get('/people/show', [PeopleController::class, 'show'], ['auth', 'permission:people.view']);
 $router->get('/people/edit', [PeopleController::class, 'edit'], ['auth', 'permission:people.manage']);
 $router->post('/people/update', [PeopleController::class, 'update'], ['auth', 'permission:people.manage', 'csrf']);

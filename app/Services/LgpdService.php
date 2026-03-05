@@ -464,6 +464,9 @@ final class LgpdService
         return match ($value) {
             'cpf' => 'CPF',
             'document' => 'Documento',
+            'document_public' => 'Documento (Publico)',
+            'document_restricted' => 'Documento (Restrito)',
+            'document_sensitive' => 'Documento (Sensivel)',
             'attachment' => 'Anexo',
             'payment_proof' => 'Comprovante',
             'office_document' => 'Oficio',

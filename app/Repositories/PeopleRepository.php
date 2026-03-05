@@ -12,6 +12,27 @@ final class PeopleRepository
     {
     }
 
+    public function beginTransaction(): void
+    {
+        if (!$this->db->inTransaction()) {
+            $this->db->beginTransaction();
+        }
+    }
+
+    public function commit(): void
+    {
+        if ($this->db->inTransaction()) {
+            $this->db->commit();
+        }
+    }
+
+    public function rollBack(): void
+    {
+        if ($this->db->inTransaction()) {
+            $this->db->rollBack();
+        }
+    }
+
     /**
      * @param array<string, mixed> $filters
      * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int, pages: int}
@@ -295,7 +316,7 @@ final class PeopleRepository
     /** @return array<int, array<string, mixed>> */
     public function activeOrgans(): array
     {
-        $stmt = $this->db->query('SELECT id, name FROM organs WHERE deleted_at IS NULL ORDER BY name ASC');
+        $stmt = $this->db->query('SELECT id, name, acronym FROM organs WHERE deleted_at IS NULL ORDER BY name ASC');
 
         return $stmt->fetchAll();
     }

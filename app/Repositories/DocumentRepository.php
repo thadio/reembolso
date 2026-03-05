@@ -28,12 +28,16 @@ final class DocumentRepository
     /**
      * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int, pages: int}
      */
-    public function paginateByPerson(int $personId, int $page, int $perPage): array
+    public function paginateByPerson(int $personId, int $page, int $perPage, bool $includeSensitiveDocuments = false): array
     {
+        $visibilityFilter = $includeSensitiveDocuments
+            ? ''
+            : " AND COALESCE(NULLIF(sensitivity_level, ''), 'public') = 'public'";
+
         $countStmt = $this->db->prepare(
             'SELECT COUNT(*) AS total
              FROM documents
-             WHERE person_id = :person_id AND deleted_at IS NULL'
+             WHERE person_id = :person_id AND deleted_at IS NULL' . $visibilityFilter
         );
         $countStmt->execute(['person_id' => $personId]);
         $total = (int) ($countStmt->fetch()['total'] ?? 0);
@@ -52,6 +56,7 @@ final class DocumentRepository
                 d.document_date,
                 d.tags,
                 d.notes,
+                d.sensitivity_level,
                 d.original_name,
                 d.stored_name,
                 d.mime_type,
@@ -64,7 +69,8 @@ final class DocumentRepository
              FROM documents d
              INNER JOIN document_types dt ON dt.id = d.document_type_id
              LEFT JOIN users u ON u.id = d.uploaded_by
-             WHERE d.person_id = :person_id AND d.deleted_at IS NULL
+             WHERE d.person_id = :person_id
+               AND d.deleted_at IS NULL' . ($includeSensitiveDocuments ? '' : " AND COALESCE(NULLIF(d.sensitivity_level, ''), 'public') = 'public'") . '
              ORDER BY d.created_at DESC, d.id DESC
              LIMIT :limit OFFSET :offset'
         );
@@ -95,6 +101,7 @@ final class DocumentRepository
                 document_date,
                 tags,
                 notes,
+                sensitivity_level,
                 original_name,
                 stored_name,
                 mime_type,
@@ -112,6 +119,7 @@ final class DocumentRepository
                 :document_date,
                 :tags,
                 :notes,
+                :sensitivity_level,
                 :original_name,
                 :stored_name,
                 :mime_type,
@@ -132,6 +140,7 @@ final class DocumentRepository
             'document_date' => $data['document_date'],
             'tags' => $data['tags'],
             'notes' => $data['notes'],
+            'sensitivity_level' => $data['sensitivity_level'],
             'original_name' => $data['original_name'],
             'stored_name' => $data['stored_name'],
             'mime_type' => $data['mime_type'],
@@ -156,6 +165,7 @@ final class DocumentRepository
                 d.document_date,
                 d.tags,
                 d.notes,
+                d.sensitivity_level,
                 d.original_name,
                 d.stored_name,
                 d.mime_type,

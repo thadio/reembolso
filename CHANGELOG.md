@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-03-05 — Ciclo 9.2 concluido (RF-04: importacao CSV em massa de pessoas)
+- Entregue fluxo de importacao no modulo de pessoas:
+  - nova rota protegida `POST /people/import-csv` (`people.manage` + CSRF)
+  - formulario de importacao na listagem de pessoas com opcao de simulacao (`validate_only=1`)
+- `PeopleService` ampliado com motor de importacao CSV:
+  - leitura robusta de CSV (`,`, `;` e tab), validacao de extensao/MIME/tamanho (ate 5MB) e limpeza de BOM
+  - mapeamento de cabecalhos com aliases (`name|nome`, `organ|orgao`, etc.)
+  - validacao por linha reutilizando regras de cadastro de pessoa
+  - resolucao de referencias por ID/nome/sigla para orgao, ID/nome para modalidade e nome/codigo para lotacao MTE
+  - deteccao de CPF duplicado no proprio arquivo e no banco
+  - modo simulacao sem persistencia
+  - importacao efetiva com transacao e rollback completo em caso de falha
+- `PeopleRepository` recebeu suporte transacional (`beginTransaction`, `commit`, `rollBack`) para garantir atomicidade da importacao.
+- `PeopleController` passou a iniciar automaticamente o pipeline (`ensureAssignment`) para cada pessoa criada via importacao.
+- Checklist da etapa adicionado em `tests/checklist-etapa-9.2-rf04.md`.
+
+## 2026-03-05 — Ciclo 9.1 concluido (RF-22: acesso granular a documentos sensiveis)
+- Criada migration `028_phase6_document_sensitivity_access.sql` com:
+  - coluna `documents.sensitivity_level` (`public`, `restricted`, `sensitive`) e indice dedicado
+  - normalizacao de registros legados para `public`
+  - permissao `people.documents.sensitive` vinculada a `sist_admin` e `admin`
+- Dossie documental reforcado:
+  - `DocumentRepository` passou a persistir/consultar `sensitivity_level`
+  - `DocumentService` valida classificacao de sensibilidade no upload e exige permissao para classificar `restricted/sensitive`
+  - listagem do Perfil 360 filtra documentos sensiveis para perfis sem permissao
+  - download de documento sensivel sem permissao agora gera negacao auditavel (`download_denied`) com evento `document.download_denied`
+  - trilha LGPD detalhada para download permitido/negado com sensibilidades `document_public`, `document_restricted` e `document_sensitive`
+- `PeopleController` atualizado para repassar capacidade de acesso/classificacao sensivel ao `DocumentService`.
+- `people/show` atualizado com seletor de sensibilidade e badges de classificacao por documento.
+- `db/seed.php` atualizado para incluir `people.documents.sensitive` no bootstrap padrao.
+- Checklist da entrega adicionado em `tests/checklist-etapa-9.1-rf22.md`.
+
 ## 2026-03-05 — Etapa 7.4 concluida (Observabilidade operacional)
 - Fechamento da etapa 7.4 com os tres eixos previstos:
   - painel tecnico de saude em `scripts/ops-health-panel.php` (health endpoint, severidade de logs, recorrencia e frescor de KPI snapshot)

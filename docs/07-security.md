@@ -45,8 +45,10 @@ Se segredo entrou no historico do Git:
   - armazenamento com nome aleatorio e `move_uploaded_file` (sem fallback por `rename`)
 - Endpoints sensiveis:
   - `POST /people/timeline/store` e `POST /people/timeline/rectify` exigem `people.manage`
-  - `POST /people/documents/store` exige `people.manage`
-  - `GET /people/timeline/attachment`, `GET /people/timeline/print` e `GET /people/documents/download` exigem `people.view`
+  - `POST /people/documents/store` exige `people.manage`; classificacao `restricted/sensitive` exige `people.documents.sensitive`
+  - `POST /people/import-csv` exige `people.manage` e validacao CSRF
+  - `GET /people/timeline/attachment` e `GET /people/timeline/print` exigem `people.view`
+  - `GET /people/documents/download` exige `people.view`; download de documentos `restricted/sensitive` exige `people.documents.sensitive`
   - `GET /security` exige `security.view`
   - `POST /security/update` exige `security.manage`
   - `GET /lgpd` e `GET /lgpd/export/access-csv` exigem `lgpd.view`
@@ -58,6 +60,7 @@ Se segredo entrou no historico do Git:
 
 ## LGPD avancado (fase 6.2)
 - Trilhas de acesso sensivel gravadas em `sensitive_access_logs` (CPF e downloads de documentos/anexos).
+- Downloads negados de documentos sensiveis tambem sao rastreados (`document_download_denied`).
 - Politicas de retencao e anonimizacao parametrizadas em `lgpd_retention_policies`.
 - Execucoes de rotina registradas em `lgpd_retention_runs` para auditoria operacional.
 

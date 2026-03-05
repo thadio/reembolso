@@ -31,10 +31,16 @@ $documents = $documents ?? [
         'pages' => 1,
     ],
     'document_types' => [],
+    'sensitivity_options' => [],
 ];
 $documentItems = $documents['items'] ?? [];
 $documentsPagination = $documents['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $documentTypes = $documents['document_types'] ?? [];
+$documentSensitivityOptions = $documents['sensitivity_options'] ?? [];
+$canViewSensitiveDocuments = ($canViewSensitiveDocuments ?? false) === true;
+if ($documentSensitivityOptions === []) {
+    $documentSensitivityOptions = [['value' => 'public', 'label' => 'Publico']];
+}
 $costs = $costs ?? [
     'active_plan' => null,
     'items' => [],
@@ -292,6 +298,22 @@ $reimbursementStatusClass = static function (string $status, bool $overdue = fal
         'pendente' => 'badge-warning',
         'pago' => 'badge-success',
         'cancelado' => 'badge-neutral',
+        default => 'badge-neutral',
+    };
+};
+
+$documentSensitivityLabel = static function (string $sensitivity): string {
+    return match ($sensitivity) {
+        'restricted' => 'Restrito',
+        'sensitive' => 'Sensivel',
+        default => 'Publico',
+    };
+};
+
+$documentSensitivityBadgeClass = static function (string $sensitivity): string {
+    return match ($sensitivity) {
+        'restricted' => 'badge-warning',
+        'sensitive' => 'badge-danger',
         default => 'badge-neutral',
     };
 };
@@ -620,6 +642,10 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
     </div>
   </div>
 
+  <?php if (!$canViewSensitiveDocuments): ?>
+    <p class="muted">Somente documentos classificados como Publico sao exibidos para o seu perfil.</p>
+  <?php endif; ?>
+
   <?php if (($canManage ?? false) === true): ?>
     <form method="post" action="<?= e(url('/people/documents/store')) ?>" enctype="multipart/form-data" class="document-form">
       <?= csrf_field() ?>
@@ -635,6 +661,19 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
               </option>
             <?php endforeach; ?>
           </select>
+        </div>
+        <div class="field">
+          <label for="document_sensitivity_level">Sensibilidade</label>
+          <select id="document_sensitivity_level" name="sensitivity_level" required>
+            <?php foreach ($documentSensitivityOptions as $option): ?>
+              <option value="<?= e((string) ($option['value'] ?? 'public')) ?>" <?= (($option['value'] ?? '') === 'public') ? 'selected' : '' ?>>
+                <?= e((string) ($option['label'] ?? 'Publico')) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <?php if (!$canViewSensitiveDocuments): ?>
+            <small class="muted">Classificacoes Restrito/Sensivel exigem permissao adicional.</small>
+          <?php endif; ?>
         </div>
         <div class="field">
           <label for="document_date">Data do documento</label>
@@ -675,11 +714,15 @@ $buildAuditExportUrl = static function () use ($personId, $auditFilters): string
   <?php else: ?>
     <div class="document-list">
       <?php foreach ($documentItems as $document): ?>
+        <?php $documentSensitivity = mb_strtolower(trim((string) ($document['sensitivity_level'] ?? 'public'))); ?>
         <article class="document-item">
           <div class="document-item-header">
             <div class="document-title-wrap">
               <strong><?= e((string) ($document['title'] ?? 'Documento')) ?></strong>
               <span class="badge badge-neutral"><?= e((string) ($document['document_type_name'] ?? 'Tipo')) ?></span>
+              <span class="badge <?= e($documentSensitivityBadgeClass($documentSensitivity)) ?>">
+                <?= e($documentSensitivityLabel($documentSensitivity)) ?>
+              </span>
             </div>
             <a class="btn btn-ghost" href="<?= e(url('/people/documents/download?id=' . (int) ($document['id'] ?? 0) . '&person_id=' . $personId)) ?>">Baixar</a>
           </div>

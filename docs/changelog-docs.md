@@ -1,6 +1,14 @@
 # Changelog da Documentacao
 
 ## 2026-03-05
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar RF-04 como concluido (importacao CSV de pessoas) e registrar pendencia de orgaos
+- Atualizacao de `README.md` com rota `POST /people/import-csv` e status da entrega 9.2
+- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint de importacao CSV
+- Adicionado checklist `tests/checklist-etapa-9.2-rf04.md`
+- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar RF-22 e backlog 6.2 de sensibilidade documental como concluidos
+- Atualizacao de `docs/07-security.md` com regra de acesso granular para documentos `restricted/sensitive`
+- Atualizacao de `README.md` com status da entrega 9.1 (RF-22) e permissao `people.documents.sensitive`
+- Adicionado checklist `tests/checklist-etapa-9.1-rf22.md`
 - Atualizacao de `README.md` para refletir conclusao da fase 6.2 (LGPD avancado) e novas rotas `/lgpd*`
 - Atualizacao de `docs/02-architecture.md` para incluir `LgpdService` e tabelas LGPD
 - Atualizacao de `docs/07-security.md` com controles de acesso do modulo LGPD
