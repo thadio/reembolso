@@ -19,7 +19,6 @@ $people = $people ?? [];
 $statuses = $statuses ?? [];
 $organs = $organs ?? [];
 $modalities = $modalities ?? [];
-$previewPerson = $previewPerson ?? null;
 $queuePriorities = $queuePriorities ?? [];
 $queueUsers = $queueUsers ?? [];
 $authUserId = (int) ($authUserId ?? 0);
@@ -60,7 +59,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 
 $statusLabel = static function (string $value): string {
     return match ($value) {
-        'interessado' => 'Interessado',
+        'interessado' => 'Interessado/Triagem',
         'triagem' => 'Triagem',
         'selecionado' => 'Selecionado',
         'oficio_orgao' => 'Ofício órgão',
@@ -89,6 +88,24 @@ $priorityBadgeClass = static function (string $value): string {
         'urgent' => 'badge-danger',
         default => 'badge-info',
     };
+};
+
+$formatDate = static function (?string $value): string {
+    $raw = trim((string) $value);
+    if ($raw === '') {
+        return '-';
+    }
+
+    $timestamp = strtotime($raw);
+    if ($timestamp === false) {
+        return '-';
+    }
+
+    return date('d/m/Y', $timestamp);
+};
+
+$formatMoney = static function (float $value): string {
+    return 'R$ ' . number_format($value, 2, ',', '.');
 };
 ?>
 <div class="card">
@@ -204,16 +221,19 @@ $priorityBadgeClass = static function (string $value): string {
       <p>Nenhuma pessoa encontrada com os filtros atuais.</p>
     </div>
   <?php else: ?>
-    <div class="list-with-aside">
-      <div class="table-wrap">
-        <table>
+    <div class="table-wrap">
+      <table>
           <thead>
             <tr>
               <th><a href="<?= e($buildUrl(['sort' => 'name', 'dir' => $nextDir('name'), 'page' => 1])) ?>">Nome</a></th>
               <th>CPF</th>
               <th><a href="<?= e($buildUrl(['sort' => 'status', 'dir' => $nextDir('status'), 'page' => 1])) ?>">Status</a></th>
+              <th>Data último status</th>
               <th><a href="<?= e($buildUrl(['sort' => 'organ', 'dir' => $nextDir('organ'), 'page' => 1])) ?>">Órgão</a></th>
               <th>Modalidade</th>
+              <th>Remuneração mensal</th>
+              <th>Auxílios mensais</th>
+              <th>Total mensal</th>
               <th><a href="<?= e($buildUrl(['sort' => 'responsible', 'dir' => $nextDir('responsible'), 'page' => 1])) ?>">Responsável</a></th>
               <th><a href="<?= e($buildUrl(['sort' => 'priority', 'dir' => $nextDir('priority'), 'page' => 1])) ?>">Prioridade</a></th>
               <th>Ações</th>
@@ -236,15 +256,18 @@ $priorityBadgeClass = static function (string $value): string {
                   <?php endif; ?>
                 </td>
                 <td><span class="badge badge-neutral"><?= e($statusLabel((string) ($person['status'] ?? ''))) ?></span></td>
+                <td><?= e($formatDate((string) ($person['status_changed_at'] ?? ''))) ?></td>
                 <td><?= e((string) ($person['organ_name'] ?? '-')) ?></td>
                 <td><?= e((string) ($person['modality_name'] ?? '-')) ?></td>
+                <td><?= e($formatMoney((float) ($person['monthly_remuneration'] ?? 0))) ?></td>
+                <td><?= e($formatMoney((float) ($person['monthly_auxilios'] ?? 0))) ?></td>
+                <td><?= e($formatMoney((float) ($person['monthly_total'] ?? 0))) ?></td>
                 <td><?= e((string) ($person['assigned_user_name'] ?? 'Não definido')) ?></td>
                 <td>
                   <?php $priority = mb_strtolower((string) ($person['assignment_priority'] ?? 'normal')); ?>
                   <span class="badge <?= e($priorityBadgeClass($priority)) ?>"><?= e($priorityLabel($priority)) ?></span>
                 </td>
                 <td class="actions-cell">
-                  <a class="btn btn-ghost" href="<?= e($buildUrl(['preview_id' => (int) $person['id']])) ?>">Resumo</a>
                   <a class="btn btn-ghost" href="<?= e(url('/people/show?id=' . (int) $person['id'])) ?>">Perfil 360</a>
                   <?php if (($canManage ?? false) === true): ?>
                     <a class="btn btn-ghost" href="<?= e(url('/people/edit?id=' . (int) $person['id'])) ?>">Editar</a>
@@ -258,32 +281,7 @@ $priorityBadgeClass = static function (string $value): string {
               </tr>
             <?php endforeach; ?>
           </tbody>
-        </table>
-      </div>
-
-      <aside class="summary-panel card">
-        <h3>Resumo rápido</h3>
-        <?php if ($previewPerson === null): ?>
-          <p class="muted">Selecione uma pessoa na lista para visualizar resumo.</p>
-        <?php else: ?>
-          <div class="summary-line"><strong>Nome:</strong> <?= e((string) ($previewPerson['name'] ?? '-')) ?></div>
-          <div class="summary-line"><strong>CPF:</strong>
-            <?php if (($canViewCpfFull ?? false) === true): ?>
-              <?= e((string) ($previewPerson['cpf'] ?? '-')) ?>
-            <?php else: ?>
-              <?= e(mask_cpf((string) ($previewPerson['cpf'] ?? ''))) ?>
-            <?php endif; ?>
-          </div>
-          <div class="summary-line"><strong>Status:</strong> <?= e($statusLabel((string) ($previewPerson['status'] ?? ''))) ?></div>
-          <div class="summary-line"><strong>Órgão:</strong> <?= e((string) ($previewPerson['organ_name'] ?? '-')) ?></div>
-          <div class="summary-line"><strong>Modalidade:</strong> <?= e((string) ($previewPerson['modality_name'] ?? '-')) ?></div>
-          <div class="summary-line"><strong>Responsável:</strong> <?= e((string) ($previewPerson['assigned_user_name'] ?? 'Não definido')) ?></div>
-          <div class="summary-line"><strong>Prioridade:</strong> <?= e($priorityLabel((string) ($previewPerson['assignment_priority'] ?? 'normal'))) ?></div>
-          <div class="summary-line"><strong>SEI:</strong> <?= e((string) ($previewPerson['sei_process_number'] ?? '-')) ?></div>
-          <div class="summary-line"><strong>Lotação MTE:</strong> <?= e((string) ($previewPerson['mte_destination'] ?? '-')) ?></div>
-          <div class="summary-line"><strong>Tags:</strong> <?= e((string) ($previewPerson['tags'] ?? '-')) ?></div>
-        <?php endif; ?>
-      </aside>
+      </table>
     </div>
 
     <div class="pagination-row">

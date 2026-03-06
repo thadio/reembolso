@@ -38,6 +38,14 @@ $formatDateTime = static function (?string $value): string {
     return $timestamp === false ? $value : date('d/m/Y H:i', $timestamp);
 };
 
+$formatDimension = static function (?string $value): string {
+    if ($value === null || trim($value) === '') {
+        return '-';
+    }
+
+    return ucfirst(str_replace('_', ' ', trim($value)));
+};
+
 $auditEntityLabel = static function (string $entity): string {
     return match ($entity) {
         'organ' => 'Orgao',
@@ -137,12 +145,25 @@ $buildAuditExportUrl = static function () use ($organId, $auditFilters): string 
   <div class="details-grid">
     <div><strong>Sigla:</strong> <?= e((string) ($organ['acronym'] ?? '-')) ?></div>
     <div><strong>CNPJ:</strong> <?= e((string) ($organ['cnpj'] ?? '-')) ?></div>
+    <div><strong>Tipo institucional:</strong> <?= e($formatDimension((string) ($organ['organ_type'] ?? ''))) ?></div>
+    <div><strong>Esfera:</strong> <?= e($formatDimension((string) ($organ['government_level'] ?? ''))) ?></div>
+    <div><strong>Poder:</strong> <?= e($formatDimension((string) ($organ['government_branch'] ?? ''))) ?></div>
+    <div><strong>Orgao supervisor:</strong> <?= e((string) ($organ['supervising_organ'] ?? '-')) ?></div>
     <div><strong>Contato:</strong> <?= e((string) ($organ['contact_name'] ?? '-')) ?></div>
     <div><strong>E-mail:</strong> <?= e((string) ($organ['contact_email'] ?? '-')) ?></div>
     <div><strong>Telefone:</strong> <?= e((string) ($organ['contact_phone'] ?? '-')) ?></div>
     <div><strong>Cidade/UF:</strong> <?= e((string) ($organ['city'] ?? '-')) ?><?= !empty($organ['state']) ? ' / ' . e((string) $organ['state']) : '' ?></div>
     <div><strong>CEP:</strong> <?= e((string) ($organ['zip_code'] ?? '-')) ?></div>
     <div><strong>Endereco:</strong> <?= e((string) ($organ['address_line'] ?? '-')) ?></div>
+    <div><strong>Fonte:</strong> <?= e((string) ($organ['source_name'] ?? '-')) ?></div>
+    <div>
+      <strong>Referencia:</strong>
+      <?php if (!empty($organ['source_url'])): ?>
+        <a href="<?= e((string) $organ['source_url']) ?>" target="_blank" rel="noopener noreferrer">Abrir link</a>
+      <?php else: ?>
+        -
+      <?php endif; ?>
+    </div>
     <div class="details-wide"><strong>Observacoes:</strong> <?= nl2br(e((string) ($organ['notes'] ?? '-'))) ?></div>
   </div>
 </div>
@@ -294,4 +315,3 @@ $buildAuditExportUrl = static function () use ($organId, $auditFilters): string 
     <?php endif; ?>
   <?php endif; ?>
 </div>
-

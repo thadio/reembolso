@@ -66,9 +66,25 @@ $statusBadgeClass = static function (string $status): string {
     };
 };
 
+$financialNatureLabel = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'Despesa de reembolso (a pagar)',
+        'receita_reembolso' => 'Receita de reembolso (a receber)',
+        default => ucfirst(str_replace('_', ' ', $nature)),
+    };
+};
+
+$financialNatureBadgeClass = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'badge-warning',
+        'receita_reembolso' => 'badge-success',
+        default => 'badge-neutral',
+    };
+};
+
 $personStatusLabel = static function (string $status): string {
     return match ($status) {
-        'interessado' => 'Interessado',
+        'interessado' => 'Interessado/Triagem',
         'triagem' => 'Triagem',
         'selecionado' => 'Selecionado',
         'oficio_orgao' => 'Oficio orgao',
@@ -95,6 +111,8 @@ $remainingPayable = max(0.0, $totalAmount - $paidAmount);
     </div>
     <div class="actions-inline">
       <span class="badge <?= e($statusBadgeClass($status)) ?>"><?= e($statusLabel($status)) ?></span>
+      <?php $invoiceFinancialNature = (string) ($invoice['financial_nature'] ?? 'despesa_reembolso'); ?>
+      <span class="badge <?= e($financialNatureBadgeClass($invoiceFinancialNature)) ?>"><?= e($financialNatureLabel($invoiceFinancialNature)) ?></span>
       <a class="btn btn-outline" href="<?= e(url('/invoices')) ?>">Voltar</a>
       <?php if (!empty($invoice['pdf_storage_path'])): ?>
         <a class="btn btn-outline" href="<?= e(url('/invoices/pdf?id=' . (int) ($invoice['id'] ?? 0))) ?>">Baixar PDF</a>
@@ -107,6 +125,7 @@ $remainingPayable = max(0.0, $totalAmount - $paidAmount);
 
   <div class="details-grid">
     <div><strong>Orgao:</strong> <?= e((string) ($invoice['organ_name'] ?? '-')) ?></div>
+    <div><strong>Natureza financeira:</strong> <?= e($financialNatureLabel((string) ($invoice['financial_nature'] ?? 'despesa_reembolso'))) ?></div>
     <div><strong>Titulo:</strong> <?= e((string) ($invoice['title'] ?? '-')) ?></div>
     <div><strong>Emissao:</strong> <?= e($formatDate((string) ($invoice['issue_date'] ?? ''))) ?></div>
     <div><strong>Criado em:</strong> <?= e($formatDateTime((string) ($invoice['created_at'] ?? ''))) ?></div>
@@ -270,6 +289,7 @@ $remainingPayable = max(0.0, $totalAmount - $paidAmount);
           <tr>
             <th>Data</th>
             <th>Valor</th>
+            <th>Natureza</th>
             <th>Alocado em pessoas</th>
             <th>Processo</th>
             <th>Comprovante</th>
@@ -282,6 +302,8 @@ $remainingPayable = max(0.0, $totalAmount - $paidAmount);
             <tr>
               <td><?= e($formatDate((string) ($payment['payment_date'] ?? ''))) ?></td>
               <td><?= e($formatMoney((float) ($payment['amount'] ?? 0))) ?></td>
+              <?php $paymentNature = (string) ($payment['financial_nature'] ?? ($invoice['financial_nature'] ?? 'despesa_reembolso')); ?>
+              <td><span class="badge <?= e($financialNatureBadgeClass($paymentNature)) ?>"><?= e($financialNatureLabel($paymentNature)) ?></span></td>
               <td><?= e($formatMoney((float) ($payment['allocated_amount'] ?? 0))) ?></td>
               <td><?= e((string) ($payment['process_reference'] ?? '-')) ?></td>
               <td>

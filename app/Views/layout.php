@@ -50,6 +50,13 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>'
                 . '<path d="M16 3.13a4 4 0 0 1 0 7.75"></path>';
             break;
+        case 'workflow':
+            $body = '<circle cx="5" cy="6" r="2"></circle>'
+                . '<circle cx="19" cy="6" r="2"></circle>'
+                . '<circle cx="12" cy="18" r="2"></circle>'
+                . '<path d="M7 6h10"></path>'
+                . '<path d="M12 16V8"></path>';
+            break;
         case 'users_admin':
             $body = '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>'
                 . '<circle cx="9" cy="7" r="4"></circle>'
@@ -215,6 +222,14 @@ if ($canViewPeople) {
         'active' => str_starts_with($path, '/people'),
     ];
 }
+if ($canManagePeople) {
+    $mainMenuItems[] = [
+        'label' => 'Fluxos BPMN',
+        'href' => '/pipeline-flows',
+        'icon' => 'workflow',
+        'active' => str_starts_with($path, '/pipeline-flows'),
+    ];
+}
 if ($canViewMteDestinations) {
     $mainMenuItems[] = [
         'label' => 'Lotações MTE',
@@ -295,6 +310,12 @@ if ($canManagePeople) {
         'href' => '/people/create',
         'icon' => 'plus',
         'active' => $path === '/people/create',
+    ];
+    $quickMenuItems[] = [
+        'label' => 'Novo fluxo BPMN',
+        'href' => '/pipeline-flows/create',
+        'icon' => 'plus',
+        'active' => $path === '/pipeline-flows/create',
     ];
 }
 if ($canManageUsers) {

@@ -19,6 +19,8 @@ final class OrganService
     ];
     private const MAX_CSV_SIZE = 5242880; // 5MB
     private const REQUIRED_IMPORT_COLUMNS = ['name'];
+    private const ALLOWED_GOVERNMENT_LEVELS = ['federal', 'estadual', 'municipal', 'distrital'];
+    private const ALLOWED_GOVERNMENT_BRANCHES = ['executivo', 'legislativo', 'judiciario', 'autonomo'];
 
     public function __construct(
         private OrganRepository $organs,
@@ -110,6 +112,10 @@ final class OrganService
                 'name' => (string) ($mapped['name'] ?? ''),
                 'acronym' => (string) ($mapped['acronym'] ?? ''),
                 'cnpj' => (string) ($mapped['cnpj'] ?? ''),
+                'organ_type' => (string) ($mapped['organ_type'] ?? ''),
+                'government_level' => (string) ($mapped['government_level'] ?? ''),
+                'government_branch' => (string) ($mapped['government_branch'] ?? ''),
+                'supervising_organ' => (string) ($mapped['supervising_organ'] ?? ''),
                 'contact_name' => (string) ($mapped['contact_name'] ?? ''),
                 'contact_email' => (string) ($mapped['contact_email'] ?? ''),
                 'contact_phone' => (string) ($mapped['contact_phone'] ?? ''),
@@ -118,6 +124,8 @@ final class OrganService
                 'state' => (string) ($mapped['state'] ?? ''),
                 'zip_code' => (string) ($mapped['zip_code'] ?? ''),
                 'notes' => (string) ($mapped['notes'] ?? ''),
+                'source_name' => (string) ($mapped['source_name'] ?? ''),
+                'source_url' => (string) ($mapped['source_url'] ?? ''),
             ];
 
             $validation = $this->validate($input);
@@ -376,6 +384,12 @@ final class OrganService
         $name = $this->clean($input['name'] ?? null);
         $acronym = $this->clean($input['acronym'] ?? null);
         $cnpj = $this->normalizeCnpj($this->clean($input['cnpj'] ?? null));
+        $organType = $this->normalizeOrganType($this->clean($input['organ_type'] ?? null));
+        $rawGovernmentLevel = $this->clean($input['government_level'] ?? null);
+        $rawGovernmentBranch = $this->clean($input['government_branch'] ?? null);
+        $governmentLevel = $this->normalizeGovernmentLevel($rawGovernmentLevel);
+        $governmentBranch = $this->normalizeGovernmentBranch($rawGovernmentBranch);
+        $supervisingOrgan = $this->clean($input['supervising_organ'] ?? null);
         $contactName = $this->clean($input['contact_name'] ?? null);
         $contactEmail = $this->clean($input['contact_email'] ?? null);
         $contactPhone = $this->clean($input['contact_phone'] ?? null);
@@ -384,6 +398,8 @@ final class OrganService
         $state = $this->clean($input['state'] ?? null);
         $zipCode = $this->clean($input['zip_code'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
+        $sourceName = $this->clean($input['source_name'] ?? null);
+        $sourceUrl = $this->clean($input['source_url'] ?? null);
 
         $errors = [];
 
@@ -406,10 +422,26 @@ final class OrganService
             }
         }
 
+        if ($rawGovernmentLevel !== null && $governmentLevel === null) {
+            $errors[] = 'Esfera invalida. Use federal, estadual, municipal ou distrital.';
+        }
+
+        if ($rawGovernmentBranch !== null && $governmentBranch === null) {
+            $errors[] = 'Poder invalido. Use executivo, legislativo, judiciario ou autonomo.';
+        }
+
+        if ($sourceUrl !== null && !filter_var($sourceUrl, FILTER_VALIDATE_URL)) {
+            $errors[] = 'URL de referencia invalida.';
+        }
+
         $data = [
             'name' => $name,
             'acronym' => $acronym === null ? null : mb_strtoupper($acronym),
             'cnpj' => $cnpj,
+            'organ_type' => $organType,
+            'government_level' => $governmentLevel,
+            'government_branch' => $governmentBranch,
+            'supervising_organ' => $supervisingOrgan,
             'contact_name' => $contactName,
             'contact_email' => $contactEmail,
             'contact_phone' => $contactPhone,
@@ -418,6 +450,8 @@ final class OrganService
             'state' => $state,
             'zip_code' => $zipCode,
             'notes' => $notes,
+            'source_name' => $sourceName,
+            'source_url' => $sourceUrl,
         ];
 
         return [
@@ -572,6 +606,10 @@ final class OrganService
             'name' => ['name', 'nome', 'orgao', 'orgao_nome'],
             'acronym' => ['acronym', 'sigla'],
             'cnpj' => ['cnpj'],
+            'organ_type' => ['organ_type', 'tipo_orgao', 'tipo', 'classificacao', 'natureza'],
+            'government_level' => ['government_level', 'esfera', 'nivel_governo', 'esfera_governo'],
+            'government_branch' => ['government_branch', 'poder', 'poder_governo'],
+            'supervising_organ' => ['supervising_organ', 'orgao_supervisor', 'orgao_vinculador', 'ministerio_vinculado'],
             'contact_name' => ['contact_name', 'contato', 'contato_nome', 'nome_contato'],
             'contact_email' => ['contact_email', 'email', 'email_contato'],
             'contact_phone' => ['contact_phone', 'telefone', 'telefone_contato', 'fone'],
@@ -580,6 +618,8 @@ final class OrganService
             'state' => ['state', 'uf'],
             'zip_code' => ['zip_code', 'cep'],
             'notes' => ['notes', 'observacoes', 'observacao', 'notas'],
+            'source_name' => ['source_name', 'fonte', 'origem_dado', 'origem'],
+            'source_url' => ['source_url', 'fonte_url', 'referencia', 'referencia_url', 'link_fonte'],
         ];
 
         $lookup = [];
@@ -703,5 +743,92 @@ final class OrganService
             . '.' . substr($digits, 5, 3)
             . '/' . substr($digits, 8, 4)
             . '-' . substr($digits, 12, 2);
+    }
+
+    private function normalizeOrganType(?string $organType): ?string
+    {
+        if ($organType === null) {
+            return null;
+        }
+
+        $lookup = $this->normalizeLookupValue($organType);
+        $map = [
+            'administracao_direta' => 'administracao_direta',
+            'adm_direta' => 'administracao_direta',
+            'ministerio' => 'administracao_direta',
+            'autarquia' => 'autarquia',
+            'autarquia_especial' => 'autarquia_especial',
+            'agencia_reguladora' => 'autarquia_especial',
+            'fundacao_publica' => 'fundacao_publica',
+            'empresa_publica' => 'empresa_publica',
+            'sociedade_economia_mista' => 'sociedade_economia_mista',
+            'sociedade_de_economia_mista' => 'sociedade_economia_mista',
+        ];
+
+        $normalized = $map[$lookup] ?? $this->normalizeCsvHeader($organType);
+        $normalized = trim($normalized);
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (mb_strlen($normalized) > 50) {
+            return mb_substr($normalized, 0, 50);
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeGovernmentLevel(?string $governmentLevel): ?string
+    {
+        if ($governmentLevel === null) {
+            return null;
+        }
+
+        $lookup = $this->normalizeLookupValue($governmentLevel);
+        $map = [
+            'federal' => 'federal',
+            'uniao' => 'federal',
+            'estadual' => 'estadual',
+            'estado' => 'estadual',
+            'municipal' => 'municipal',
+            'municipio' => 'municipal',
+            'distrital' => 'distrital',
+            'distrito_federal' => 'distrital',
+        ];
+
+        $normalized = $map[$lookup] ?? null;
+        if ($normalized === null || !in_array($normalized, self::ALLOWED_GOVERNMENT_LEVELS, true)) {
+            return null;
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeGovernmentBranch(?string $governmentBranch): ?string
+    {
+        if ($governmentBranch === null) {
+            return null;
+        }
+
+        $lookup = $this->normalizeLookupValue($governmentBranch);
+        $map = [
+            'executivo' => 'executivo',
+            'legislativo' => 'legislativo',
+            'judiciario' => 'judiciario',
+            'autonomo' => 'autonomo',
+            'independente' => 'autonomo',
+        ];
+
+        $normalized = $map[$lookup] ?? null;
+        if ($normalized === null || !in_array($normalized, self::ALLOWED_GOVERNMENT_BRANCHES, true)) {
+            return null;
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeLookupValue(string $value): string
+    {
+        return $this->normalizeCsvHeader($value);
     }
 }

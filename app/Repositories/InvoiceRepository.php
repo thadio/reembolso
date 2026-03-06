@@ -45,6 +45,7 @@ final class InvoiceRepository
             'due_date' => 'i.due_date',
             'total_amount' => 'i.total_amount',
             'status' => 'i.status',
+            'financial_nature' => 'i.financial_nature',
             'created_at' => 'i.created_at',
         ];
 
@@ -91,6 +92,12 @@ final class InvoiceRepository
             $params['reference_month'] = $referenceMonth;
         }
 
+        $financialNature = trim((string) ($filters['financial_nature'] ?? ''));
+        if ($financialNature !== '') {
+            $where .= ' AND i.financial_nature = :financial_nature';
+            $params['financial_nature'] = $financialNature;
+        }
+
         $countStmt = $this->db->prepare(
             "SELECT COUNT(*) AS total
              FROM invoices i
@@ -116,6 +123,7 @@ final class InvoiceRepository
                 i.total_amount,
                 i.paid_amount,
                 i.status,
+                i.financial_nature,
                 i.digitable_line,
                 i.reference_code,
                 i.pdf_original_name,
@@ -148,6 +156,7 @@ final class InvoiceRepository
                 i.total_amount,
                 i.paid_amount,
                 i.status,
+                i.financial_nature,
                 i.digitable_line,
                 i.reference_code,
                 i.pdf_original_name,
@@ -194,6 +203,7 @@ final class InvoiceRepository
                 i.total_amount,
                 i.paid_amount,
                 i.status,
+                i.financial_nature,
                 i.digitable_line,
                 i.reference_code,
                 i.pdf_original_name,
@@ -230,6 +240,7 @@ final class InvoiceRepository
                 i.total_amount,
                 i.paid_amount,
                 i.status,
+                i.financial_nature,
                 i.digitable_line,
                 i.reference_code,
                 i.pdf_original_name,
@@ -293,6 +304,7 @@ final class InvoiceRepository
                 p.invoice_id,
                 p.payment_date,
                 p.amount,
+                p.financial_nature,
                 p.process_reference,
                 p.proof_original_name,
                 p.proof_storage_path,
@@ -314,6 +326,7 @@ final class InvoiceRepository
                 p.invoice_id,
                 p.payment_date,
                 p.amount,
+                p.financial_nature,
                 p.process_reference,
                 p.proof_original_name,
                 p.proof_storage_path,
@@ -371,6 +384,12 @@ final class InvoiceRepository
             $params['status'] = $status;
         }
 
+        $financialNature = trim((string) ($filters['financial_nature'] ?? ''));
+        if ($financialNature !== '') {
+            $where .= ' AND pb.financial_nature = :financial_nature';
+            $params['financial_nature'] = $financialNature;
+        }
+
         $referenceMonth = trim((string) ($filters['reference_month'] ?? ''));
         if ($referenceMonth !== '') {
             $where .= ' AND DATE_FORMAT(pb.reference_month, "%Y-%m") = :reference_month';
@@ -407,6 +426,7 @@ final class InvoiceRepository
                 pb.batch_code,
                 pb.title,
                 pb.status,
+                pb.financial_nature,
                 pb.reference_month,
                 pb.scheduled_payment_date,
                 pb.total_amount,
@@ -469,6 +489,7 @@ final class InvoiceRepository
                 pb.batch_code,
                 pb.title,
                 pb.status,
+                pb.financial_nature,
                 pb.reference_month,
                 pb.scheduled_payment_date,
                 pb.total_amount,
@@ -524,6 +545,7 @@ final class InvoiceRepository
                 pbi.amount,
                 pbi.payment_date,
                 p.id AS payment_internal_id,
+                p.financial_nature,
                 p.process_reference,
                 p.proof_original_name,
                 p.proof_storage_path,
@@ -531,6 +553,7 @@ final class InvoiceRepository
                 p.created_at AS payment_created_at,
                 i.invoice_number,
                 i.reference_month AS invoice_reference_month,
+                i.financial_nature AS invoice_financial_nature,
                 o.name AS organ_name
              FROM payment_batch_items pbi
              INNER JOIN payments p ON p.id = pbi.payment_id AND p.deleted_at IS NULL
@@ -586,6 +609,12 @@ final class InvoiceRepository
             $params['reference_month'] = $referenceMonth;
         }
 
+        $financialNature = trim((string) ($filters['financial_nature'] ?? ''));
+        if ($financialNature !== '') {
+            $where .= ' AND i.financial_nature = :financial_nature';
+            $params['financial_nature'] = $financialNature;
+        }
+
         $paymentDateFrom = trim((string) ($filters['payment_date_from'] ?? ''));
         if ($paymentDateFrom !== '') {
             $where .= ' AND p.payment_date >= :payment_date_from';
@@ -604,9 +633,11 @@ final class InvoiceRepository
                 p.invoice_id,
                 p.payment_date,
                 p.amount,
+                p.financial_nature,
                 p.process_reference,
                 i.invoice_number,
                 i.reference_month AS invoice_reference_month,
+                i.financial_nature AS invoice_financial_nature,
                 o.id AS organ_id,
                 o.name AS organ_name
              FROM payments p
@@ -653,9 +684,11 @@ final class InvoiceRepository
                     p.invoice_id,
                     p.payment_date,
                     p.amount,
+                    p.financial_nature,
                     p.process_reference,
                     i.invoice_number,
                     i.reference_month AS invoice_reference_month,
+                    i.financial_nature AS invoice_financial_nature,
                     o.id AS organ_id,
                     o.name AS organ_name
                 FROM payments p
@@ -773,6 +806,7 @@ final class InvoiceRepository
                 total_amount,
                 paid_amount,
                 status,
+                financial_nature,
                 digitable_line,
                 reference_code,
                 pdf_original_name,
@@ -795,6 +829,7 @@ final class InvoiceRepository
                 :total_amount,
                 :paid_amount,
                 :status,
+                :financial_nature,
                 :digitable_line,
                 :reference_code,
                 :pdf_original_name,
@@ -820,6 +855,7 @@ final class InvoiceRepository
             'total_amount' => $data['total_amount'],
             'paid_amount' => $data['paid_amount'] ?? '0.00',
             'status' => $data['status'],
+            'financial_nature' => $data['financial_nature'] ?? 'despesa_reembolso',
             'digitable_line' => $data['digitable_line'],
             'reference_code' => $data['reference_code'],
             'pdf_original_name' => $data['pdf_original_name'],
@@ -848,6 +884,7 @@ final class InvoiceRepository
                 due_date = :due_date,
                 total_amount = :total_amount,
                 status = :status,
+                financial_nature = :financial_nature,
                 digitable_line = :digitable_line,
                 reference_code = :reference_code,
                 pdf_original_name = :pdf_original_name,
@@ -871,6 +908,7 @@ final class InvoiceRepository
             'due_date' => $data['due_date'],
             'total_amount' => $data['total_amount'],
             'status' => $data['status'],
+            'financial_nature' => $data['financial_nature'] ?? 'despesa_reembolso',
             'digitable_line' => $data['digitable_line'],
             'reference_code' => $data['reference_code'],
             'pdf_original_name' => $data['pdf_original_name'],
@@ -990,6 +1028,7 @@ final class InvoiceRepository
                 batch_code,
                 title,
                 status,
+                financial_nature,
                 reference_month,
                 scheduled_payment_date,
                 total_amount,
@@ -1005,6 +1044,7 @@ final class InvoiceRepository
                 :batch_code,
                 :title,
                 :status,
+                :financial_nature,
                 :reference_month,
                 :scheduled_payment_date,
                 :total_amount,
@@ -1023,6 +1063,7 @@ final class InvoiceRepository
             'batch_code' => $data['batch_code'],
             'title' => $data['title'],
             'status' => $data['status'],
+            'financial_nature' => $data['financial_nature'] ?? 'despesa_reembolso',
             'reference_month' => $data['reference_month'],
             'scheduled_payment_date' => $data['scheduled_payment_date'],
             'total_amount' => $data['total_amount'],
@@ -1124,6 +1165,7 @@ final class InvoiceRepository
                 invoice_id,
                 payment_date,
                 amount,
+                financial_nature,
                 process_reference,
                 proof_original_name,
                 proof_stored_name,
@@ -1139,6 +1181,7 @@ final class InvoiceRepository
                 :invoice_id,
                 :payment_date,
                 :amount,
+                :financial_nature,
                 :process_reference,
                 :proof_original_name,
                 :proof_stored_name,
@@ -1157,6 +1200,7 @@ final class InvoiceRepository
             'invoice_id' => $data['invoice_id'],
             'payment_date' => $data['payment_date'],
             'amount' => $data['amount'],
+            'financial_nature' => $data['financial_nature'] ?? 'despesa_reembolso',
             'process_reference' => $data['process_reference'],
             'proof_original_name' => $data['proof_original_name'],
             'proof_stored_name' => $data['proof_stored_name'],

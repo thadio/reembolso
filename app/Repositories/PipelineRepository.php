@@ -13,24 +13,174 @@ final class PipelineRepository
     }
 
     /** @return array<string, mixed>|null */
-    public function initialStatus(): ?array
+    public function defaultFlow(): ?array
     {
-        $stmt = $this->db->prepare(
-            'SELECT id, code, label, sort_order, next_action_label, event_type
-             FROM assignment_statuses
-             WHERE code = :code AND is_active = 1
+        $stmt = $this->db->query(
+            'SELECT id, name, description, is_active, is_default
+             FROM assignment_flows
+             WHERE deleted_at IS NULL
+             ORDER BY is_active DESC, is_default DESC, id ASC
              LIMIT 1'
         );
-        $stmt->execute(['code' => 'interessado']);
+        $flow = $stmt->fetch();
 
-        $status = $stmt->fetch();
-
-        return $status === false ? null : $status;
+        return $flow === false ? null : $flow;
     }
 
     /** @return array<string, mixed>|null */
-    public function nextStatus(int $sortOrder): ?array
+    public function activeFlowById(int $flowId): ?array
     {
+        $stmt = $this->db->prepare(
+            'SELECT id, name, description, is_active, is_default
+             FROM assignment_flows
+             WHERE id = :id
+               AND deleted_at IS NULL
+               AND is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $flowId]);
+        $flow = $stmt->fetch();
+
+        return $flow === false ? null : $flow;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function activeFlows(): array
+    {
+        $stmt = $this->db->query(
+            'SELECT id, name, description, is_default
+             FROM assignment_flows
+             WHERE deleted_at IS NULL
+               AND is_active = 1
+             ORDER BY is_default DESC, name ASC, id ASC'
+        );
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<string, mixed>|null */
+    public function personFlow(int $personId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.assignment_flow_id,
+                f.id AS flow_id,
+                f.name AS flow_name,
+                f.description AS flow_description,
+                f.is_active AS flow_is_active,
+                f.is_default AS flow_is_default
+             FROM people p
+             LEFT JOIN assignment_flows f
+               ON f.id = p.assignment_flow_id
+              AND f.deleted_at IS NULL
+             WHERE p.id = :id
+               AND p.deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $personId]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+
+        return $row;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function personMovementDefaults(int $personId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.id,
+                p.organ_id,
+                p.mte_destination,
+                p.assignment_flow_id
+             FROM people p
+             WHERE p.id = :id
+               AND p.deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $personId]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    public function updatePersonFlow(int $personId, int $flowId): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE people
+             SET assignment_flow_id = :flow_id,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $personId,
+            'flow_id' => $flowId,
+        ]);
+    }
+
+    /** @return array<string, mixed>|null */
+    public function initialStatus(?int $flowId = null): ?array
+    {
+        $targetFlowId = $flowId;
+        if ($targetFlowId === null || $targetFlowId <= 0) {
+            $defaultFlow = $this->defaultFlow();
+            $targetFlowId = $defaultFlow !== null ? (int) ($defaultFlow['id'] ?? 0) : 0;
+        }
+
+        if ($targetFlowId > 0) {
+            $stmt = $this->db->prepare(
+                'SELECT
+                    s.id,
+                    s.code,
+                    s.label,
+                    fs.sort_order,
+                    s.next_action_label,
+                    s.event_type,
+                    fs.node_kind
+                 FROM assignment_flow_steps fs
+                 INNER JOIN assignment_statuses s ON s.id = fs.status_id
+                 WHERE fs.flow_id = :flow_id
+                   AND fs.is_active = 1
+                   AND s.is_active = 1
+                 ORDER BY fs.is_initial DESC, fs.sort_order ASC, fs.id ASC
+                 LIMIT 1'
+            );
+            $stmt->execute(['flow_id' => $targetFlowId]);
+            $status = $stmt->fetch();
+            if ($status !== false) {
+                return $status;
+            }
+        }
+
+        $fallback = $this->db->prepare(
+            'SELECT id, code, label, sort_order, next_action_label, event_type, "activity" AS node_kind
+             FROM assignment_statuses
+             WHERE code = :code
+               AND is_active = 1
+             LIMIT 1'
+        );
+        $fallback->execute(['code' => 'interessado']);
+        $row = $fallback->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function nextStatus(int $sortOrder, ?int $flowId = null): ?array
+    {
+        if ($flowId !== null && $flowId > 0) {
+            $statuses = $this->statusesForFlow($flowId);
+            foreach ($statuses as $status) {
+                if ((int) ($status['sort_order'] ?? 0) > $sortOrder) {
+                    return $status;
+                }
+            }
+        }
+
         $stmt = $this->db->prepare(
             'SELECT id, code, label, sort_order, next_action_label, event_type
              FROM assignment_statuses
@@ -49,11 +199,142 @@ final class PipelineRepository
     public function allStatuses(): array
     {
         $stmt = $this->db->query(
-            'SELECT id, code, label, sort_order, next_action_label, event_type
+            'SELECT id, code, label, sort_order, next_action_label, event_type, is_active
              FROM assignment_statuses
              WHERE is_active = 1
              ORDER BY sort_order ASC'
         );
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function statusesForFlow(int $flowId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                s.id,
+                s.code,
+                s.label,
+                fs.sort_order,
+                s.next_action_label,
+                s.event_type,
+                fs.node_kind,
+                fs.is_initial
+             FROM assignment_flow_steps fs
+             INNER JOIN assignment_statuses s ON s.id = fs.status_id
+             WHERE fs.flow_id = :flow_id
+               AND fs.is_active = 1
+               AND s.is_active = 1
+             ORDER BY fs.sort_order ASC, fs.id ASC'
+        );
+        $stmt->execute(['flow_id' => $flowId]);
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function transitionsFromStatus(int $flowId, int $fromStatusId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                t.id,
+                t.flow_id,
+                t.from_status_id,
+                t.to_status_id,
+                t.transition_label,
+                t.action_label,
+                t.event_type,
+                t.sort_order,
+                sf.code AS from_code,
+                sf.label AS from_label,
+                st.code AS to_code,
+                st.label AS to_label,
+                fs_to.node_kind AS to_node_kind
+             FROM assignment_flow_transitions t
+             INNER JOIN assignment_statuses sf ON sf.id = t.from_status_id
+             INNER JOIN assignment_statuses st ON st.id = t.to_status_id
+             LEFT JOIN assignment_flow_steps fs_to
+               ON fs_to.flow_id = t.flow_id
+              AND fs_to.status_id = t.to_status_id
+              AND fs_to.is_active = 1
+             WHERE t.flow_id = :flow_id
+               AND t.from_status_id = :from_status_id
+               AND t.is_active = 1
+             ORDER BY t.sort_order ASC, t.id ASC'
+        );
+        $stmt->execute([
+            'flow_id' => $flowId,
+            'from_status_id' => $fromStatusId,
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<string, mixed>|null */
+    public function transitionById(int $flowId, int $transitionId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                t.id,
+                t.flow_id,
+                t.from_status_id,
+                t.to_status_id,
+                t.transition_label,
+                t.action_label,
+                t.event_type,
+                t.sort_order,
+                sf.code AS from_code,
+                sf.label AS from_label,
+                st.code AS to_code,
+                st.label AS to_label,
+                fs_to.node_kind AS to_node_kind
+             FROM assignment_flow_transitions t
+             INNER JOIN assignment_statuses sf ON sf.id = t.from_status_id
+             INNER JOIN assignment_statuses st ON st.id = t.to_status_id
+             LEFT JOIN assignment_flow_steps fs_to
+               ON fs_to.flow_id = t.flow_id
+              AND fs_to.status_id = t.to_status_id
+              AND fs_to.is_active = 1
+             WHERE t.id = :id
+               AND t.flow_id = :flow_id
+               AND t.is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'id' => $transitionId,
+            'flow_id' => $flowId,
+        ]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function transitionsForFlow(int $flowId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                t.id,
+                t.flow_id,
+                t.from_status_id,
+                t.to_status_id,
+                t.transition_label,
+                t.action_label,
+                t.event_type,
+                t.sort_order,
+                sf.code AS from_code,
+                sf.label AS from_label,
+                st.code AS to_code,
+                st.label AS to_label
+             FROM assignment_flow_transitions t
+             INNER JOIN assignment_statuses sf ON sf.id = t.from_status_id
+             INNER JOIN assignment_statuses st ON st.id = t.to_status_id
+             WHERE t.flow_id = :flow_id
+               AND t.is_active = 1
+             ORDER BY t.sort_order ASC, t.id ASC'
+        );
+        $stmt->execute(['flow_id' => $flowId]);
 
         return $stmt->fetchAll();
     }
@@ -78,7 +359,17 @@ final class PipelineRepository
             'SELECT
                 a.id,
                 a.person_id,
+                a.flow_id,
                 a.modality_id,
+                a.movement_direction,
+                a.financial_nature,
+                a.counterparty_organ_id,
+                a.origin_mte_destination_id,
+                a.destination_mte_destination_id,
+                a.requested_end_date,
+                a.effective_end_date,
+                a.termination_reason,
+                a.movement_code,
                 a.assigned_user_id,
                 a.mte_unit,
                 a.target_start_date,
@@ -89,16 +380,32 @@ final class PipelineRepository
                 a.updated_at,
                 s.code AS current_status_code,
                 s.label AS current_status_label,
-                s.sort_order AS current_status_order,
+                COALESCE(fs.sort_order, s.sort_order) AS current_status_order,
+                COALESCE(fs.node_kind, "activity") AS current_node_kind,
                 s.next_action_label AS current_next_action_label,
                 s.event_type AS current_event_type,
+                f.name AS flow_name,
+                f.description AS flow_description,
+                f.is_default AS flow_is_default,
                 m.name AS modality_name,
-                au.name AS assigned_user_name
+                au.name AS assigned_user_name,
+                co.name AS counterparty_organ_name,
+                omd.name AS origin_mte_destination_name,
+                dmd.name AS destination_mte_destination_name
              FROM assignments a
              INNER JOIN assignment_statuses s ON s.id = a.current_status_id
+             LEFT JOIN assignment_flow_steps fs
+               ON fs.flow_id = a.flow_id
+              AND fs.status_id = a.current_status_id
+              AND fs.is_active = 1
+             LEFT JOIN assignment_flows f ON f.id = a.flow_id AND f.deleted_at IS NULL
              LEFT JOIN modalities m ON m.id = a.modality_id
              LEFT JOIN users au ON au.id = a.assigned_user_id AND au.deleted_at IS NULL
+             LEFT JOIN organs co ON co.id = a.counterparty_organ_id AND co.deleted_at IS NULL
+             LEFT JOIN mte_destinations omd ON omd.id = a.origin_mte_destination_id AND omd.deleted_at IS NULL
+             LEFT JOIN mte_destinations dmd ON dmd.id = a.destination_mte_destination_id AND dmd.deleted_at IS NULL
              WHERE a.person_id = :person_id AND a.deleted_at IS NULL
+             ORDER BY a.updated_at DESC, a.id DESC
              LIMIT 1'
         );
         $stmt->execute(['person_id' => $personId]);
@@ -109,16 +416,30 @@ final class PipelineRepository
 
     public function createAssignment(
         int $personId,
+        ?int $flowId,
         ?int $modalityId,
         int $statusId,
         ?int $assignedUserId = null,
-        string $priorityLevel = 'normal'
+        string $priorityLevel = 'normal',
+        ?string $movementDirection = null,
+        ?string $financialNature = null,
+        ?int $counterpartyOrganId = null,
+        ?int $originMteDestinationId = null,
+        ?int $destinationMteDestinationId = null,
+        ?string $movementCode = null
     ): int
     {
         $stmt = $this->db->prepare(
             'INSERT INTO assignments (
                 person_id,
+                flow_id,
                 modality_id,
+                movement_direction,
+                financial_nature,
+                counterparty_organ_id,
+                origin_mte_destination_id,
+                destination_mte_destination_id,
+                movement_code,
                 assigned_user_id,
                 mte_unit,
                 target_start_date,
@@ -129,7 +450,14 @@ final class PipelineRepository
                 updated_at
             ) VALUES (
                 :person_id,
+                :flow_id,
                 :modality_id,
+                :movement_direction,
+                :financial_nature,
+                :counterparty_organ_id,
+                :origin_mte_destination_id,
+                :destination_mte_destination_id,
+                :movement_code,
                 :assigned_user_id,
                 NULL,
                 NULL,
@@ -143,13 +471,50 @@ final class PipelineRepository
 
         $stmt->execute([
             'person_id' => $personId,
+            'flow_id' => $flowId,
             'modality_id' => $modalityId,
+            'movement_direction' => $movementDirection ?? 'entrada_mte',
+            'financial_nature' => $financialNature ?? 'despesa_reembolso',
+            'counterparty_organ_id' => $counterpartyOrganId,
+            'origin_mte_destination_id' => $originMteDestinationId,
+            'destination_mte_destination_id' => $destinationMteDestinationId,
+            'movement_code' => $movementCode,
             'assigned_user_id' => $assignedUserId,
             'current_status_id' => $statusId,
             'priority_level' => $priorityLevel,
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    public function updateAssignmentMovementContext(
+        int $assignmentId,
+        string $movementDirection,
+        string $financialNature,
+        ?int $counterpartyOrganId,
+        ?int $originMteDestinationId,
+        ?int $destinationMteDestinationId
+    ): bool {
+        $stmt = $this->db->prepare(
+            'UPDATE assignments
+             SET movement_direction = :movement_direction,
+                 financial_nature = :financial_nature,
+                 counterparty_organ_id = :counterparty_organ_id,
+                 origin_mte_destination_id = :origin_mte_destination_id,
+                 destination_mte_destination_id = :destination_mte_destination_id,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $assignmentId,
+            'movement_direction' => $movementDirection,
+            'financial_nature' => $financialNature,
+            'counterparty_organ_id' => $counterpartyOrganId,
+            'origin_mte_destination_id' => $originMteDestinationId,
+            'destination_mte_destination_id' => $destinationMteDestinationId,
+        ]);
     }
 
     public function updateAssignmentModality(int $assignmentId, ?int $modalityId): bool
@@ -180,6 +545,22 @@ final class PipelineRepository
             'id' => $assignmentId,
             'status_id' => $statusId,
             'effective_start_date' => $effectiveStartDate,
+        ]);
+    }
+
+    public function updateAssignmentFlow(int $assignmentId, int $flowId): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE assignments
+             SET flow_id = :flow_id,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $assignmentId,
+            'flow_id' => $flowId,
         ]);
     }
 
@@ -225,6 +606,34 @@ final class PipelineRepository
              LIMIT 1'
         );
         $stmt->execute(['id' => $userId]);
+
+        return $stmt->fetch() !== false;
+    }
+
+    public function organExists(int $organId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id
+             FROM organs
+             WHERE id = :id
+               AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $organId]);
+
+        return $stmt->fetch() !== false;
+    }
+
+    public function mteDestinationExistsById(int $destinationId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id
+             FROM mte_destinations
+             WHERE id = :id
+               AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $destinationId]);
 
         return $stmt->fetch() !== false;
     }

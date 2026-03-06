@@ -1,23 +1,51 @@
 # Changelog
 
-## 2026-03-05 — Ciclo 9.19 concluido (Evolucao assistida por IA no dossie documental)
-- Entregue conferencia assistida por IA no Perfil 360 com execucao manual protegida:
-  - nova rota `POST /people/documents/intelligence/run` (permissao `people.manage` + CSRF)
-  - acao e painel de resultados incorporados em `app/Views/people/show.php`
-- Nova base de dados para inteligencia documental:
-  - migration `040_phase9_document_intelligence.sql`
-  - tabelas `document_ai_reviews`, `document_ai_extractions` e `document_ai_findings`
-- Novo modulo de dominio:
-  - `DocumentIntelligenceRepository` (persistencia e consultas de extracoes/findings/historico)
-  - `DocumentIntelligenceService` com:
-    - extracao automatica de campos (SEI, CPF, competencia e valor) a partir do dossie
-    - deteccao de inconsistencias por regras (SEI divergente/ausente, competencia ausente, duplicidade)
-    - deteccao de anomalias de valor por referencia estatistica (z-score por tipo documental)
-    - sugestao automatica de justificativas para divergencias recorrentes (`cost_mirror_divergences`) usando historico + fallback por template
-- `PeopleController` ampliado para:
-  - expor `documentIntelligence` no payload do Perfil 360
-  - executar `runDocumentIntelligence` com trilha de auditoria/eventos
-- Checklist da etapa adicionado em `tests/checklist-etapa-9.19-ia-assistida.md`.
+## 2026-03-05 — Ciclo 10.1 concluido (Pipeline BPMN configuravel por fluxo + triagem unificada)
+- Criada migration `042_phase10_pipeline_bpmn_flows.sql` com:
+  - novas tabelas `assignment_flows`, `assignment_flow_steps` e `assignment_flow_transitions`
+  - vinculo de fluxo em `people.assignment_flow_id` e `assignments.flow_id`
+  - backfill para fluxo padrao e transicoes iniciais
+  - unificacao da etapa inicial para `Interessado/Triagem` (desativando `triagem` no fluxo padrao)
+- `PipelineService`/`PipelineRepository` evoluidos para:
+  - inicializar movimentacao por fluxo selecionado da pessoa
+  - avancar por transicao BPMN (nao-linear), com suporte a multiplas saidas de decisao
+  - expor no Perfil 360 as opcoes de transicao disponiveis por etapa atual
+- Cadastro de pessoa atualizado:
+  - novo campo obrigatorio de fluxo BPMN no formulario (`create/edit`)
+  - validacao e persistencia de `assignment_flow_id`
+- Nova gestao de fluxos BPMN:
+  - `PipelineFlowsController`, `PipelineFlowService` e `PipelineFlowRepository`
+  - rotas protegidas `/pipeline-flows/*` para CRUD de fluxos, etapas e transicoes
+  - novas views em `app/Views/pipeline_flows/*` para cadastro e reordenacao operacional
+- UX do pipeline no Perfil 360 revisada:
+  - remocao da jornada linear fixa
+  - botao de avanco substituido por acao contextual de transicao (com seletor em pontos de decisao)
+  - visao do fluxo com etapas e tipo BPMN (atividade/decisao/final)
+- Navegacao atualizada:
+  - novo item de menu `Fluxos BPMN` e acao rapida `Novo fluxo BPMN` para perfis com `people.manage`
+
+## 2026-03-05 — Ciclo 9.20 concluido (Cadastro institucional de orgaos + importacao a partir de markdown)
+- Criada migration `041_phase9_organs_institutional_metadata.sql` para evoluir `organs` com:
+  - `organ_type`
+  - `government_level`
+  - `government_branch`
+  - `supervising_organ`
+  - `source_name`
+  - `source_url`
+  - indices `idx_organs_type_level_branch` e `idx_organs_supervising_organ`
+- `OrganService` ampliado para:
+  - suportar os novos campos em `create/update/importCsv`
+  - normalizar aliases CSV para tipo/esfera/poder/origem
+  - validar `government_level`, `government_branch` e `source_url`
+- `OrganRepository` ampliado para:
+  - persistir e consultar os novos campos
+  - incluir classificacao institucional na busca e ordenacao da listagem
+- UI de Orgaos atualizada:
+  - formulario com campos de classificacao institucional e fonte dos dados
+  - tela de listagem com coluna de classificacao
+  - tela de detalhe com metadados institucionais e referencia externa
+- Documento operacional `docs/orgaos_estatais_autarquias_etc.md` reestruturado com plano de importacao e dataset CSV embutido
+- Adicionado script `scripts/import-organs-from-markdown.php` para extrair o bloco CSV do markdown e importar via `OrganService` (com modo `--validate-only`)
 
 ## 2026-03-05 — Ciclo 9.18 concluido (RF-45 + RNF-07: painel financeiro completo e observabilidade estruturada)
 - Fechamento do `RF-45` no modulo de relatorios premium (`GET /reports`):

@@ -20,6 +20,7 @@ final class InvoicesController extends Controller
         $filters = [
             'q' => (string) $request->input('q', ''),
             'status' => (string) $request->input('status', ''),
+            'financial_nature' => (string) $request->input('financial_nature', ''),
             'organ_id' => max(0, (int) $request->input('organ_id', '0')),
             'reference_month' => (string) $request->input('reference_month', ''),
             'sort' => (string) $request->input('sort', 'due_date'),
@@ -45,6 +46,7 @@ final class InvoicesController extends Controller
                 'pages' => $result['pages'],
             ],
             'statusOptions' => $this->service()->statusOptions(),
+            'financialNatureOptions' => $this->service()->financialNatureOptions(true),
             'organs' => $this->service()->activeOrgans(),
             'canManage' => $this->app->auth()->hasPermission('invoice.manage'),
         ]);
@@ -56,6 +58,7 @@ final class InvoicesController extends Controller
             'title' => 'Novo boleto',
             'invoice' => $this->emptyInvoice(),
             'statusOptions' => $this->service()->statusOptions(),
+            'financialNatureOptions' => $this->service()->financialNatureOptions(false),
             'organs' => $this->service()->activeOrgans(),
         ]);
     }
@@ -65,6 +68,7 @@ final class InvoicesController extends Controller
         $filters = [
             'q' => (string) $request->input('q', ''),
             'status' => (string) $request->input('status', ''),
+            'financial_nature' => (string) $request->input('financial_nature', ''),
             'organ_id' => max(0, (int) $request->input('organ_id', '0')),
             'reference_month' => (string) $request->input('reference_month', ''),
             'payment_date_from' => (string) $request->input('payment_date_from', ''),
@@ -72,6 +76,14 @@ final class InvoicesController extends Controller
             'sort' => (string) $request->input('sort', 'created_at'),
             'dir' => (string) $request->input('dir', 'desc'),
         ];
+        $oldInput = Session::getFlash('_old', []);
+        if (
+            is_array($oldInput)
+            && (string) $filters['financial_nature'] === ''
+            && isset($oldInput['financial_nature'])
+        ) {
+            $filters['financial_nature'] = (string) $oldInput['financial_nature'];
+        }
 
         $page = max(1, (int) $request->input('page', '1'));
         $perPage = max(5, min(50, (int) $request->input('per_page', '10')));
@@ -81,8 +93,6 @@ final class InvoicesController extends Controller
         $candidates = $canManage
             ? $this->service()->paymentBatchCandidates($filters, 220)
             : [];
-
-        $oldInput = Session::getFlash('_old', []);
         $selectedPaymentIds = [];
         if (is_array($oldInput) && isset($oldInput['payment_ids'])) {
             $selectedPaymentIds = array_values(array_filter(
@@ -107,6 +117,7 @@ final class InvoicesController extends Controller
             'candidates' => $candidates,
             'selectedPaymentIds' => $selectedPaymentIds,
             'statusOptions' => $this->service()->paymentBatchStatusOptions(),
+            'financialNatureOptions' => $this->service()->financialNatureOptions(true),
             'organs' => $this->service()->activeOrgans(),
             'canManage' => $canManage,
         ]);
@@ -282,6 +293,7 @@ final class InvoicesController extends Controller
             'title' => 'Editar boleto',
             'invoice' => $invoice,
             'statusOptions' => $this->service()->statusOptions(),
+            'financialNatureOptions' => $this->service()->financialNatureOptions(false),
             'organs' => $this->service()->activeOrgans(),
         ]);
     }
@@ -512,6 +524,7 @@ final class InvoicesController extends Controller
             'due_date' => '',
             'total_amount' => '',
             'status' => 'aberto',
+            'financial_nature' => 'despesa_reembolso',
             'digitable_line' => '',
             'reference_code' => '',
             'notes' => '',

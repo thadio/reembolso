@@ -37,7 +37,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
   <div class="header-row">
     <div>
       <h2>Órgãos de Origem</h2>
-      <p class="muted">Busca por nome, sigla e CNPJ.</p>
+      <p class="muted">Busca por nome, sigla, CNPJ e classificacao institucional.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>
       <a class="btn btn-primary" href="<?= e(url('/organs/create')) ?>">Novo órgão</a>
@@ -53,12 +53,12 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
         Apenas validar (sem gravar)
       </label>
       <button type="submit" class="btn btn-outline">Importar CSV</button>
-      <span class="muted">Cabecalho minimo: <code>name</code> (aceita aliases: <code>nome, orgao</code>).</span>
+      <span class="muted">Cabecalho minimo: <code>name</code>. Tambem aceita <code>organ_type, government_level, government_branch, supervising_organ, source_name, source_url</code>.</span>
     </form>
   <?php endif; ?>
 
   <form method="get" action="<?= e(url('/organs')) ?>" class="filters-row">
-    <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome, sigla ou CNPJ">
+    <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome, sigla, CNPJ ou classificacao">
 
     <select name="sort">
       <option value="name" <?= $sort === 'name' ? 'selected' : '' ?>>Ordenar por nome</option>
@@ -94,6 +94,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
             <th><a href="<?= e($buildUrl(['sort' => 'name', 'dir' => $nextDir('name'), 'page' => 1])) ?>">Nome</a></th>
             <th><a href="<?= e($buildUrl(['sort' => 'acronym', 'dir' => $nextDir('acronym'), 'page' => 1])) ?>">Sigla</a></th>
             <th><a href="<?= e($buildUrl(['sort' => 'cnpj', 'dir' => $nextDir('cnpj'), 'page' => 1])) ?>">CNPJ</a></th>
+            <th><a href="<?= e($buildUrl(['sort' => 'organ_type', 'dir' => $nextDir('organ_type'), 'page' => 1])) ?>">Classificacao</a></th>
             <th>Contato</th>
             <th>Localidade</th>
             <th>Ações</th>
@@ -105,6 +106,12 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
               <td><?= e((string) ($organ['name'] ?? '')) ?></td>
               <td><?= e((string) ($organ['acronym'] ?? '-')) ?></td>
               <td><?= e((string) ($organ['cnpj'] ?? '-')) ?></td>
+              <td>
+                <?= e((string) (!empty($organ['organ_type']) ? ucfirst(str_replace('_', ' ', (string) $organ['organ_type'])) : '-')) ?>
+                <?php if (!empty($organ['government_level'])): ?>
+                  <div class="muted"><?= e((string) ucfirst(str_replace('_', ' ', (string) $organ['government_level']))) ?></div>
+                <?php endif; ?>
+              </td>
               <td>
                 <?= e((string) ($organ['contact_email'] ?? '-')) ?>
                 <?php if (!empty($organ['contact_phone'])): ?>

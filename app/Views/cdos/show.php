@@ -56,7 +56,7 @@ $statusBadgeClass = static function (string $status): string {
 
 $personStatusLabel = static function (string $status): string {
     return match ($status) {
-        'interessado' => 'Interessado',
+        'interessado' => 'Interessado/Triagem',
         'triagem' => 'Triagem',
         'selecionado' => 'Selecionado',
         'oficio_orgao' => 'Oficio orgao',

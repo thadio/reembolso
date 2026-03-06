@@ -57,7 +57,6 @@ Se segredo entrou no historico do Git:
   - `POST /people/pipeline/checklist/update` exige `people.manage`
   - `POST /people/timeline/store` e `POST /people/timeline/rectify` exigem `people.manage`
   - `POST /people/documents/store` exige `people.manage`; classificacao `restricted/sensitive` exige `people.documents.sensitive`
-  - `POST /people/documents/intelligence/run` exige `people.manage` e CSRF (conferencia assistida por IA no Perfil 360)
   - `POST /people/documents/version/store` exige `people.manage`; versionamento de documentos `restricted/sensitive` exige `people.documents.sensitive`
   - `POST /people/import-csv` exige `people.manage` e validacao CSRF
   - `POST /organs/import-csv` exige `organs.manage` e validacao CSRF

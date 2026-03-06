@@ -8,7 +8,6 @@ use App\Core\Request;
 use App\Core\Session;
 use App\Repositories\CostPlanRepository;
 use App\Repositories\DocumentRepository;
-use App\Repositories\DocumentIntelligenceRepository;
 use App\Repositories\LgpdRepository;
 use App\Repositories\PersonAuditRepository;
 use App\Repositories\PipelineRepository;
@@ -20,7 +19,6 @@ use App\Repositories\ReimbursementRepository;
 use App\Repositories\SecuritySettingsRepository;
 use App\Services\CostPlanService;
 use App\Services\DocumentService;
-use App\Services\DocumentIntelligenceService;
 use App\Services\LgpdService;
 use App\Services\PersonAuditService;
 use App\Services\PersonDossierExportService;
@@ -123,13 +121,23 @@ final class PeopleController extends Controller
 
     public function create(Request $request): void
     {
+        $assignmentFlows = $this->pipelineService()->activeFlows();
+        $person = $this->emptyPerson();
+        if ($assignmentFlows !== [] && trim((string) ($person['assignment_flow_id'] ?? '')) === '') {
+            $person['assignment_flow_id'] = (string) ((int) ($assignmentFlows[0]['id'] ?? 0));
+        }
+
         $this->view('people/create', [
             'title' => 'Nova Pessoa',
-            'person' => $this->emptyPerson(),
+            'person' => $person,
+            'assignment' => null,
             'statuses' => $this->service()->statuses(),
             'organs' => $this->service()->activeOrgans(),
             'modalities' => $this->service()->activeModalities(),
             'mteDestinations' => $this->service()->activeMteDestinations(),
+            'assignmentFlows' => $assignmentFlows,
+            'movementDirectionOptions' => $this->pipelineService()->movementDirectionOptions(),
+            'financialNatureOptions' => $this->pipelineService()->financialNatureOptions(),
         ]);
     }
 
@@ -137,6 +145,21 @@ final class PeopleController extends Controller
     {
         $input = $request->all();
         Session::flashInput($input);
+
+        $movementValidation = $this->pipelineService()->validateMovementContext(
+            $this->movementContextPayload($input)
+        );
+        if (!$movementValidation['ok']) {
+            flash('error', implode(' ', $movementValidation['errors']));
+            $this->redirect('/people/create');
+        }
+
+        $movementContext = is_array($movementValidation['context'] ?? null) ? $movementValidation['context'] : [];
+        $movementDirection = (string) ($movementContext['movement_direction'] ?? 'entrada_mte');
+        $referenceDestinationId = $movementDirection === 'saida_mte'
+            ? (int) ($movementContext['origin_mte_destination_id'] ?? 0)
+            : (int) ($movementContext['destination_mte_destination_id'] ?? 0);
+        $input['mte_destination'] = $this->resolveMteDestinationName($referenceDestinationId) ?? '';
 
         $result = $this->service()->create(
             $input,
@@ -155,7 +178,8 @@ final class PeopleController extends Controller
             modalityId: isset($result['data']['desired_modality_id']) ? (int) $result['data']['desired_modality_id'] : null,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
-            userAgent: $request->userAgent()
+            userAgent: $request->userAgent(),
+            movementContext: $movementContext
         );
 
         flash('success', 'Pessoa cadastrada com sucesso.');
@@ -242,7 +266,6 @@ final class PeopleController extends Controller
         $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
         $canViewSensitiveDocuments = $this->app->auth()->hasPermission('people.documents.sensitive');
         $documents = $this->documentService()->profileData($id, $documentsPage, 8, $canViewSensitiveDocuments);
-        $documentIntelligence = $this->documentIntelligenceService()->profileData($id);
         $costs = $this->costService()->profileData($id);
         $conciliation = $this->conciliationService()->profileData($id, 8);
         $reimbursements = $this->reimbursementService()->profileData($id, 80);
@@ -315,7 +338,6 @@ final class PeopleController extends Controller
             'person' => $person,
             'pipeline' => $pipeline,
             'documents' => $documents,
-            'documentIntelligence' => $documentIntelligence,
             'costs' => $costs,
             'conciliation' => $conciliation,
             'reimbursements' => $reimbursements,
@@ -349,10 +371,14 @@ final class PeopleController extends Controller
         $this->view('people/edit', [
             'title' => 'Editar Pessoa',
             'person' => $person,
+            'assignment' => $this->pipelineService()->profileData($id, 1, 1)['assignment'] ?? null,
             'statuses' => $this->service()->statuses(),
             'organs' => $this->service()->activeOrgans(),
             'modalities' => $this->service()->activeModalities(),
             'mteDestinations' => $this->service()->activeMteDestinations(),
+            'assignmentFlows' => $this->pipelineService()->activeFlows(),
+            'movementDirectionOptions' => $this->pipelineService()->movementDirectionOptions(),
+            'financialNatureOptions' => $this->pipelineService()->financialNatureOptions(),
         ]);
     }
 
@@ -366,6 +392,21 @@ final class PeopleController extends Controller
 
         $input = $request->all();
         Session::flashInput($input);
+
+        $movementValidation = $this->pipelineService()->validateMovementContext(
+            $this->movementContextPayload($input)
+        );
+        if (!$movementValidation['ok']) {
+            flash('error', implode(' ', $movementValidation['errors']));
+            $this->redirect('/people/edit?id=' . $id);
+        }
+
+        $movementContext = is_array($movementValidation['context'] ?? null) ? $movementValidation['context'] : [];
+        $movementDirection = (string) ($movementContext['movement_direction'] ?? 'entrada_mte');
+        $referenceDestinationId = $movementDirection === 'saida_mte'
+            ? (int) ($movementContext['origin_mte_destination_id'] ?? 0)
+            : (int) ($movementContext['destination_mte_destination_id'] ?? 0);
+        $input['mte_destination'] = $this->resolveMteDestinationName($referenceDestinationId) ?? '';
 
         $result = $this->service()->update(
             $id,
@@ -385,7 +426,8 @@ final class PeopleController extends Controller
             modalityId: isset($result['data']['desired_modality_id']) ? (int) $result['data']['desired_modality_id'] : null,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
-            userAgent: $request->userAgent()
+            userAgent: $request->userAgent(),
+            movementContext: $movementContext
         );
 
         flash('success', 'Pessoa atualizada com sucesso.');
@@ -419,6 +461,7 @@ final class PeopleController extends Controller
     public function advancePipeline(Request $request): void
     {
         $id = (int) $request->input('id', '0');
+        $transitionId = max(0, (int) $request->input('transition_id', '0'));
         if ($id <= 0) {
             flash('error', 'Pessoa inválida.');
             $this->redirect('/people');
@@ -426,6 +469,7 @@ final class PeopleController extends Controller
 
         $result = $this->pipelineService()->advance(
             personId: $id,
+            transitionId: $transitionId > 0 ? $transitionId : null,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
             userAgent: $request->userAgent()
@@ -433,11 +477,11 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', $result['message']);
-            $this->redirect('/people/show?id=' . $id);
+            $this->redirect('/people/show?id=' . $id . '&tab=timeline');
         }
 
         flash('success', $result['message']);
-        $this->redirect('/people/show?id=' . $id);
+        $this->redirect('/people/show?id=' . $id . '&tab=timeline&focus=history');
     }
 
     public function updatePipelineQueue(Request $request): void
@@ -464,11 +508,11 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
         }
 
         flash('success', $result['message']);
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
     }
 
     public function updatePipelineChecklist(Request $request): void
@@ -495,11 +539,11 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
         }
 
         flash('success', $result['message']);
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
     }
 
     public function storeTimelineEvent(Request $request): void
@@ -535,7 +579,7 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
         }
 
         flash('success', $result['message']);
@@ -543,7 +587,7 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
     }
 
     public function rectifyTimelineEvent(Request $request): void
@@ -577,7 +621,7 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
         }
 
         flash('success', $result['message']);
@@ -585,7 +629,7 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
     }
 
     public function downloadTimelineAttachment(Request $request): void
@@ -695,37 +739,6 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
-    }
-
-    public function runDocumentIntelligence(Request $request): void
-    {
-        $personId = (int) $request->input('person_id', '0');
-        if ($personId <= 0) {
-            flash('error', 'Pessoa invalida para conferencia assistida.');
-            $this->redirect('/people');
-        }
-
-        $person = $this->service()->find($personId);
-        if ($person === null) {
-            flash('error', 'Pessoa nao encontrada.');
-            $this->redirect('/people');
-        }
-
-        $result = $this->documentIntelligenceService()->runPersonReview(
-            personId: $personId,
-            expectedSei: (string) ($person['sei_process_number'] ?? ''),
-            userId: (int) ($this->app->auth()->id() ?? 0),
-            ip: $request->ip(),
-            userAgent: $request->userAgent()
-        );
-
-        if (!$result['ok']) {
-            flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
-        }
-
-        flash('success', $result['message']);
         $this->redirect('/people/show?id=' . $personId);
     }
 
@@ -1339,6 +1352,11 @@ final class PeopleController extends Controller
         return [
             'organ_id' => '',
             'desired_modality_id' => '',
+            'assignment_flow_id' => '',
+            'movement_direction' => 'entrada_mte',
+            'financial_nature' => 'despesa_reembolso',
+            'origin_mte_destination_id' => '',
+            'destination_mte_destination_id' => '',
             'name' => '',
             'cpf' => '',
             'birth_date' => '',
@@ -1350,6 +1368,42 @@ final class PeopleController extends Controller
             'tags' => '',
             'notes' => '',
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function movementContextPayload(array $input): array
+    {
+        return [
+            'movement_direction' => (string) ($input['movement_direction'] ?? 'entrada_mte'),
+            'financial_nature' => (string) ($input['financial_nature'] ?? ''),
+            'counterparty_organ_id' => max(0, (int) ($input['organ_id'] ?? 0)),
+            'origin_mte_destination_id' => max(0, (int) ($input['origin_mte_destination_id'] ?? 0)),
+            'destination_mte_destination_id' => max(0, (int) ($input['destination_mte_destination_id'] ?? 0)),
+        ];
+    }
+
+    private function resolveMteDestinationName(int $destinationId): ?string
+    {
+        if ($destinationId <= 0) {
+            return null;
+        }
+
+        foreach ($this->service()->activeMteDestinations() as $destination) {
+            $id = (int) ($destination['id'] ?? 0);
+            if ($id !== $destinationId) {
+                continue;
+            }
+
+            $name = trim((string) ($destination['name'] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return null;
     }
 
     private function service(): PeopleService
@@ -1382,15 +1436,6 @@ final class PeopleController extends Controller
             $this->app->config(),
             $this->lgpdService(),
             $this->securityService()
-        );
-    }
-
-    private function documentIntelligenceService(): DocumentIntelligenceService
-    {
-        return new DocumentIntelligenceService(
-            new DocumentIntelligenceRepository($this->app->db()),
-            $this->app->audit(),
-            $this->app->events()
         );
     }
 

@@ -10,6 +10,7 @@ use App\Repositories\InvoiceRepository;
 final class InvoiceService
 {
     private const ALLOWED_STATUSES = ['aberto', 'vencido', 'pago_parcial', 'pago', 'cancelado'];
+    private const ALLOWED_FINANCIAL_NATURES = ['despesa_reembolso', 'receita_reembolso'];
     private const FINAL_STATUSES = ['pago', 'cancelado'];
     private const PAYMENT_BATCH_ALLOWED_STATUS = ['aberto', 'em_processamento', 'pago', 'cancelado'];
     private const PAYMENT_BATCH_FINAL_STATUS = ['pago', 'cancelado'];
@@ -136,8 +137,12 @@ final class InvoiceService
         $scheduledDateRaw = $this->clean($input['scheduled_payment_date'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
         $paymentIds = $this->collectPositiveIds($input['payment_ids'] ?? []);
+        $financialNatureRaw = $this->normalizeFinancialNature($input['financial_nature'] ?? null, true);
 
         $errors = [];
+        if ($financialNatureRaw === null) {
+            $errors[] = 'Natureza financeira do lote invalida.';
+        }
 
         if ($title !== null && mb_strlen($title) > 190) {
             $errors[] = 'Titulo do lote excede limite de 190 caracteres.';
@@ -197,6 +202,35 @@ final class InvoiceService
             ];
         }
 
+        $detectedFinancialNatures = [];
+        foreach ($eligiblePayments as $payment) {
+            $candidate = (string) ($payment['invoice_financial_nature'] ?? $payment['financial_nature'] ?? '');
+            $normalizedCandidate = $this->normalizeFinancialNature($candidate, true);
+            $resolvedNature = $normalizedCandidate === null || $normalizedCandidate === ''
+                ? 'despesa_reembolso'
+                : $normalizedCandidate;
+            $detectedFinancialNatures[$resolvedNature] = true;
+        }
+
+        if (count($detectedFinancialNatures) > 1) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel criar lote de pagamento.',
+                'errors' => ['Selecione pagamentos de uma unica natureza financeira por lote.'],
+            ];
+        }
+
+        $detectedFinancialNature = (string) (array_key_first($detectedFinancialNatures) ?? 'despesa_reembolso');
+        $batchFinancialNature = $financialNatureRaw === '' ? $detectedFinancialNature : (string) $financialNatureRaw;
+
+        if ($batchFinancialNature !== $detectedFinancialNature) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel criar lote de pagamento.',
+                'errors' => ['A natureza financeira informada diverge dos pagamentos selecionados.'],
+            ];
+        }
+
         $totalAmount = 0.0;
         foreach ($eligiblePayments as $payment) {
             $totalAmount += (float) ($payment['amount'] ?? 0);
@@ -208,6 +242,7 @@ final class InvoiceService
             'batch_code' => $batchCode,
             'title' => $title === null ? null : mb_substr($title, 0, 190),
             'status' => 'aberto',
+            'financial_nature' => $batchFinancialNature,
             'reference_month' => $referenceMonth,
             'scheduled_payment_date' => $scheduledPaymentDate,
             'total_amount' => $totalAmountFormatted,
@@ -253,6 +288,7 @@ final class InvoiceService
                 afterData: [
                     'batch_code' => $batchCode,
                     'status' => 'aberto',
+                    'financial_nature' => $batchFinancialNature,
                     'payments_count' => $paymentsCount,
                     'total_amount' => $totalAmountFormatted,
                     'reference_month' => $referenceMonth,
@@ -272,6 +308,7 @@ final class InvoiceService
                 payload: [
                     'batch_id' => $batchId,
                     'batch_code' => $batchCode,
+                    'financial_nature' => $batchFinancialNature,
                     'payments_count' => $paymentsCount,
                     'total_amount' => $totalAmountFormatted,
                 ],
@@ -681,6 +718,22 @@ final class InvoiceService
             ['value' => 'pago', 'label' => 'Pago'],
             ['value' => 'cancelado', 'label' => 'Cancelado'],
         ];
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function financialNatureOptions(bool $includeAll = false): array
+    {
+        $options = [];
+        if ($includeAll) {
+            $options[] = ['value' => '', 'label' => 'Todas as naturezas'];
+        }
+
+        $options[] = ['value' => 'despesa_reembolso', 'label' => 'Despesa de reembolso (a pagar)'];
+        $options[] = ['value' => 'receita_reembolso', 'label' => 'Receita de reembolso (a receber)'];
+
+        return $options;
     }
 
     /**
@@ -1281,6 +1334,7 @@ final class InvoiceService
                 'invoice_id' => $invoiceId,
                 'payment_date' => $paymentDate,
                 'amount' => $amount,
+                'financial_nature' => (string) ($invoice['financial_nature'] ?? 'despesa_reembolso'),
                 'process_reference' => $processReference === null ? null : mb_substr($processReference, 0, 120),
                 'proof_original_name' => $proofMeta['proof_original_name'] ?? null,
                 'proof_stored_name' => $proofMeta['proof_stored_name'] ?? null,
@@ -1569,6 +1623,7 @@ final class InvoiceService
         $dueDateRaw = $this->clean($input['due_date'] ?? null);
         $totalAmount = $this->parseMoneyStrict($input['total_amount'] ?? null);
         $status = mb_strtolower((string) ($input['status'] ?? 'aberto'));
+        $financialNature = $this->normalizeFinancialNature($input['financial_nature'] ?? null);
         $digitableLine = $this->clean($input['digitable_line'] ?? null);
         $referenceCode = $this->clean($input['reference_code'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
@@ -1614,6 +1669,10 @@ final class InvoiceService
             $errors[] = 'Status do boleto invalido.';
         }
 
+        if ($financialNature === null) {
+            $errors[] = 'Natureza financeira do boleto invalida.';
+        }
+
         $data = [
             'organ_id' => $organId,
             'invoice_number' => $invoiceNumber === null ? '' : mb_substr($invoiceNumber, 0, 120),
@@ -1623,6 +1682,7 @@ final class InvoiceService
             'due_date' => $dueDate,
             'total_amount' => $totalAmount,
             'status' => $status,
+            'financial_nature' => $financialNature ?? 'despesa_reembolso',
             'digitable_line' => $digitableLine === null ? null : mb_substr($digitableLine, 0, 255),
             'reference_code' => $referenceCode === null ? null : mb_substr($referenceCode, 0, 120),
             'notes' => $notes,
@@ -1915,6 +1975,7 @@ final class InvoiceService
 
         $referenceMonthNormalized = $this->normalizeReferenceMonth($this->clean($filters['reference_month'] ?? null));
         $referenceMonth = $referenceMonthNormalized === null ? '' : substr($referenceMonthNormalized, 0, 7);
+        $financialNature = $this->normalizeFinancialNature($filters['financial_nature'] ?? null, true);
 
         $sortRaw = trim((string) ($filters['sort'] ?? 'created_at'));
         $allowedSort = ['batch_code', 'status', 'scheduled_payment_date', 'payments_count', 'total_amount', 'created_at'];
@@ -1928,6 +1989,7 @@ final class InvoiceService
             'status' => $status,
             'organ_id' => max(0, (int) ($filters['organ_id'] ?? 0)),
             'reference_month' => $referenceMonth,
+            'financial_nature' => $financialNature ?? '',
             'sort' => $sort,
             'dir' => $dir,
         ];
@@ -1940,6 +2002,7 @@ final class InvoiceService
     {
         $referenceMonthNormalized = $this->normalizeReferenceMonth($this->clean($filters['reference_month'] ?? null));
         $referenceMonth = $referenceMonthNormalized === null ? '' : substr($referenceMonthNormalized, 0, 7);
+        $financialNature = $this->normalizeFinancialNature($filters['financial_nature'] ?? null, true);
 
         $paymentDateFrom = $this->normalizeDate($this->clean($filters['payment_date_from'] ?? null));
         $paymentDateTo = $this->normalizeDate($this->clean($filters['payment_date_to'] ?? null));
@@ -1952,6 +2015,7 @@ final class InvoiceService
             'q' => $this->clean($filters['q'] ?? null) ?? '',
             'organ_id' => max(0, (int) ($filters['organ_id'] ?? 0)),
             'reference_month' => $referenceMonth,
+            'financial_nature' => $financialNature ?? '',
             'payment_date_from' => $paymentDateFrom ?? '',
             'payment_date_to' => $paymentDateTo ?? '',
         ];
@@ -2134,6 +2198,16 @@ final class InvoiceService
         $string = trim((string) $value);
 
         return $string === '' ? null : $string;
+    }
+
+    private function normalizeFinancialNature(mixed $value, bool $allowEmpty = false): ?string
+    {
+        $normalized = mb_strtolower(trim((string) $value));
+        if ($normalized === '') {
+            return $allowEmpty ? '' : 'despesa_reembolso';
+        }
+
+        return in_array($normalized, self::ALLOWED_FINANCIAL_NATURES, true) ? $normalized : null;
     }
 
     private function normalizeReferenceMonth(?string $value): ?string

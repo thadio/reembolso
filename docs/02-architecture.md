@@ -27,7 +27,6 @@ Arquitetura MVC leve, sem framework, com separacao por camadas:
 - `OrganService`: CRUD de orgaos de origem e importacao CSV em massa com validacao/simulacao e rollback transacional
 - `PipelineService`: movimentacao/status/timeline da pessoa, fila por responsavel/prioridade e checklist automatico por tipo de caso
 - `DocumentService`: dossie documental, upload seguro, controle de versoes e download protegido (documento atual ou historico)
-- `DocumentIntelligenceService`: conferencia assistida por IA no Perfil 360 (extracao de campos documentais, deteccao de inconsistencias/anomalias e sugestoes de justificativa para divergencias recorrentes)
 - `CostPlanService`: custos previstos por pessoa com versionamento e comparacao entre versoes
 - `ReimbursementService`: controle de reembolso real (boletos/pagamentos) com baixa financeira, calculadora automatica e memoria de calculo por lancamento
 - `ReconciliationService`: conciliacao previsto x real por pessoa e por competencia
@@ -58,7 +57,7 @@ Tabelas principais:
 - `process_comments`
 - `process_admin_timeline_notes`
 - `analyst_pending_items`
-- `timeline_events`, `timeline_event_attachments`, `documents`, `document_versions`, `document_ai_reviews`, `document_ai_extractions`, `document_ai_findings`
+- `timeline_events`, `timeline_event_attachments`, `documents`, `document_versions`
 - `cost_plans`, `cost_plan_items`, `reimbursement_entries` (inclui `calculation_memory` para rastreabilidade da formula aplicada)
 - `cdos`, `cdo_people`
 - `invoices`, `invoice_people`, `payments`, `payment_people`, `payment_batches`, `payment_batch_items`

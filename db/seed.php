@@ -85,15 +85,36 @@ $modalities = [
 ];
 
 $assignmentStatuses = [
-    ['code' => 'interessado', 'label' => 'Interessado', 'sort_order' => 1, 'next_action_label' => 'Iniciar triagem', 'event_type' => 'pipeline.triagem'],
-    ['code' => 'triagem', 'label' => 'Triagem', 'sort_order' => 2, 'next_action_label' => 'Registrar seleção', 'event_type' => 'pipeline.selecionado'],
-    ['code' => 'selecionado', 'label' => 'Selecionado', 'sort_order' => 3, 'next_action_label' => 'Gerar ofício ao órgão', 'event_type' => 'pipeline.oficio_orgao'],
-    ['code' => 'oficio_orgao', 'label' => 'Ofício órgão', 'sort_order' => 4, 'next_action_label' => 'Registrar resposta do órgão', 'event_type' => 'pipeline.custos_recebidos'],
-    ['code' => 'custos_recebidos', 'label' => 'Custos recebidos', 'sort_order' => 5, 'next_action_label' => 'Registrar CDO', 'event_type' => 'pipeline.cdo'],
-    ['code' => 'cdo', 'label' => 'CDO', 'sort_order' => 6, 'next_action_label' => 'Registrar envio ao MGI', 'event_type' => 'pipeline.mgi'],
-    ['code' => 'mgi', 'label' => 'MGI', 'sort_order' => 7, 'next_action_label' => 'Registrar publicação no DOU', 'event_type' => 'pipeline.dou'],
-    ['code' => 'dou', 'label' => 'DOU', 'sort_order' => 8, 'next_action_label' => 'Ativar no MTE', 'event_type' => 'pipeline.ativo'],
-    ['code' => 'ativo', 'label' => 'Ativo', 'sort_order' => 9, 'next_action_label' => null, 'event_type' => 'pipeline.ativo'],
+    ['code' => 'interessado', 'label' => 'Interessado/Triagem', 'sort_order' => 1, 'next_action_label' => 'Concluir triagem e selecionar', 'event_type' => 'pipeline.selecionado', 'is_active' => 1],
+    ['code' => 'triagem', 'label' => 'Triagem (legado)', 'sort_order' => 2, 'next_action_label' => 'Concluir triagem e selecionar', 'event_type' => 'pipeline.selecionado', 'is_active' => 0],
+    ['code' => 'selecionado', 'label' => 'Selecionado', 'sort_order' => 3, 'next_action_label' => 'Gerar ofício ao órgão', 'event_type' => 'pipeline.oficio_orgao', 'is_active' => 1],
+    ['code' => 'oficio_orgao', 'label' => 'Ofício órgão', 'sort_order' => 4, 'next_action_label' => 'Registrar resposta do órgão', 'event_type' => 'pipeline.custos_recebidos', 'is_active' => 1],
+    ['code' => 'custos_recebidos', 'label' => 'Custos recebidos', 'sort_order' => 5, 'next_action_label' => 'Registrar CDO', 'event_type' => 'pipeline.cdo', 'is_active' => 1],
+    ['code' => 'cdo', 'label' => 'CDO', 'sort_order' => 6, 'next_action_label' => 'Registrar envio ao MGI', 'event_type' => 'pipeline.mgi', 'is_active' => 1],
+    ['code' => 'mgi', 'label' => 'MGI', 'sort_order' => 7, 'next_action_label' => 'Registrar publicação no DOU', 'event_type' => 'pipeline.dou', 'is_active' => 1],
+    ['code' => 'dou', 'label' => 'DOU', 'sort_order' => 8, 'next_action_label' => 'Ativar no MTE', 'event_type' => 'pipeline.ativo', 'is_active' => 1],
+    ['code' => 'ativo', 'label' => 'Ativo', 'sort_order' => 9, 'next_action_label' => null, 'event_type' => 'pipeline.ativo', 'is_active' => 1],
+];
+
+$defaultFlowSteps = [
+    ['status_code' => 'interessado', 'node_kind' => 'activity', 'sort_order' => 10, 'is_initial' => 1, 'is_active' => 1],
+    ['status_code' => 'selecionado', 'node_kind' => 'activity', 'sort_order' => 20, 'is_initial' => 0, 'is_active' => 1],
+    ['status_code' => 'oficio_orgao', 'node_kind' => 'activity', 'sort_order' => 30, 'is_initial' => 0, 'is_active' => 1],
+    ['status_code' => 'custos_recebidos', 'node_kind' => 'activity', 'sort_order' => 40, 'is_initial' => 0, 'is_active' => 1],
+    ['status_code' => 'cdo', 'node_kind' => 'activity', 'sort_order' => 50, 'is_initial' => 0, 'is_active' => 1],
+    ['status_code' => 'mgi', 'node_kind' => 'activity', 'sort_order' => 60, 'is_initial' => 0, 'is_active' => 1],
+    ['status_code' => 'dou', 'node_kind' => 'activity', 'sort_order' => 70, 'is_initial' => 0, 'is_active' => 1],
+    ['status_code' => 'ativo', 'node_kind' => 'final', 'sort_order' => 80, 'is_initial' => 0, 'is_active' => 1],
+];
+
+$defaultFlowTransitions = [
+    ['from_code' => 'interessado', 'to_code' => 'selecionado', 'transition_label' => 'Seleção aprovada', 'action_label' => 'Concluir triagem e selecionar', 'event_type' => 'pipeline.selecionado', 'sort_order' => 10, 'is_active' => 1],
+    ['from_code' => 'selecionado', 'to_code' => 'oficio_orgao', 'transition_label' => 'Ofício enviado', 'action_label' => 'Gerar ofício ao órgão', 'event_type' => 'pipeline.oficio_orgao', 'sort_order' => 20, 'is_active' => 1],
+    ['from_code' => 'oficio_orgao', 'to_code' => 'custos_recebidos', 'transition_label' => 'Resposta recebida', 'action_label' => 'Registrar resposta do órgão', 'event_type' => 'pipeline.custos_recebidos', 'sort_order' => 30, 'is_active' => 1],
+    ['from_code' => 'custos_recebidos', 'to_code' => 'cdo', 'transition_label' => 'CDO emitida', 'action_label' => 'Registrar CDO', 'event_type' => 'pipeline.cdo', 'sort_order' => 40, 'is_active' => 1],
+    ['from_code' => 'cdo', 'to_code' => 'mgi', 'transition_label' => 'Processo enviado ao MGI', 'action_label' => 'Registrar envio ao MGI', 'event_type' => 'pipeline.mgi', 'sort_order' => 50, 'is_active' => 1],
+    ['from_code' => 'mgi', 'to_code' => 'dou', 'transition_label' => 'Publicação registrada', 'action_label' => 'Registrar publicação no DOU', 'event_type' => 'pipeline.dou', 'sort_order' => 60, 'is_active' => 1],
+    ['from_code' => 'dou', 'to_code' => 'ativo', 'transition_label' => 'Entrada oficial no MTE', 'action_label' => 'Ativar no MTE', 'event_type' => 'pipeline.ativo', 'sort_order' => 70, 'is_active' => 1],
 ];
 
 $db->beginTransaction();
@@ -166,18 +187,183 @@ try {
 
     $upsertAssignmentStatus = $db->prepare(
         'INSERT INTO assignment_statuses (code, label, sort_order, next_action_label, event_type, is_active, created_at, updated_at)
-         VALUES (:code, :label, :sort_order, :next_action_label, :event_type, 1, NOW(), NOW())
+         VALUES (:code, :label, :sort_order, :next_action_label, :event_type, :is_active, NOW(), NOW())
          ON DUPLICATE KEY UPDATE
             label = VALUES(label),
             sort_order = VALUES(sort_order),
             next_action_label = VALUES(next_action_label),
             event_type = VALUES(event_type),
-            is_active = 1,
+            is_active = VALUES(is_active),
             updated_at = NOW()'
     );
 
     foreach ($assignmentStatuses as $status) {
         $upsertAssignmentStatus->execute($status);
+    }
+
+    $upsertFlow = $db->prepare(
+        'INSERT INTO assignment_flows (name, description, is_active, is_default, created_at, updated_at)
+         VALUES (:name, :description, :is_active, :is_default, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+            description = VALUES(description),
+            is_active = VALUES(is_active),
+            is_default = VALUES(is_default),
+            updated_at = NOW()'
+    );
+    $upsertFlow->execute([
+        'name' => 'Fluxo padrao',
+        'description' => 'Fluxo padrao do processo, com pontos de decisao e transicoes configuraveis.',
+        'is_active' => 1,
+        'is_default' => 1,
+    ]);
+
+    $defaultFlowStmt = $db->prepare(
+        'SELECT id
+         FROM assignment_flows
+         WHERE name = :name
+           AND deleted_at IS NULL
+         LIMIT 1'
+    );
+    $defaultFlowStmt->execute(['name' => 'Fluxo padrao']);
+    $defaultFlowId = (int) ($defaultFlowStmt->fetch()['id'] ?? 0);
+
+    if ($defaultFlowId > 0) {
+        $db->prepare(
+            'UPDATE assignment_flows
+             SET is_default = CASE WHEN id = :id THEN 1 ELSE 0 END,
+                 updated_at = NOW()
+             WHERE deleted_at IS NULL'
+        )->execute(['id' => $defaultFlowId]);
+
+        $statusByCodeStmt = $db->prepare('SELECT id FROM assignment_statuses WHERE code = :code LIMIT 1');
+
+        $upsertFlowStep = $db->prepare(
+            'INSERT INTO assignment_flow_steps (flow_id, status_id, node_kind, sort_order, is_initial, is_active, created_at, updated_at)
+             VALUES (:flow_id, :status_id, :node_kind, :sort_order, :is_initial, :is_active, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE
+                node_kind = VALUES(node_kind),
+                sort_order = VALUES(sort_order),
+                is_initial = VALUES(is_initial),
+                is_active = VALUES(is_active),
+                updated_at = NOW()'
+        );
+
+        foreach ($defaultFlowSteps as $step) {
+            $statusByCodeStmt->execute(['code' => $step['status_code']]);
+            $statusId = (int) ($statusByCodeStmt->fetch()['id'] ?? 0);
+            if ($statusId <= 0) {
+                continue;
+            }
+
+            $upsertFlowStep->execute([
+                'flow_id' => $defaultFlowId,
+                'status_id' => $statusId,
+                'node_kind' => $step['node_kind'],
+                'sort_order' => $step['sort_order'],
+                'is_initial' => $step['is_initial'],
+                'is_active' => $step['is_active'],
+            ]);
+        }
+
+        $deleteLegacyTriagemStep = $db->prepare(
+            'DELETE fs
+             FROM assignment_flow_steps fs
+             INNER JOIN assignment_statuses s ON s.id = fs.status_id
+             WHERE fs.flow_id = :flow_id
+               AND s.code = :code'
+        );
+        $deleteLegacyTriagemStep->execute([
+            'flow_id' => $defaultFlowId,
+            'code' => 'triagem',
+        ]);
+
+        $findTransitionStmt = $db->prepare(
+            'SELECT id
+             FROM assignment_flow_transitions
+             WHERE flow_id = :flow_id
+               AND from_status_id = :from_status_id
+               AND to_status_id = :to_status_id
+             ORDER BY id ASC
+             LIMIT 1'
+        );
+        $updateTransitionStmt = $db->prepare(
+            'UPDATE assignment_flow_transitions
+             SET transition_label = :transition_label,
+                 action_label = :action_label,
+                 event_type = :event_type,
+                 sort_order = :sort_order,
+                 is_active = :is_active,
+                 updated_at = NOW()
+             WHERE id = :id'
+        );
+        $insertTransitionStmt = $db->prepare(
+            'INSERT INTO assignment_flow_transitions (
+                flow_id,
+                from_status_id,
+                to_status_id,
+                transition_label,
+                action_label,
+                event_type,
+                sort_order,
+                is_active,
+                created_at,
+                updated_at
+             ) VALUES (
+                :flow_id,
+                :from_status_id,
+                :to_status_id,
+                :transition_label,
+                :action_label,
+                :event_type,
+                :sort_order,
+                :is_active,
+                NOW(),
+                NOW()
+             )'
+        );
+
+        foreach ($defaultFlowTransitions as $transition) {
+            $statusByCodeStmt->execute(['code' => $transition['from_code']]);
+            $fromStatusId = (int) ($statusByCodeStmt->fetch()['id'] ?? 0);
+
+            $statusByCodeStmt->execute(['code' => $transition['to_code']]);
+            $toStatusId = (int) ($statusByCodeStmt->fetch()['id'] ?? 0);
+
+            if ($fromStatusId <= 0 || $toStatusId <= 0) {
+                continue;
+            }
+
+            $payload = [
+                'flow_id' => $defaultFlowId,
+                'from_status_id' => $fromStatusId,
+                'to_status_id' => $toStatusId,
+                'transition_label' => $transition['transition_label'],
+                'action_label' => $transition['action_label'],
+                'event_type' => $transition['event_type'],
+                'sort_order' => $transition['sort_order'],
+                'is_active' => $transition['is_active'],
+            ];
+
+            $findTransitionStmt->execute([
+                'flow_id' => $payload['flow_id'],
+                'from_status_id' => $payload['from_status_id'],
+                'to_status_id' => $payload['to_status_id'],
+            ]);
+            $existingTransitionId = (int) ($findTransitionStmt->fetch()['id'] ?? 0);
+
+            if ($existingTransitionId > 0) {
+                $updateTransitionStmt->execute([
+                    'id' => $existingTransitionId,
+                    'transition_label' => $payload['transition_label'],
+                    'action_label' => $payload['action_label'],
+                    'event_type' => $payload['event_type'],
+                    'sort_order' => $payload['sort_order'],
+                    'is_active' => $payload['is_active'],
+                ]);
+            } else {
+                $insertTransitionStmt->execute($payload);
+            }
+        }
     }
 
     $adminEmail = mb_strtolower((string) $config->get('seed.admin_email', 'admin@reembolso.local'));

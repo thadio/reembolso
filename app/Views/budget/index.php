@@ -9,6 +9,7 @@ $projection = is_array($budget['projection'] ?? null) ? $budget['projection'] : 
 $projectionMonths = is_array($projection['months'] ?? null) ? $projection['months'] : [];
 $nextYearScenarios = is_array($projection['next_year_scenarios'] ?? null) ? $projection['next_year_scenarios'] : [];
 $cycle = is_array($budget['cycle'] ?? null) ? $budget['cycle'] : [];
+$cycles = is_array($budget['cycles'] ?? null) ? $budget['cycles'] : [];
 $organs = is_array($budget['organs'] ?? null) ? $budget['organs'] : [];
 $modalities = is_array($budget['modalities'] ?? null) ? $budget['modalities'] : [];
 $parameters = is_array($budget['parameters'] ?? null) ? $budget['parameters'] : [];
@@ -22,6 +23,9 @@ $simulationResult = is_array($simulationResult ?? null) ? $simulationResult : nu
 $simulationMatrix = is_array($simulationResult['scenario_matrix'] ?? null) ? $simulationResult['scenario_matrix'] : [];
 $canManage = (bool) ($canManage ?? false);
 $canSimulate = (bool) ($canSimulate ?? false);
+$financialNature = trim(mb_strtolower((string) ($financialNature ?? ($summary['financial_nature'] ?? 'despesa_reembolso'))));
+$financialNature = $financialNature === 'receita_reembolso' ? 'receita_reembolso' : 'despesa_reembolso';
+$financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financialNatureOptions : [];
 
 $formatMoney = static function (float|int|string $value): string {
     $numeric = is_numeric((string) $value) ? (float) $value : 0.0;
@@ -105,6 +109,35 @@ $riskBadgeClass = static function (string $value): string {
     };
 };
 
+$cycleStatusLabel = static function (string $value): string {
+    return match (trim(mb_strtolower($value))) {
+        'aberto' => 'Aberto',
+        'encerrado' => 'Encerrado',
+        'suspenso' => 'Suspenso',
+        default => 'N/I',
+    };
+};
+
+$cycleStatusBadgeClass = static function (string $value): string {
+    return match (trim(mb_strtolower($value))) {
+        'aberto' => 'badge-info',
+        'encerrado' => 'badge-neutral',
+        'suspenso' => 'badge-warning',
+        default => 'badge-neutral',
+    };
+};
+
+$financialNatureLabel = static function (string $value): string {
+    return match (trim(mb_strtolower($value))) {
+        'receita_reembolso' => 'Receita de reembolso (a receber)',
+        default => 'Despesa de reembolso (a pagar)',
+    };
+};
+
+$financialNatureBadgeClass = static function (string $value): string {
+    return trim(mb_strtolower($value)) === 'receita_reembolso' ? 'badge-success' : 'badge-warning';
+};
+
 $summaryRisk = (string) ($summary['risk_level'] ?? 'baixo');
 $totalBudget = (float) ($summary['total_budget'] ?? 0);
 $availableAmount = (float) ($summary['available_amount'] ?? 0);
@@ -118,17 +151,38 @@ $selectedModality = mb_strtolower((string) old('modality', 'geral'));
 $selectedMovementType = mb_strtolower((string) old('movement_type', 'entrada'));
 $selectedCargo = (string) old('cargo', '');
 $selectedSetor = (string) old('setor', '');
+$oldCycleId = max(0, (int) old('cycle_id', '0'));
+$oldCycleTotalBudget = (string) old('cycle_total_budget', '');
 ?>
 <div class="card">
   <div class="header-row">
     <div>
       <h2>Dashboard orcamentario</h2>
-      <p class="muted">Ciclo <?= e((string) $year) ?> · Fator anual <?= e(number_format((float) ($summary['annual_factor'] ?? 13.3), 2, ',', '.')) ?></p>
+      <p class="muted">
+        Ciclo <?= e((string) $year) ?> ·
+        <?= e($financialNatureLabel($financialNature)) ?> ·
+        Fator anual <?= e(number_format((float) ($summary['annual_factor'] ?? 13.3), 2, ',', '.')) ?>
+      </p>
     </div>
     <form method="get" action="<?= e(url('/budget')) ?>" class="filters-row filters-budget-year">
       <div class="field">
         <label for="year">Ano do ciclo</label>
         <input id="year" name="year" type="number" min="2000" max="2100" value="<?= e((string) $year) ?>">
+      </div>
+      <div class="field">
+        <label for="financial_nature">Natureza financeira</label>
+        <select id="financial_nature" name="financial_nature">
+          <?php foreach ($financialNatureOptions as $option): ?>
+            <?php
+              $value = (string) ($option['value'] ?? '');
+              $label = (string) ($option['label'] ?? $value);
+              if ($value === '') {
+                  continue;
+              }
+            ?>
+            <option value="<?= e($value) ?>" <?= $financialNature === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
       </div>
       <div class="field">
         <label>&nbsp;</label>
@@ -137,7 +191,11 @@ $selectedSetor = (string) old('setor', '');
     </form>
   </div>
 
-  <p class="muted">Ciclo criado em <?= e($formatDateTime((string) ($cycle['created_at'] ?? ''))) ?><?php if (!empty($cycle['created_by_name'])): ?> por <?= e((string) ($cycle['created_by_name'] ?? '')) ?><?php endif; ?>.</p>
+  <p class="muted">
+    Natureza ativa:
+    <span class="badge <?= e($financialNatureBadgeClass($financialNature)) ?>"><?= e($financialNatureLabel($financialNature)) ?></span>
+    · Ciclo criado em <?= e($formatDateTime((string) ($cycle['created_at'] ?? ''))) ?><?php if (!empty($cycle['created_by_name'])): ?> por <?= e((string) ($cycle['created_by_name'] ?? '')) ?><?php endif; ?>.
+  </p>
 </div>
 
 <div class="grid-kpi">
@@ -333,6 +391,137 @@ $selectedSetor = (string) old('setor', '');
   <div class="card">
     <div class="header-row">
       <div>
+        <h3>CRUD do orcamento anual do MTE</h3>
+        <p class="muted">Cadastro do total anual para financiar movimentacoes de pessoas com reembolso.</p>
+      </div>
+    </div>
+
+    <form method="post" action="<?= e(url('/budget/cycles/store')) ?>" class="form-grid">
+      <?= csrf_field() ?>
+      <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+      <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
+
+      <div class="field">
+        <label for="cycle_year">Ano *</label>
+        <input
+          id="cycle_year"
+          name="cycle_year"
+          type="number"
+          min="2000"
+          max="2100"
+          value="<?= e(old('cycle_year', (string) $year)) ?>"
+          required
+        >
+      </div>
+
+      <div class="field">
+        <label for="cycle_total_budget">Orcamento total anual MTE (R$) *</label>
+        <input
+          id="cycle_total_budget"
+          name="cycle_total_budget"
+          type="text"
+          placeholder="0,00"
+          value="<?= e(old('cycle_total_budget', '')) ?>"
+          required
+        >
+      </div>
+
+      <div class="form-actions field-wide">
+        <button type="submit" class="btn btn-primary">Cadastrar orcamento anual</button>
+      </div>
+    </form>
+
+    <?php if ($cycles === []): ?>
+      <div class="empty-state">
+        <p>Nenhum ciclo anual de orcamento foi cadastrado ate o momento.</p>
+      </div>
+    <?php else: ?>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Ano</th>
+              <th>Natureza</th>
+              <th>Orcamento anual MTE</th>
+              <th>Fator anual</th>
+              <th>Status</th>
+              <th>Cenarios</th>
+              <th>Atualizacao</th>
+              <th>Acoes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($cycles as $cycleItem): ?>
+              <?php
+                $cycleId = (int) ($cycleItem['id'] ?? 0);
+                $cycleYear = (int) ($cycleItem['cycle_year'] ?? 0);
+                $cycleTotalBudgetValue = number_format((float) ($cycleItem['total_budget'] ?? 0), 2, ',', '.');
+                $cycleTotalBudgetInput = $oldCycleId === $cycleId && $oldCycleTotalBudget !== ''
+                    ? $oldCycleTotalBudget
+                    : $cycleTotalBudgetValue;
+                $scenarioCount = (int) ($cycleItem['scenarios_count'] ?? 0);
+                $scenarioParameterCount = (int) ($cycleItem['scenario_parameters_count'] ?? 0);
+                $canDeleteCycle = $scenarioCount === 0;
+                $cycleStatus = (string) ($cycleItem['status'] ?? 'aberto');
+              ?>
+              <tr>
+                <td><?= e((string) $cycleYear) ?></td>
+                <?php $cycleNature = (string) ($cycleItem['financial_nature'] ?? $financialNature); ?>
+                <td><span class="badge <?= e($financialNatureBadgeClass($cycleNature)) ?>"><?= e($financialNatureLabel($cycleNature)) ?></span></td>
+                <td>
+                  <form method="post" action="<?= e(url('/budget/cycles/update')) ?>" class="actions-cell">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="cycle_id" value="<?= e((string) $cycleId) ?>">
+                    <input type="hidden" name="cycle_year" value="<?= e((string) $cycleYear) ?>">
+                    <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+                    <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
+                    <input
+                      type="text"
+                      name="cycle_total_budget"
+                      value="<?= e($cycleTotalBudgetInput) ?>"
+                      required
+                      style="max-width:160px;"
+                    >
+                    <button type="submit" class="btn btn-outline">Salvar</button>
+                  </form>
+                </td>
+                <td><?= e(number_format((float) ($cycleItem['annual_factor'] ?? 13.3), 2, ',', '.')) ?></td>
+                <td><span class="badge <?= e($cycleStatusBadgeClass($cycleStatus)) ?>"><?= e($cycleStatusLabel($cycleStatus)) ?></span></td>
+                <td>
+                  <?= e((string) $scenarioCount) ?> cenario(s)
+                  <div class="muted"><?= e((string) $scenarioParameterCount) ?> parametro(s)</div>
+                </td>
+                <td>
+                  <?= e($formatDateTime((string) ($cycleItem['updated_at'] ?? ''))) ?>
+                  <div class="muted">cadastro <?= e($formatDateTime((string) ($cycleItem['created_at'] ?? ''))) ?></div>
+                </td>
+                <td class="actions-cell">
+                  <form method="post" action="<?= e(url('/budget/cycles/delete')) ?>" onsubmit="return confirm('Confirmar remocao deste ciclo anual do MTE?');">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="cycle_id" value="<?= e((string) $cycleId) ?>">
+                    <input type="hidden" name="cycle_year" value="<?= e((string) $cycleYear) ?>">
+                    <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+                    <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
+                    <button
+                      type="submit"
+                      class="btn btn-danger"
+                      <?= $canDeleteCycle ? '' : 'disabled title="Nao e possivel excluir: existem cenarios de simulacao vinculados."' ?>
+                    >
+                      Excluir
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php endif; ?>
+  </div>
+
+  <div class="card">
+    <div class="header-row">
+      <div>
         <h3>Parametro de custo medio por orgao</h3>
         <p class="muted">Usado como fallback na simulacao quando o custo medio nao e informado.</p>
       </div>
@@ -341,6 +530,7 @@ $selectedSetor = (string) old('setor', '');
     <form method="post" action="<?= e(url('/budget/parameters/upsert')) ?>" class="form-grid">
       <?= csrf_field() ?>
       <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+      <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
 
       <div class="field field-wide">
         <label for="parameter_organ_id">Orgao *</label>
@@ -425,6 +615,7 @@ $selectedSetor = (string) old('setor', '');
     <form method="post" action="<?= e(url('/budget/scenario-parameters/upsert')) ?>" class="form-grid">
       <?= csrf_field() ?>
       <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+      <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
 
       <div class="field field-wide">
         <label for="scenario_parameter_organ_id">Orgao *</label>
@@ -545,6 +736,7 @@ $selectedSetor = (string) old('setor', '');
     <form method="post" action="<?= e(url('/budget/simulate')) ?>" class="form-grid">
       <?= csrf_field() ?>
       <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+      <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
 
       <div class="field field-wide">
         <label for="organ_id">Orgao *</label>
@@ -631,6 +823,7 @@ $selectedSetor = (string) old('setor', '');
         <p class="muted">
           <?= e((string) ($simulationResult['scenario_name'] ?? 'Simulacao')) ?> ·
           Ano <?= e((string) ($simulationResult['year'] ?? $year)) ?> ·
+          <?= e($financialNatureLabel((string) ($simulationResult['financial_nature'] ?? $financialNature))) ?> ·
           Modalidade <?= e($modalityLabel((string) ($simulationResult['modality'] ?? 'geral'))) ?> ·
           Movimento <?= e($movementTypeLabel((string) ($simulationResult['movement_type'] ?? 'entrada'))) ?> ·
           <?= e($scopeLabel((string) ($simulationResult['cargo'] ?? ''), (string) ($simulationResult['setor'] ?? ''))) ?>

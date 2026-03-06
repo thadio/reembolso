@@ -8,17 +8,6 @@ use App\Repositories\PeopleRepository;
 
 final class PeopleService
 {
-    private const ALLOWED_STATUS = [
-        'interessado',
-        'triagem',
-        'selecionado',
-        'oficio_orgao',
-        'custos_recebidos',
-        'cdo',
-        'mgi',
-        'dou',
-        'ativo',
-    ];
     private const CSV_ALLOWED_EXTENSIONS = ['csv', 'txt'];
     private const CSV_ALLOWED_MIME = [
         'text/plain',
@@ -74,7 +63,7 @@ final class PeopleService
     /** @return array<int, string> */
     public function statuses(): array
     {
-        return self::ALLOWED_STATUS;
+        return $this->people->activeStatusCodes();
     }
 
     /**
@@ -514,6 +503,7 @@ final class PeopleService
     {
         $organId = (int) ($input['organ_id'] ?? 0);
         $modalityId = (int) ($input['desired_modality_id'] ?? 0);
+        $flowId = (int) ($input['assignment_flow_id'] ?? 0);
         $name = $this->clean($input['name'] ?? null);
         $cpf = $this->normalizeCpf($this->clean($input['cpf'] ?? null));
         $birthDate = $this->normalizeDate($this->clean($input['birth_date'] ?? null));
@@ -532,6 +522,15 @@ final class PeopleService
 
         if ($modalityId > 0 && !$this->people->modalityExists($modalityId)) {
             $errors[] = 'Modalidade pretendida inválida.';
+        }
+
+        if ($flowId <= 0) {
+            $defaultFlowId = $this->people->defaultAssignmentFlowId();
+            $flowId = $defaultFlowId !== null ? $defaultFlowId : 0;
+        }
+
+        if ($flowId <= 0 || !$this->people->assignmentFlowExists($flowId)) {
+            $errors[] = 'Fluxo do pipeline é obrigatório.';
         }
 
         if ($name === null || mb_strlen($name) < 3) {
@@ -558,6 +557,7 @@ final class PeopleService
         $data = [
             'organ_id' => $organId,
             'desired_modality_id' => $modalityId > 0 ? $modalityId : null,
+            'assignment_flow_id' => $flowId > 0 ? $flowId : null,
             'name' => $name,
             'cpf' => $cpf,
             'birth_date' => $birthDate,
