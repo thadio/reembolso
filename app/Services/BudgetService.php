@@ -10,6 +10,7 @@ use DateTimeImmutable;
 final class BudgetService
 {
     private const DEFAULT_ANNUAL_FACTOR = 13.30;
+    private const ALLOWED_FINANCIAL_NATURES = ['despesa_reembolso', 'receita_reembolso'];
 
     /** @var array<string, float> */
     private const DEFAULT_SCENARIO_VARIATIONS = [
@@ -46,6 +47,7 @@ final class BudgetService
      *   cycle: array<string, mixed>,
      *   summary: array<string, int|float|string>,
      *   projection: array<string, mixed>,
+     *   cycles: array<int, array<string, mixed>>,
      *   organs: array<int, array<string, mixed>>,
      *   modalities: array<int, array<string, mixed>>,
      *   parameters: array<int, array<string, mixed>>,
@@ -57,15 +59,21 @@ final class BudgetService
      *   scenarios: array<int, array<string, mixed>>
      * }
      */
-    public function dashboard(int $year): array
+    public function dashboard(int $year, string $financialNature = 'despesa_reembolso'): array
     {
         $normalizedYear = $this->normalizeYear($year);
-        $cycle = $this->budget->ensureCycle($normalizedYear, self::DEFAULT_ANNUAL_FACTOR, null);
+        $normalizedFinancialNature = $this->normalizeFinancialNature($financialNature);
+        $cycle = $this->budget->ensureCycle(
+            year: $normalizedYear,
+            annualFactor: self::DEFAULT_ANNUAL_FACTOR,
+            createdBy: null,
+            financialNature: $normalizedFinancialNature
+        );
 
         $annualFactor = max(0.1, $this->toFloat($cycle['annual_factor'] ?? self::DEFAULT_ANNUAL_FACTOR));
         $totalBudget = max(0.0, $this->toFloat($cycle['total_budget'] ?? 0));
 
-        $snapshot = $this->budget->financialSnapshot($normalizedYear);
+        $snapshot = $this->budget->financialSnapshot($normalizedYear, $normalizedFinancialNature);
         $paidInvoices = max(0.0, $this->toFloat($snapshot['paid_invoices_amount'] ?? 0));
         $paidReimbursements = max(0.0, $this->toFloat($snapshot['paid_reimbursements_amount'] ?? 0));
         $committedInvoices = max(0.0, $this->toFloat($snapshot['committed_invoices_amount'] ?? 0));
@@ -82,7 +90,7 @@ final class BudgetService
 
         $projection = $this->buildProjection(
             year: $normalizedYear,
-            seriesRows: $this->budget->monthlyProjectionSeries($normalizedYear),
+            seriesRows: $this->budget->monthlyProjectionSeries($normalizedYear, $normalizedFinancialNature),
             annualFactor: $annualFactor,
             totalBudget: $totalBudget
         );
@@ -92,7 +100,7 @@ final class BudgetService
             projectionMonths: is_array($projection['months'] ?? null) ? $projection['months'] : [],
             totalBudget: $totalBudget
         );
-        $offenders = $cycleId > 0 ? $this->budget->topDeviationOffenders($cycleId, 10) : [];
+        $offenders = $cycleId > 0 ? $this->budget->topDeviationOffenders($cycleId, $normalizedFinancialNature, 10) : [];
         $activeAlerts = $this->buildActiveAlerts(
             totalBudget: $totalBudget,
             availableAmount: $availableAmount,
@@ -105,6 +113,7 @@ final class BudgetService
             'cycle' => $cycle,
             'summary' => [
                 'year' => $normalizedYear,
+                'financial_nature' => $normalizedFinancialNature,
                 'annual_factor' => round($annualFactor, 2),
                 'total_budget' => round($totalBudget, 2),
                 'executed_amount' => $executedAmount,
@@ -121,16 +130,33 @@ final class BudgetService
                 'risk_level' => $this->riskLevel($totalBudget, $availableAmount),
             ],
             'projection' => $projection,
+            'cycles' => $this->budget->listCycles($normalizedFinancialNature),
             'organs' => $this->budget->activeOrgans(),
             'modalities' => $this->budget->activeModalities(),
             'parameters' => $this->budget->orgParameters(),
-            'scenario_parameters' => $cycleId > 0 ? $this->budget->scenarioParameters($cycleId) : [],
+            'scenario_parameters' => $cycleId > 0 ? $this->budget->scenarioParameters($cycleId, $normalizedFinancialNature) : [],
             'default_variations' => self::DEFAULT_SCENARIO_VARIATIONS,
             'insufficiency_risks' => $insufficiencyRisks,
             'offenders' => $offenders,
             'active_alerts' => $activeAlerts,
-            'scenarios' => $this->budget->recentScenarios($cycleId, 20),
+            'scenarios' => $this->budget->recentScenarios($cycleId, $normalizedFinancialNature, 20),
         ];
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function financialNatureOptions(bool $includeAll = false): array
+    {
+        $options = [];
+        if ($includeAll) {
+            $options[] = ['value' => '', 'label' => 'Todas as naturezas'];
+        }
+
+        $options[] = ['value' => 'despesa_reembolso', 'label' => 'Despesa de reembolso (a pagar)'];
+        $options[] = ['value' => 'receita_reembolso', 'label' => 'Receita de reembolso (a receber)'];
+
+        return $options;
     }
 
     /**
@@ -139,7 +165,8 @@ final class BudgetService
      */
     public function simulate(int $year, array $input, int $userId, string $ip, string $userAgent): array
     {
-        $dashboard = $this->dashboard($year);
+        $financialNature = $this->normalizeFinancialNature((string) ($input['financial_nature'] ?? ''));
+        $dashboard = $this->dashboard($year, $financialNature);
         $summary = $dashboard['summary'];
         $cycle = $dashboard['cycle'];
 
@@ -232,7 +259,7 @@ final class BudgetService
         $availableBefore = (float) ($summary['available_amount'] ?? 0.0);
         $totalBudget = (float) ($summary['total_budget'] ?? 0.0);
 
-        $scenarioParameter = $this->budget->findScenarioParameter($cycleId, $organId, $modality);
+        $scenarioParameter = $this->budget->findScenarioParameter($cycleId, $organId, $modality, $financialNature);
         $variations = $this->resolveScenarioVariations($scenarioParameter);
         $movementDirection = $movementType === 'saida' ? -1 : 1;
 
@@ -278,6 +305,7 @@ final class BudgetService
 
         $payload = [
             'budget_cycle_id' => $cycleId,
+            'financial_nature' => $financialNature,
             'organ_id' => $organId,
             'modality' => $modality,
             'movement_type' => $movementType,
@@ -326,6 +354,7 @@ final class BudgetService
                 beforeData: null,
                 afterData: [
                     'budget_cycle_id' => $cycleId,
+                    'financial_nature' => $financialNature,
                     'organ_id' => $organId,
                     'modality' => $modality,
                     'movement_type' => $movementType,
@@ -354,6 +383,7 @@ final class BudgetService
                 type: 'budget.hiring_simulated',
                 payload: [
                     'budget_cycle_id' => $cycleId,
+                    'financial_nature' => $financialNature,
                     'hiring_scenario_id' => $scenarioId,
                     'organ_id' => $organId,
                     'modality' => $modality,
@@ -389,6 +419,7 @@ final class BudgetService
             'errors' => [],
             'simulation' => [
                 'year' => $yearValue,
+                'financial_nature' => $financialNature,
                 'scenario_name' => $scenarioName,
                 'modality' => $modality,
                 'movement_type' => $movementType,
@@ -408,6 +439,318 @@ final class BudgetService
                 'risk_level' => (string) ($baseScenario['risk_level'] ?? 'baixo'),
                 'scenario_matrix' => $scenarioMatrix,
             ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, year?: int}
+     */
+    public function createAnnualBudgetCycle(array $input, int $userId, string $ip, string $userAgent): array
+    {
+        $year = $this->parseYear($input['cycle_year'] ?? null);
+        $financialNature = $this->parseFinancialNature($input['financial_nature'] ?? null);
+        $totalBudget = $this->parseMoneyNullable($input['cycle_total_budget'] ?? null);
+
+        $errors = [];
+
+        if ($year === null) {
+            $errors[] = 'Ano do ciclo invalido (use um valor entre 2000 e 2100).';
+        }
+
+        if ($financialNature === null) {
+            $errors[] = 'Natureza financeira invalida para o ciclo orcamentario.';
+        }
+
+        if ($totalBudget === null || $totalBudget < 0.0) {
+            $errors[] = 'Orcamento anual MTE invalido (use valor numerico maior ou igual a zero).';
+        }
+
+        if ($errors !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel cadastrar orcamento anual do MTE.',
+                'errors' => $errors,
+            ];
+        }
+
+        if ($year !== null && $financialNature !== null && $this->budget->findCycleByYear($year, $financialNature) !== null) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel cadastrar orcamento anual do MTE.',
+                'errors' => ['Ja existe ciclo cadastrado para este ano e natureza financeira. Use a edicao para ajustar o valor.'],
+                'year' => $year,
+                'financial_nature' => $financialNature,
+            ];
+        }
+
+        try {
+            $cycleId = $this->budget->createCycle(
+                year: (int) $year,
+                annualFactor: self::DEFAULT_ANNUAL_FACTOR,
+                totalBudget: number_format((float) $totalBudget, 2, '.', ''),
+                createdBy: $userId > 0 ? $userId : null,
+                financialNature: (string) $financialNature
+            );
+        } catch (\Throwable $exception) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel cadastrar orcamento anual do MTE.',
+                'errors' => ['Falha ao persistir ciclo orcamentario do ano informado.'],
+                'year' => (int) $year,
+                'financial_nature' => $financialNature,
+            ];
+        }
+
+        if ($cycleId <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel cadastrar orcamento anual do MTE.',
+                'errors' => ['Falha ao persistir ciclo orcamentario do ano informado.'],
+                'year' => (int) $year,
+                'financial_nature' => $financialNature,
+            ];
+        }
+
+        $after = $this->budget->findCycleById($cycleId);
+
+        $this->audit->log(
+            entity: 'budget_cycle',
+            entityId: $cycleId,
+            action: 'create',
+            beforeData: null,
+            afterData: $after,
+            metadata: null,
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'budget',
+            type: 'budget.cycle_created',
+            payload: [
+                'budget_cycle_id' => $cycleId,
+                'cycle_year' => (int) $year,
+                'financial_nature' => (string) $financialNature,
+                'total_budget' => number_format((float) $totalBudget, 2, '.', ''),
+            ],
+            entityId: $cycleId,
+            userId: $userId
+        );
+
+        return [
+            'ok' => true,
+            'message' => 'Orcamento anual do MTE cadastrado com sucesso.',
+            'errors' => [],
+            'year' => (int) $year,
+            'financial_nature' => $financialNature,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, year?: int}
+     */
+    public function updateAnnualBudgetCycle(array $input, int $userId, string $ip, string $userAgent): array
+    {
+        $cycleId = max(0, (int) ($input['cycle_id'] ?? 0));
+        $totalBudget = $this->parseMoneyNullable($input['cycle_total_budget'] ?? null);
+
+        $errors = [];
+
+        if ($cycleId <= 0) {
+            $errors[] = 'Ciclo orcamentario invalido para atualizacao.';
+        }
+
+        if ($totalBudget === null || $totalBudget < 0.0) {
+            $errors[] = 'Orcamento anual MTE invalido (use valor numerico maior ou igual a zero).';
+        }
+
+        if ($errors !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel atualizar orcamento anual do MTE.',
+                'errors' => $errors,
+            ];
+        }
+
+        $before = $this->budget->findCycleById($cycleId);
+        if ($before === null) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel atualizar orcamento anual do MTE.',
+                'errors' => ['Ciclo orcamentario nao encontrado.'],
+            ];
+        }
+
+        $updated = $this->budget->updateCycleTotalBudget(
+            cycleId: $cycleId,
+            totalBudget: number_format((float) $totalBudget, 2, '.', '')
+        );
+
+        if (!$updated) {
+            $beforeTotal = round($this->toFloat($before['total_budget'] ?? 0), 2);
+            if (abs($beforeTotal - (float) $totalBudget) <= 0.0001) {
+                return [
+                    'ok' => true,
+                    'message' => 'Orcamento anual do MTE mantido sem alteracoes.',
+                    'errors' => [],
+                    'year' => (int) ($before['cycle_year'] ?? date('Y')),
+                    'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
+                ];
+            }
+
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel atualizar orcamento anual do MTE.',
+                'errors' => ['Nenhuma alteracao foi aplicada ao ciclo orcamentario selecionado.'],
+                'year' => (int) ($before['cycle_year'] ?? date('Y')),
+                'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
+            ];
+        }
+
+        $after = $this->budget->findCycleById($cycleId);
+
+        $this->audit->log(
+            entity: 'budget_cycle',
+            entityId: $cycleId,
+            action: 'update',
+            beforeData: $before,
+            afterData: $after,
+            metadata: null,
+            userId: $userId,
+            ip: $ip,
+            userAgent: $userAgent
+        );
+
+        $this->events->recordEvent(
+            entity: 'budget',
+            type: 'budget.cycle_updated',
+            payload: [
+                'budget_cycle_id' => $cycleId,
+                'cycle_year' => (int) ($before['cycle_year'] ?? 0),
+                'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
+                'total_budget' => number_format((float) $totalBudget, 2, '.', ''),
+            ],
+            entityId: $cycleId,
+            userId: $userId
+        );
+
+        return [
+            'ok' => true,
+            'message' => 'Orcamento anual do MTE atualizado com sucesso.',
+            'errors' => [],
+            'year' => (int) ($before['cycle_year'] ?? date('Y')),
+            'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, year?: int}
+     */
+    public function deleteAnnualBudgetCycle(array $input, int $userId, string $ip, string $userAgent): array
+    {
+        $cycleId = max(0, (int) ($input['cycle_id'] ?? 0));
+
+        if ($cycleId <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel remover orcamento anual do MTE.',
+                'errors' => ['Ciclo orcamentario invalido para remocao.'],
+            ];
+        }
+
+        $before = $this->budget->findCycleById($cycleId);
+        if ($before === null) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel remover orcamento anual do MTE.',
+                'errors' => ['Ciclo orcamentario nao encontrado.'],
+            ];
+        }
+
+        $dependencies = $this->budget->cycleDependencies($cycleId);
+        $scenariosCount = (int) ($dependencies['scenarios_count'] ?? 0);
+        $scenarioParametersCount = (int) ($dependencies['scenario_parameters_count'] ?? 0);
+
+        if ($scenariosCount > 0) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel remover orcamento anual do MTE.',
+                'errors' => ['Este ciclo possui cenarios de simulacao vinculados e nao pode ser removido.'],
+                'year' => (int) ($before['cycle_year'] ?? date('Y')),
+                'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
+            ];
+        }
+
+        try {
+            $this->budget->beginTransaction();
+
+            if ($scenarioParametersCount > 0) {
+                $this->budget->deleteScenarioParametersByCycle($cycleId);
+            }
+
+            $deleted = $this->budget->deleteCycle($cycleId);
+            if (!$deleted) {
+                throw new \RuntimeException('Falha ao remover ciclo orcamentario.');
+            }
+
+            $this->audit->log(
+                entity: 'budget_cycle',
+                entityId: $cycleId,
+                action: 'delete',
+                beforeData: $before,
+                afterData: null,
+                metadata: [
+                    'removed_scenario_parameters' => $scenarioParametersCount,
+                    'removed_scenarios' => $scenariosCount,
+                ],
+                userId: $userId,
+                ip: $ip,
+                userAgent: $userAgent
+            );
+
+            $this->events->recordEvent(
+                entity: 'budget',
+                type: 'budget.cycle_deleted',
+                payload: [
+                    'budget_cycle_id' => $cycleId,
+                    'cycle_year' => (int) ($before['cycle_year'] ?? 0),
+                    'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
+                    'removed_scenario_parameters' => $scenarioParametersCount,
+                    'removed_scenarios' => $scenariosCount,
+                ],
+                entityId: $cycleId,
+                userId: $userId
+            );
+
+            $this->budget->commit();
+        } catch (\Throwable $exception) {
+            $this->budget->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel remover orcamento anual do MTE.',
+                'errors' => ['Falha ao remover ciclo orcamentario do banco de dados.'],
+                'year' => (int) ($before['cycle_year'] ?? date('Y')),
+                'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
+            ];
+        }
+
+        $remainingCycles = $this->budget->listCycles((string) ($before['financial_nature'] ?? 'despesa_reembolso'));
+        $redirectYear = (int) ($remainingCycles[0]['cycle_year'] ?? date('Y'));
+        if ($redirectYear < 2000 || $redirectYear > 2100) {
+            $redirectYear = (int) date('Y');
+        }
+
+        return [
+            'ok' => true,
+            'message' => 'Orcamento anual do MTE removido com sucesso.',
+            'errors' => [],
+            'year' => $redirectYear,
+            'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
         ];
     }
 
@@ -501,7 +844,21 @@ final class BudgetService
     public function upsertScenarioParameter(int $year, array $input, int $userId, string $ip, string $userAgent): array
     {
         $normalizedYear = $this->normalizeYear($year);
-        $cycle = $this->budget->ensureCycle($normalizedYear, self::DEFAULT_ANNUAL_FACTOR, null);
+        $financialNature = $this->parseFinancialNature($input['financial_nature'] ?? null);
+        if ($financialNature === null) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel salvar parametros do cenario.',
+                'errors' => ['Natureza financeira invalida para parametrizacao do cenario.'],
+            ];
+        }
+
+        $cycle = $this->budget->ensureCycle(
+            year: $normalizedYear,
+            annualFactor: self::DEFAULT_ANNUAL_FACTOR,
+            createdBy: null,
+            financialNature: $financialNature
+        );
         $cycleId = (int) ($cycle['id'] ?? 0);
 
         if ($cycleId <= 0) {
@@ -558,10 +915,11 @@ final class BudgetService
             ];
         }
 
-        $before = $this->budget->findScenarioParameterExact($cycleId, $organId, $modality);
+        $before = $this->budget->findScenarioParameterExact($cycleId, $organId, $modality, $financialNature);
 
         $id = $this->budget->upsertScenarioParameter(
             cycleId: $cycleId,
+            financialNature: $financialNature,
             organId: $organId,
             modality: $modality,
             baseVariation: number_format((float) $baseVariation, 2, '.', ''),
@@ -579,7 +937,7 @@ final class BudgetService
             ];
         }
 
-        $after = $this->budget->findScenarioParameterExact($cycleId, $organId, $modality);
+        $after = $this->budget->findScenarioParameterExact($cycleId, $organId, $modality, $financialNature);
 
         $this->audit->log(
             entity: 'budget_scenario_parameter',
@@ -598,6 +956,7 @@ final class BudgetService
             type: 'budget.scenario_parameter_upserted',
             payload: [
                 'budget_cycle_id' => $cycleId,
+                'financial_nature' => $financialNature,
                 'organ_id' => $organId,
                 'modality' => $modality,
                 'base_variation_percent' => number_format((float) $baseVariation, 2, '.', ''),
@@ -836,6 +1195,35 @@ final class BudgetService
         }
 
         return $year;
+    }
+
+    private function parseYear(mixed $value): ?int
+    {
+        $raw = trim((string) $value);
+        if (!preg_match('/^\d{4}$/', $raw)) {
+            return null;
+        }
+
+        $year = (int) $raw;
+
+        return $year >= 2000 && $year <= 2100 ? $year : null;
+    }
+
+    private function parseFinancialNature(mixed $value, bool $allowDefault = true): ?string
+    {
+        $normalized = trim(mb_strtolower((string) $value));
+        if ($normalized === '') {
+            return $allowDefault ? 'despesa_reembolso' : null;
+        }
+
+        return in_array($normalized, self::ALLOWED_FINANCIAL_NATURES, true) ? $normalized : null;
+    }
+
+    private function normalizeFinancialNature(string $value): string
+    {
+        $parsed = $this->parseFinancialNature($value);
+
+        return $parsed ?? 'despesa_reembolso';
     }
 
     private function monthsRemainingInYear(string $entryDate, int $year): int

@@ -322,6 +322,10 @@ final class OrgansController extends Controller
             'name' => '',
             'acronym' => '',
             'cnpj' => '',
+            'organ_type' => '',
+            'government_level' => '',
+            'government_branch' => '',
+            'supervising_organ' => '',
             'contact_name' => '',
             'contact_email' => '',
             'contact_phone' => '',
@@ -330,6 +334,8 @@ final class OrgansController extends Controller
             'state' => '',
             'zip_code' => '',
             'notes' => '',
+            'source_name' => '',
+            'source_url' => '',
         ];
     }
 

@@ -27,6 +27,49 @@ $organ = $organ ?? [];
     </div>
 
     <div class="field">
+      <label for="organ_type">Tipo institucional</label>
+      <?php $selectedOrganType = old('organ_type', (string) ($organ['organ_type'] ?? '')); ?>
+      <select id="organ_type" name="organ_type">
+        <option value="">Selecionar</option>
+        <option value="administracao_direta" <?= $selectedOrganType === 'administracao_direta' ? 'selected' : '' ?>>Administracao direta</option>
+        <option value="autarquia" <?= $selectedOrganType === 'autarquia' ? 'selected' : '' ?>>Autarquia</option>
+        <option value="autarquia_especial" <?= $selectedOrganType === 'autarquia_especial' ? 'selected' : '' ?>>Autarquia especial</option>
+        <option value="fundacao_publica" <?= $selectedOrganType === 'fundacao_publica' ? 'selected' : '' ?>>Fundacao publica</option>
+        <option value="empresa_publica" <?= $selectedOrganType === 'empresa_publica' ? 'selected' : '' ?>>Empresa publica</option>
+        <option value="sociedade_economia_mista" <?= $selectedOrganType === 'sociedade_economia_mista' ? 'selected' : '' ?>>Sociedade de economia mista</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="government_level">Esfera</label>
+      <?php $selectedGovernmentLevel = old('government_level', (string) ($organ['government_level'] ?? '')); ?>
+      <select id="government_level" name="government_level">
+        <option value="">Selecionar</option>
+        <option value="federal" <?= $selectedGovernmentLevel === 'federal' ? 'selected' : '' ?>>Federal</option>
+        <option value="estadual" <?= $selectedGovernmentLevel === 'estadual' ? 'selected' : '' ?>>Estadual</option>
+        <option value="municipal" <?= $selectedGovernmentLevel === 'municipal' ? 'selected' : '' ?>>Municipal</option>
+        <option value="distrital" <?= $selectedGovernmentLevel === 'distrital' ? 'selected' : '' ?>>Distrital</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="government_branch">Poder</label>
+      <?php $selectedGovernmentBranch = old('government_branch', (string) ($organ['government_branch'] ?? '')); ?>
+      <select id="government_branch" name="government_branch">
+        <option value="">Selecionar</option>
+        <option value="executivo" <?= $selectedGovernmentBranch === 'executivo' ? 'selected' : '' ?>>Executivo</option>
+        <option value="legislativo" <?= $selectedGovernmentBranch === 'legislativo' ? 'selected' : '' ?>>Legislativo</option>
+        <option value="judiciario" <?= $selectedGovernmentBranch === 'judiciario' ? 'selected' : '' ?>>Judiciario</option>
+        <option value="autonomo" <?= $selectedGovernmentBranch === 'autonomo' ? 'selected' : '' ?>>Autonomo</option>
+      </select>
+    </div>
+
+    <div class="field field-wide">
+      <label for="supervising_organ">Orgao supervisor/vinculador</label>
+      <input id="supervising_organ" name="supervising_organ" type="text" value="<?= e(old('supervising_organ', (string) ($organ['supervising_organ'] ?? ''))) ?>">
+    </div>
+
+    <div class="field">
       <label for="contact_name">Contato</label>
       <input id="contact_name" name="contact_name" type="text" value="<?= e(old('contact_name', (string) ($organ['contact_name'] ?? ''))) ?>">
     </div>
@@ -64,6 +107,16 @@ $organ = $organ ?? [];
     <div class="field field-wide">
       <label for="notes">Observações</label>
       <textarea id="notes" name="notes" rows="4"><?= e(old('notes', (string) ($organ['notes'] ?? ''))) ?></textarea>
+    </div>
+
+    <div class="field">
+      <label for="source_name">Fonte do cadastro</label>
+      <input id="source_name" name="source_name" type="text" value="<?= e(old('source_name', (string) ($organ['source_name'] ?? ''))) ?>">
+    </div>
+
+    <div class="field field-wide">
+      <label for="source_url">URL de referencia</label>
+      <input id="source_url" name="source_url" type="url" value="<?= e(old('source_url', (string) ($organ['source_url'] ?? ''))) ?>">
     </div>
 
     <div class="form-actions field-wide">

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 $pipeline = $pipeline ?? [
     'assignment' => null,
+    'flow' => null,
     'statuses' => [],
     'next_status' => null,
+    'available_transitions' => [],
     'timeline' => [],
     'timeline_pagination' => [
         'total' => 0,
@@ -31,8 +33,10 @@ $pipeline = $pipeline ?? [
 ];
 
 $assignment = $pipeline['assignment'] ?? null;
+$flow = $pipeline['flow'] ?? null;
 $statuses = $pipeline['statuses'] ?? [];
 $nextStatus = $pipeline['next_status'] ?? null;
+$availableTransitions = is_array($pipeline['available_transitions'] ?? null) ? $pipeline['available_transitions'] : [];
 $timeline = $pipeline['timeline'] ?? [];
 $timelinePagination = $pipeline['timeline_pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $eventTypes = $pipeline['event_types'] ?? [];
@@ -68,24 +72,6 @@ $documentItems = $documents['items'] ?? [];
 $documentsPagination = $documents['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $documentTypes = $documents['document_types'] ?? [];
 $documentSensitivityOptions = $documents['sensitivity_options'] ?? [];
-$documentIntelligence = $documentIntelligence ?? [
-    'review' => null,
-    'extractions' => [],
-    'findings' => [],
-    'summary' => [
-        'documents_total' => 0,
-        'extractions_total' => 0,
-        'inconsistencies_total' => 0,
-        'suggestions_total' => 0,
-        'high_severity_total' => 0,
-    ],
-];
-$documentAiReview = is_array($documentIntelligence['review'] ?? null) ? $documentIntelligence['review'] : null;
-$documentAiExtractions = is_array($documentIntelligence['extractions'] ?? null) ? $documentIntelligence['extractions'] : [];
-$documentAiFindings = is_array($documentIntelligence['findings'] ?? null) ? $documentIntelligence['findings'] : [];
-$documentAiSummary = is_array($documentIntelligence['summary'] ?? null)
-    ? $documentIntelligence['summary']
-    : ['documents_total' => 0, 'extractions_total' => 0, 'inconsistencies_total' => 0, 'suggestions_total' => 0, 'high_severity_total' => 0];
 $canViewSensitiveDocuments = ($canViewSensitiveDocuments ?? false) === true;
 if ($documentSensitivityOptions === []) {
     $documentSensitivityOptions = [['value' => 'public', 'label' => 'Publico']];
@@ -99,6 +85,7 @@ $costs = $costs ?? [
         'items_count' => 0,
     ],
     'versions' => [],
+    'version_items' => [],
     'previous_plan' => null,
     'comparison' => [
         'monthly_delta' => null,
@@ -110,6 +97,7 @@ $activeCostPlan = $costs['active_plan'] ?? null;
 $costItems = $costs['items'] ?? [];
 $costSummary = $costs['summary'] ?? ['monthly_total' => 0, 'annualized_total' => 0, 'items_count' => 0];
 $costVersions = $costs['versions'] ?? [];
+$costVersionItems = is_array($costs['version_items'] ?? null) ? $costs['version_items'] : [];
 $costComparison = $costs['comparison'] ?? ['monthly_delta' => null, 'annualized_delta' => null, 'previous_version_number' => null];
 $conciliation = $conciliation ?? [
     'active_plan' => null,
@@ -267,10 +255,19 @@ $auditPagination = $audit['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page
 $auditFilters = $audit['filters'] ?? ['entity' => '', 'action' => '', 'q' => '', 'from_date' => '', 'to_date' => ''];
 $auditOptions = $audit['options'] ?? ['entities' => [], 'actions' => []];
 $personId = (int) ($person['id'] ?? 0);
+$tabOptions = ['summary', 'timeline', 'documents', 'costs', 'conciliation', 'finance', 'comments', 'admin-timeline', 'audit'];
+$requestedTab = trim((string) ($_GET['tab'] ?? 'summary'));
+$activeTab = in_array($requestedTab, $tabOptions, true) ? $requestedTab : 'summary';
+$focusTargetMap = [
+    'pipeline' => 'pipeline-overview',
+    'history' => 'timeline-history',
+];
+$requestedFocus = trim((string) ($_GET['focus'] ?? ''));
+$activeFocusTarget = $focusTargetMap[$requestedFocus] ?? '';
 
 $statusLabel = static function (string $value): string {
     return match ($value) {
-        'interessado' => 'Interessado',
+        'interessado' => 'Interessado/Triagem',
         'triagem' => 'Triagem',
         'selecionado' => 'Selecionado',
         'oficio_orgao' => 'Ofício órgão',
@@ -280,6 +277,43 @@ $statusLabel = static function (string $value): string {
         'dou' => 'DOU',
         'ativo' => 'Ativo',
         default => ucfirst(str_replace('_', ' ', $value)),
+    };
+};
+
+$statusLabelByCode = [];
+foreach ($statuses as $status) {
+    $statusCode = trim((string) ($status['code'] ?? ''));
+    $statusName = trim((string) ($status['label'] ?? ''));
+    if ($statusCode === '' || $statusName === '') {
+        continue;
+    }
+
+    $statusLabelByCode[$statusCode] = $statusName;
+}
+
+$resolveStatusLabel = static function (?string $code, ?string $fallbackLabel) use ($statusLabelByCode, $statusLabel): string {
+    $normalizedCode = trim((string) $code);
+    if ($normalizedCode !== '' && isset($statusLabelByCode[$normalizedCode])) {
+        return $statusLabelByCode[$normalizedCode];
+    }
+
+    $label = trim((string) $fallbackLabel);
+    if ($label !== '') {
+        return $label;
+    }
+
+    if ($normalizedCode !== '') {
+        return $statusLabel($normalizedCode);
+    }
+
+    return '-';
+};
+
+$nodeKindLabel = static function (string $kind): string {
+    return match ($kind) {
+        'gateway' => 'Decisão',
+        'final' => 'Final',
+        default => 'Etapa',
     };
 };
 
@@ -483,22 +517,6 @@ $documentSensitivityBadgeClass = static function (string $sensitivity): string {
     };
 };
 
-$documentAiFindingTypeLabel = static function (string $type): string {
-    return match ($type) {
-        'suggestion' => 'Sugestao',
-        default => 'Inconsistencia',
-    };
-};
-
-$documentAiFindingSeverityClass = static function (string $severity): string {
-    return match ($severity) {
-        'alta' => 'badge-danger',
-        'media' => 'badge-warning',
-        'baixa' => 'badge-info',
-        default => 'badge-neutral',
-    };
-};
-
 $queuePriorityLabel = static function (string $priority): string {
     return match ($priority) {
         'low' => 'Baixa',
@@ -555,7 +573,7 @@ $prettyJson = static function (mixed $value): string {
     return is_string($pretty) && trim($pretty) !== '' ? $pretty : '-';
 };
 
-$buildProfileUrl = static function (array $overrides = [], array $remove = []) use ($personId, $timelinePagination, $documentsPagination, $adminTimelinePagination, $adminTimelineFilters, $auditPagination, $auditFilters): string {
+$buildProfileUrl = static function (array $overrides = [], array $remove = []) use ($personId, $timelinePagination, $documentsPagination, $adminTimelinePagination, $adminTimelineFilters, $auditPagination, $auditFilters, $activeTab): string {
     $timelinePage = max(1, (int) ($timelinePagination['page'] ?? 1));
     $documentsPage = max(1, (int) ($documentsPagination['page'] ?? 1));
     $adminTimelinePage = max(1, (int) ($adminTimelinePagination['page'] ?? 1));
@@ -563,6 +581,7 @@ $buildProfileUrl = static function (array $overrides = [], array $remove = []) u
 
     $params = [
         'id' => $personId,
+        'tab' => $activeTab !== 'summary' ? $activeTab : '',
         'timeline_page' => $timelinePage,
         'documents_page' => $documentsPage,
         'admin_timeline_page' => $adminTimelinePage,
@@ -594,10 +613,10 @@ $buildProfileUrl = static function (array $overrides = [], array $remove = []) u
     return url('/people/show?' . http_build_query($params));
 };
 
-$buildTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['timeline_page' => $targetPage]);
-$buildDocumentsPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['documents_page' => $targetPage]);
-$buildAdminTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['admin_timeline_page' => $targetPage]);
-$buildAuditPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['audit_page' => $targetPage]);
+$buildTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['tab' => 'timeline', 'timeline_page' => $targetPage]);
+$buildDocumentsPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['tab' => 'documents', 'documents_page' => $targetPage]);
+$buildAdminTimelinePageUrl = static fn (int $targetPage): string => $buildProfileUrl(['tab' => 'admin-timeline', 'admin_timeline_page' => $targetPage]);
+$buildAuditPageUrl = static fn (int $targetPage): string => $buildProfileUrl(['tab' => 'audit', 'audit_page' => $targetPage]);
 $buildAuditExportUrl = static function () use ($personId, $auditFilters): string {
     $params = [
         'person_id' => $personId,
@@ -633,22 +652,41 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     </div>
   </div>
 
-  <div class="tabs-row">
-    <span class="tab-chip is-active">Resumo</span>
-    <span class="tab-chip">Timeline</span>
-    <span class="tab-chip">Documentos</span>
-    <span class="tab-chip">Custos</span>
-    <span class="tab-chip">Conciliação</span>
-    <span class="tab-chip">Financeiro real</span>
-    <span class="tab-chip">Comentarios internos</span>
-    <span class="tab-chip">Timeline administrativa</span>
-    <span class="tab-chip">Auditoria</span>
+  <?php
+    $movementDirection = (string) ($assignment['movement_direction'] ?? 'entrada_mte');
+    $movementDirectionLabel = match ($movementDirection) {
+        'saida_mte' => 'Cessao para fora do MTE',
+        default => 'Recebimento no MTE',
+    };
+    $financialNature = (string) ($assignment['financial_nature'] ?? 'despesa_reembolso');
+    $financialNatureLabel = match ($financialNature) {
+        'receita_reembolso' => 'Receita de reembolso (a receber)',
+        default => 'Despesa de reembolso (a pagar)',
+    };
+  ?>
+
+  <div class="tabs-row" data-tab-nav>
+    <button type="button" class="tab-chip is-active" data-tab-target="summary">Resumo</button>
+    <button type="button" class="tab-chip" data-tab-target="timeline">Execução do fluxo</button>
+    <button type="button" class="tab-chip" data-tab-target="documents">Documentos</button>
+    <button type="button" class="tab-chip" data-tab-target="costs">Custos</button>
+    <button type="button" class="tab-chip" data-tab-target="conciliation">Conciliação</button>
+    <button type="button" class="tab-chip" data-tab-target="finance">Financeiro real</button>
+    <button type="button" class="tab-chip" data-tab-target="comments">Comentarios internos</button>
+    <button type="button" class="tab-chip" data-tab-target="admin-timeline">Timeline administrativa</button>
+    <button type="button" class="tab-chip" data-tab-target="audit">Auditoria</button>
   </div>
 
-  <div class="details-grid">
+  <div class="details-grid" data-tab-panel="summary">
     <div><strong>Status:</strong> <?= e($statusLabel((string) ($person['status'] ?? ''))) ?></div>
+    <div><strong>Fluxo BPMN:</strong> <?= e((string) ($flow['name'] ?? $person['assignment_flow_name'] ?? '-')) ?></div>
     <div><strong>Órgão:</strong> <?= e((string) ($person['organ_name'] ?? '-')) ?></div>
     <div><strong>Modalidade:</strong> <?= e((string) ($person['modality_name'] ?? '-')) ?></div>
+    <div><strong>Direção do movimento:</strong> <?= e($movementDirectionLabel) ?></div>
+    <div><strong>Natureza financeira:</strong> <?= e($financialNatureLabel) ?></div>
+    <div><strong>Órgão de contraparte:</strong> <?= e((string) ($assignment['counterparty_organ_name'] ?? $person['organ_name'] ?? '-')) ?></div>
+    <div><strong>Lotação origem MTE:</strong> <?= e((string) ($assignment['origin_mte_destination_name'] ?? '-')) ?></div>
+    <div><strong>Lotação destino MTE:</strong> <?= e((string) ($assignment['destination_mte_destination_name'] ?? '-')) ?></div>
     <div><strong>CPF:</strong>
       <?php if (($canViewCpfFull ?? false) === true): ?>
         <?= e((string) ($person['cpf'] ?? '-')) ?>
@@ -660,11 +698,79 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     <div><strong>E-mail:</strong> <?= e((string) ($person['email'] ?? '-')) ?></div>
     <div><strong>Telefone:</strong> <?= e((string) ($person['phone'] ?? '-')) ?></div>
     <div><strong>Nº processo SEI:</strong> <?= e((string) ($person['sei_process_number'] ?? '-')) ?></div>
-    <div><strong>Lotação MTE:</strong> <?= e((string) ($person['mte_destination'] ?? '-')) ?></div>
+    <div><strong>Lotação MTE (referência legado):</strong> <?= e((string) ($person['mte_destination'] ?? '-')) ?></div>
     <div><strong>Tags:</strong> <?= e((string) ($person['tags'] ?? '-')) ?></div>
     <div class="details-wide"><strong>Observações:</strong> <?= nl2br(e((string) ($person['notes'] ?? '-'))) ?></div>
   </div>
 </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var chips = Array.prototype.slice.call(document.querySelectorAll('[data-tab-target]'));
+    var panels = Array.prototype.slice.call(document.querySelectorAll('[data-tab-panel]'));
+    if (chips.length === 0 || panels.length === 0) {
+      return;
+    }
+
+    var availableTabs = chips.map(function (chip) {
+      return chip.getAttribute('data-tab-target') || '';
+    });
+
+    var syncTabOnUrl = function (tabName) {
+      try {
+        var nextUrl = new URL(window.location.href);
+        if (tabName === 'summary') {
+          nextUrl.searchParams.delete('tab');
+        } else {
+          nextUrl.searchParams.set('tab', tabName);
+        }
+        window.history.replaceState({}, '', nextUrl.toString());
+      } catch (error) {
+      }
+    };
+
+    var activateTab = function (targetTab, syncUrl) {
+      var nextTab = availableTabs.indexOf(targetTab) === -1 ? 'summary' : targetTab;
+
+      chips.forEach(function (chip) {
+        var isActive = (chip.getAttribute('data-tab-target') || '') === nextTab;
+        chip.classList.toggle('is-active', isActive);
+        chip.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+
+      panels.forEach(function (panel) {
+        panel.hidden = (panel.getAttribute('data-tab-panel') || '') !== nextTab;
+      });
+
+      if (syncUrl === true) {
+        syncTabOnUrl(nextTab);
+      }
+    };
+
+    chips.forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        activateTab(chip.getAttribute('data-tab-target') || 'summary', true);
+      });
+    });
+
+    activateTab(<?= json_encode($activeTab, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>, false);
+
+    var focusTargetId = <?= json_encode($activeFocusTarget, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+    if (focusTargetId !== '' && <?= json_encode($activeTab, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?> === 'timeline') {
+      var focusTarget = document.getElementById(focusTargetId);
+      if (focusTarget) {
+        focusTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      try {
+        var cleanedUrl = new URL(window.location.href);
+        cleanedUrl.searchParams.delete('focus');
+        window.history.replaceState({}, '', cleanedUrl.toString());
+      } catch (error) {
+      }
+    }
+  });
+</script>
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
@@ -738,41 +844,127 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   });
 </script>
 
-<div class="card">
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var toggles = Array.prototype.slice.call(document.querySelectorAll('[data-cost-version-toggle]'));
+    var detailRows = Array.prototype.slice.call(document.querySelectorAll('.cost-version-detail-row'));
+    if (toggles.length === 0 || detailRows.length === 0) {
+      return;
+    }
+
+    var collapseAll = function () {
+      toggles.forEach(function (toggle) {
+        toggle.setAttribute('aria-expanded', 'false');
+      });
+
+      detailRows.forEach(function (row) {
+        row.hidden = true;
+      });
+    };
+
+    toggles.forEach(function (toggle) {
+      toggle.addEventListener('click', function () {
+        var targetId = String(toggle.getAttribute('data-cost-version-toggle') || '');
+        if (targetId === '') {
+          return;
+        }
+
+        var detailRow = document.getElementById('cost-version-detail-' + targetId);
+        if (!detailRow) {
+          return;
+        }
+
+        var willOpen = detailRow.hidden;
+        collapseAll();
+        if (willOpen) {
+          detailRow.hidden = false;
+          toggle.setAttribute('aria-expanded', 'true');
+        }
+      });
+    });
+  });
+</script>
+
+<div id="pipeline-overview" class="card" data-tab-panel="timeline">
   <div class="header-row">
     <div>
-      <h3>Pipeline de status</h3>
-      <p class="muted">Fluxo: Interessado → Triagem → Selecionado → Ofício órgão → Custos recebidos → CDO → MGI → DOU → Ativo</p>
+      <h3>Execução do Pipeline BPMN</h3>
+      <p class="muted">
+        Fluxo selecionado:
+        <?= e((string) ($flow['name'] ?? $assignment['flow_name'] ?? 'Não definido')) ?>
+      </p>
     </div>
-    <?php if (($canManage ?? false) === true && $nextStatus !== null): ?>
-      <form method="post" action="<?= e(url('/people/pipeline/advance')) ?>">
-        <?= csrf_field() ?>
-        <input type="hidden" name="id" value="<?= e((string) ($person['id'] ?? 0)) ?>">
-        <button type="submit" class="btn btn-primary">
-          <?= e((string) ($nextStatus['next_action_label'] ?? ('Avançar para ' . ($nextStatus['label'] ?? 'próxima etapa')))) ?>
-        </button>
-      </form>
+    <?php if (($canManage ?? false) === true && $assignment !== null): ?>
+      <?php if (count($availableTransitions) > 1): ?>
+        <form method="post" action="<?= e(url('/people/pipeline/advance')) ?>" class="actions-inline">
+          <?= csrf_field() ?>
+          <input type="hidden" name="id" value="<?= e((string) ($person['id'] ?? 0)) ?>">
+          <select name="transition_id" required>
+            <option value="">Escolha a transição</option>
+            <?php foreach ($availableTransitions as $transitionOption): ?>
+              <?php
+                $transitionOptionId = (int) ($transitionOption['id'] ?? 0);
+                $transitionOptionLabel = trim((string) ($transitionOption['action_label'] ?? ''));
+                if ($transitionOptionLabel === '') {
+                    $transitionOptionLabel = trim((string) ($transitionOption['transition_label'] ?? ''));
+                }
+                if ($transitionOptionLabel === '') {
+                    $transitionOptionLabel = 'Avançar para ' . (string) ($transitionOption['to_label'] ?? 'próxima etapa');
+                }
+              ?>
+              <option value="<?= e((string) $transitionOptionId) ?>">
+                <?= e($transitionOptionLabel) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <button type="submit" class="btn btn-primary">Aplicar transição</button>
+        </form>
+      <?php elseif ($nextStatus !== null): ?>
+        <form method="post" action="<?= e(url('/people/pipeline/advance')) ?>">
+          <?= csrf_field() ?>
+          <input type="hidden" name="id" value="<?= e((string) ($person['id'] ?? 0)) ?>">
+          <?php if ((int) ($nextStatus['transition_id'] ?? 0) > 0): ?>
+            <input type="hidden" name="transition_id" value="<?= e((string) ((int) $nextStatus['transition_id'])) ?>">
+          <?php endif; ?>
+          <button type="submit" class="btn btn-primary">
+            <?= e((string) ($nextStatus['next_action_label'] ?? ('Avançar para ' . ($nextStatus['label'] ?? 'próxima etapa')))) ?>
+          </button>
+        </form>
+      <?php else: ?>
+        <span class="badge badge-success">Fluxo concluído</span>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
 
   <?php if ($assignment === null): ?>
-    <p class="muted">Pipeline ainda não inicializado para esta pessoa.</p>
+    <p class="muted">Pipeline ainda não inicializado para esta pessoa. Defina um fluxo no cadastro e tente novamente.</p>
   <?php else: ?>
+    <?php
+      $transitionTargetStatusIds = array_values(array_unique(array_filter(array_map(
+          static fn (array $transition): int => (int) ($transition['to_status_id'] ?? 0),
+          $availableTransitions
+      ))));
+    ?>
     <div class="pipeline-track">
       <?php foreach ($statuses as $stage): ?>
         <?php
+          $stageId = (int) ($stage['id'] ?? 0);
           $stageOrder = (int) ($stage['sort_order'] ?? 0);
-          $currentOrder = (int) ($assignment['current_status_order'] ?? 0);
+          $stageKind = (string) ($stage['node_kind'] ?? 'activity');
+          $currentStatusId = (int) ($assignment['current_status_id'] ?? 0);
           $stageClass = 'is-pending';
-          if ($stageOrder < $currentOrder) {
-              $stageClass = 'is-done';
-          } elseif ($stageOrder === $currentOrder) {
+          if ($stageId > 0 && $stageId === $currentStatusId) {
               $stageClass = 'is-current';
+          } elseif ($stageId > 0 && in_array($stageId, $transitionTargetStatusIds, true)) {
+              $stageClass = 'is-available';
           }
         ?>
         <div class="pipeline-step <?= e($stageClass) ?>">
-          <span class="pipeline-index"><?= e((string) $stageOrder) ?></span>
-          <span><?= e((string) ($stage['label'] ?? '')) ?></span>
+          <span class="pipeline-index"><?= e((string) ($stageOrder > 0 ? $stageOrder : '•')) ?></span>
+          <span>
+            <strong><?= e((string) ($stage['label'] ?? '')) ?></strong><br>
+            <small class="muted"><?= e($nodeKindLabel($stageKind)) ?></small>
+          </span>
         </div>
       <?php endforeach; ?>
     </div>
@@ -782,7 +974,28 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
       $currentPriority = mb_strtolower(trim((string) ($assignment['priority_level'] ?? 'normal')));
     ?>
     <div class="summary-line"><strong>Status atual:</strong> <?= e((string) ($assignment['current_status_label'] ?? '-')) ?></div>
-    <div class="summary-line"><strong>Próxima ação:</strong> <?= e((string) (($nextStatus['next_action_label'] ?? 'Sem próxima ação'))) ?></div>
+    <?php if ($availableTransitions === []): ?>
+      <div class="summary-line"><strong>Próxima ação:</strong> Sem transições disponíveis.</div>
+    <?php else: ?>
+      <div class="summary-line"><strong>Próxima ação:</strong> <?= e((string) count($availableTransitions)) ?> opção(ões) disponível(is).</div>
+      <ul class="attachments-list">
+        <?php foreach ($availableTransitions as $transition): ?>
+          <?php
+            $transitionLabel = trim((string) ($transition['transition_label'] ?? ''));
+            if ($transitionLabel === '') {
+                $transitionLabel = trim((string) ($transition['action_label'] ?? ''));
+            }
+            if ($transitionLabel === '') {
+                $transitionLabel = 'Avançar';
+            }
+          ?>
+          <li>
+            <strong><?= e($transitionLabel) ?></strong>
+            <span class="muted">→ <?= e((string) ($transition['to_label'] ?? '-')) ?></span>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php endif; ?>
     <div class="summary-line"><strong>Responsável da fila:</strong> <?= e((string) ($assignment['assigned_user_name'] ?? 'Não definido')) ?></div>
     <div class="summary-line">
       <strong>Prioridade:</strong>
@@ -893,11 +1106,11 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php endif; ?>
 </div>
 
-<div class="card">
+<div id="timeline-history" class="card" data-tab-panel="timeline">
   <div class="header-row">
     <div>
-      <h3>Timeline</h3>
-      <p class="muted">Linha do tempo completa com histórico imutável e retificações.</p>
+      <h3>Timeline do fluxo</h3>
+      <p class="muted">Histórico operacional atrelado ao pipeline, com trilha imutável e retificações.</p>
     </div>
     <div class="actions-inline">
       <a class="btn btn-outline" href="<?= e(url('/people/timeline/print?id=' . $personId)) ?>" target="_blank" rel="noopener">Imprimir timeline</a>
@@ -952,6 +1165,26 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           $attachments = is_array($event['attachments'] ?? null) ? $event['attachments'] : [];
           $rectifiesEventId = isset($metadata['rectifies_event_id']) ? (int) $metadata['rectifies_event_id'] : 0;
           $eventId = (int) ($event['id'] ?? 0);
+          $eventFromCode = trim((string) ($metadata['from_code'] ?? ''));
+          $eventFromLabel = trim((string) ($metadata['from_label'] ?? ''));
+          $eventToCode = trim((string) ($metadata['to_code'] ?? ''));
+          $eventToLabel = trim((string) ($metadata['to_label'] ?? ''));
+          $eventStatusCode = trim((string) ($metadata['pipeline_status_code'] ?? ($metadata['status_code'] ?? '')));
+          $eventStatusLabel = trim((string) ($metadata['pipeline_status_label'] ?? ($metadata['status_label'] ?? '')));
+          $eventTransitionLabel = trim((string) ($metadata['transition_label'] ?? ''));
+          $resolvedFromLabel = ($eventFromCode !== '' || $eventFromLabel !== '')
+              ? $resolveStatusLabel($eventFromCode, $eventFromLabel)
+              : '';
+          $resolvedToLabel = ($eventToCode !== '' || $eventToLabel !== '')
+              ? $resolveStatusLabel($eventToCode, $eventToLabel)
+              : '';
+          $resolvedStatusLabel = ($eventStatusCode !== '' || $eventStatusLabel !== '')
+              ? $resolveStatusLabel($eventStatusCode, $eventStatusLabel)
+              : '';
+          $hasPipelineBinding = str_starts_with($eventType, 'pipeline.')
+              || $resolvedFromLabel !== ''
+              || $resolvedToLabel !== ''
+              || $resolvedStatusLabel !== '';
         ?>
         <article class="timeline-item">
           <div class="timeline-item-header">
@@ -964,6 +1197,20 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
 
           <?php if (trim((string) ($event['description'] ?? '')) !== ''): ?>
             <p class="timeline-item-description"><?= nl2br(e((string) $event['description'])) ?></p>
+          <?php endif; ?>
+
+          <?php if ($hasPipelineBinding): ?>
+            <div class="timeline-stage-meta">
+              <span class="badge badge-info">Fluxo BPMN</span>
+              <?php if ($resolvedFromLabel !== '' && $resolvedToLabel !== ''): ?>
+                <span class="muted">Etapa: <?= e($resolvedFromLabel) ?> → <?= e($resolvedToLabel) ?></span>
+              <?php elseif ($resolvedStatusLabel !== ''): ?>
+                <span class="muted">Etapa: <?= e($resolvedStatusLabel) ?></span>
+              <?php endif; ?>
+              <?php if ($eventTransitionLabel !== ''): ?>
+                <span class="badge badge-neutral"><?= e($eventTransitionLabel) ?></span>
+              <?php endif; ?>
+            </div>
           <?php endif; ?>
 
           <?php if ($rectifiesEventId > 0): ?>
@@ -1036,7 +1283,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php endif; ?>
 </div>
 
-<div class="card">
+<div class="card" data-tab-panel="documents">
   <div class="header-row">
     <div>
       <h3>Documentos</h3>
@@ -1047,124 +1294,6 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php if (!$canViewSensitiveDocuments): ?>
     <p class="muted">Somente documentos classificados como Publico sao exibidos para o seu perfil.</p>
   <?php endif; ?>
-
-  <div class="card" style="margin: 12px 0 16px; background: #f8fbff;">
-    <div class="header-row">
-      <div>
-        <h4 style="margin: 0;">Conferencia assistida por IA</h4>
-        <p class="muted" style="margin: 4px 0 0;">
-          Extrai campos do dossie, aponta inconsistencias e sugere justificativas para divergencias recorrentes.
-        </p>
-      </div>
-      <?php if (($canManage ?? false) === true): ?>
-        <form method="post" action="<?= e(url('/people/documents/intelligence/run')) ?>">
-          <?= csrf_field() ?>
-          <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
-          <button type="submit" class="btn btn-outline">Executar conferencia assistida</button>
-        </form>
-      <?php endif; ?>
-    </div>
-
-    <?php if ($documentAiReview === null): ?>
-      <p class="muted" style="margin-top: 10px;">Nenhuma conferencia assistida executada para esta pessoa.</p>
-    <?php else: ?>
-      <p class="muted" style="margin-top: 10px;">
-        Ultima execucao: <?= e($formatDateTime((string) ($documentAiReview['created_at'] ?? ''))) ?>
-        <?php if (trim((string) ($documentAiReview['executed_by_name'] ?? '')) !== ''): ?>
-          por <?= e((string) ($documentAiReview['executed_by_name'] ?? '')) ?>
-        <?php endif; ?>
-      </p>
-      <div class="actions-inline" style="margin: 8px 0 12px;">
-        <span class="badge badge-neutral">Docs <?= e((string) ((int) ($documentAiSummary['documents_total'] ?? 0))) ?></span>
-        <span class="badge badge-info">Extracoes <?= e((string) ((int) ($documentAiSummary['extractions_total'] ?? 0))) ?></span>
-        <span class="badge badge-warning">Inconsistencias <?= e((string) ((int) ($documentAiSummary['inconsistencies_total'] ?? 0))) ?></span>
-        <span class="badge badge-success">Sugestoes <?= e((string) ((int) ($documentAiSummary['suggestions_total'] ?? 0))) ?></span>
-        <span class="badge badge-danger">Alta severidade <?= e((string) ((int) ($documentAiSummary['high_severity_total'] ?? 0))) ?></span>
-      </div>
-
-      <details>
-        <summary>Inconsistencias e sugestoes (<?= e((string) count($documentAiFindings)) ?>)</summary>
-        <?php if ($documentAiFindings === []): ?>
-          <p class="muted">Nao foram identificadas inconsistencias/sugestoes na ultima execucao.</p>
-        <?php else: ?>
-          <div class="table-wrap" style="margin-top: 10px;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tipo</th>
-                  <th>Severidade</th>
-                  <th>Titulo</th>
-                  <th>Detalhe</th>
-                  <th>Sugestao de justificativa</th>
-                  <th>Confianca</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php foreach ($documentAiFindings as $finding): ?>
-                  <?php $findingType = mb_strtolower(trim((string) ($finding['finding_type'] ?? 'inconsistency'))); ?>
-                  <?php $findingSeverity = mb_strtolower(trim((string) ($finding['severity'] ?? 'media'))); ?>
-                  <tr>
-                    <td><?= e($documentAiFindingTypeLabel($findingType)) ?></td>
-                    <td><span class="badge <?= e($documentAiFindingSeverityClass($findingSeverity)) ?>"><?= e(ucfirst($findingSeverity)) ?></span></td>
-                    <td><?= e((string) ($finding['title'] ?? '-')) ?></td>
-                    <td>
-                      <?= nl2br(e((string) ($finding['description'] ?? '-'))) ?>
-                      <?php if (trim((string) ($finding['document_title'] ?? '')) !== ''): ?>
-                        <div class="muted">Documento: <?= e((string) ($finding['document_title'] ?? '')) ?></div>
-                      <?php endif; ?>
-                    </td>
-                    <td><?= nl2br(e((string) ($finding['suggested_justification'] ?? '-'))) ?></td>
-                    <td><?= e(number_format((float) ($finding['confidence_score'] ?? 0), 1, ',', '.')) ?>%</td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        <?php endif; ?>
-      </details>
-
-      <details style="margin-top: 10px;">
-        <summary>Extracoes de campos (<?= e((string) count($documentAiExtractions)) ?>)</summary>
-        <?php if ($documentAiExtractions === []): ?>
-          <p class="muted">Nenhum campo extraido na ultima execucao.</p>
-        <?php else: ?>
-          <div class="table-wrap" style="margin-top: 10px;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Documento</th>
-                  <th>SEI extraido</th>
-                  <th>Competencia</th>
-                  <th>Valor</th>
-                  <th>Confianca</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php foreach ($documentAiExtractions as $extraction): ?>
-                  <tr>
-                    <td>
-                      <?= e((string) ($extraction['document_title'] ?? ($extraction['original_name'] ?? '-'))) ?>
-                      <div class="muted"><?= e((string) ($extraction['document_type_name'] ?? '-')) ?></div>
-                    </td>
-                    <td><?= e((string) ($extraction['extracted_sei'] ?? '-')) ?></td>
-                    <td><?= e($formatMonth((string) ($extraction['extracted_competence'] ?? ''))) ?></td>
-                    <td>
-                      <?php if (($extraction['extracted_amount'] ?? null) !== null): ?>
-                        <?= e($formatMoney((float) ($extraction['extracted_amount'] ?? 0))) ?>
-                      <?php else: ?>
-                        -
-                      <?php endif; ?>
-                    </td>
-                    <td><?= e(number_format((float) ($extraction['confidence_score'] ?? 0), 1, ',', '.')) ?>%</td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        <?php endif; ?>
-      </details>
-    <?php endif; ?>
-  </div>
 
   <?php if (($canManage ?? false) === true): ?>
     <form method="post" action="<?= e(url('/people/documents/store')) ?>" enctype="multipart/form-data" class="document-form">
@@ -1335,7 +1464,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php endif; ?>
 </div>
 
-<div class="card">
+<div class="card" data-tab-panel="costs">
   <div class="header-row">
     <div>
       <h3>Custos previstos</h3>
@@ -1487,8 +1616,27 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           </thead>
           <tbody>
             <?php foreach ($costVersions as $version): ?>
+              <?php
+                $versionPlanId = (int) ($version['id'] ?? 0);
+                $versionItemsList = is_array($costVersionItems[$versionPlanId] ?? null) ? $costVersionItems[$versionPlanId] : [];
+                $versionNumber = (int) ($version['version_number'] ?? 0);
+              ?>
               <tr>
-                <td>V<?= e((string) ((int) ($version['version_number'] ?? 0))) ?></td>
+                <td>
+                  <?php if ($versionPlanId > 0): ?>
+                    <button
+                      type="button"
+                      class="btn btn-ghost cost-version-toggle"
+                      data-cost-version-toggle="<?= e((string) $versionPlanId) ?>"
+                      aria-controls="cost-version-detail-<?= e((string) $versionPlanId) ?>"
+                      aria-expanded="false"
+                    >
+                      V<?= e((string) $versionNumber) ?>
+                    </button>
+                  <?php else: ?>
+                    V<?= e((string) $versionNumber) ?>
+                  <?php endif; ?>
+                </td>
                 <td><?= e((string) ($version['label'] ?? '-')) ?></td>
                 <td><?= e((string) ((int) ($version['items_count'] ?? 0))) ?></td>
                 <td><?= e($formatMoney((float) ($version['monthly_total'] ?? 0))) ?></td>
@@ -1501,6 +1649,50 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                   <?php endif; ?>
                 </td>
               </tr>
+              <?php if ($versionPlanId > 0): ?>
+                <tr id="cost-version-detail-<?= e((string) $versionPlanId) ?>" class="cost-version-detail-row" hidden>
+                  <td colspan="6">
+                    <div class="cost-version-detail">
+                      <p class="muted">Detalhamento da versão V<?= e((string) $versionNumber) ?>.</p>
+                      <?php if ($versionItemsList === []): ?>
+                        <p class="muted">Nenhum item registrado nesta versão.</p>
+                      <?php else: ?>
+                        <div class="table-wrap">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Item</th>
+                                <th>Tipo</th>
+                                <th>Valor informado</th>
+                                <th>Início</th>
+                                <th>Fim</th>
+                                <th>Responsável</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <?php foreach ($versionItemsList as $versionItem): ?>
+                                <tr>
+                                  <td>
+                                    <strong><?= e((string) ($versionItem['item_name'] ?? '-')) ?></strong>
+                                    <?php if (trim((string) ($versionItem['notes'] ?? '')) !== ''): ?>
+                                      <div class="muted"><?= e((string) ($versionItem['notes'] ?? '')) ?></div>
+                                    <?php endif; ?>
+                                  </td>
+                                  <td><?= e($costTypeLabel((string) ($versionItem['cost_type'] ?? ''))) ?></td>
+                                  <td><?= e($formatMoney((float) ($versionItem['amount'] ?? 0))) ?></td>
+                                  <td><?= e($formatDate((string) ($versionItem['start_date'] ?? ''))) ?></td>
+                                  <td><?= e($formatDate((string) ($versionItem['end_date'] ?? ''))) ?></td>
+                                  <td><?= e((string) ($versionItem['created_by_name'] ?? 'Sistema')) ?></td>
+                                </tr>
+                              <?php endforeach; ?>
+                            </tbody>
+                          </table>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+                  </td>
+                </tr>
+              <?php endif; ?>
             <?php endforeach; ?>
           </tbody>
         </table>
@@ -1509,7 +1701,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php endif; ?>
 </div>
 
-<div class="card">
+<div class="card" data-tab-panel="conciliation">
   <div class="header-row">
     <div>
       <h3>Conciliação previsto x real</h3>
@@ -1577,7 +1769,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php endif; ?>
 </div>
 
-<div class="card">
+<div class="card" data-tab-panel="finance">
   <div class="header-row">
     <div>
       <h3>Reembolsos reais</h3>
@@ -1844,7 +2036,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   </div>
 </div>
 
-<div class="card">
+<div class="card" data-tab-panel="comments">
   <div class="header-row">
     <div>
       <h3>Comentarios internos do processo</h3>
@@ -1979,7 +2171,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php endif; ?>
 </div>
 
-<div class="card">
+<div class="card" data-tab-panel="admin-timeline">
   <div class="header-row">
     <div>
       <h3>Timeline administrativa completa</h3>
@@ -2246,7 +2438,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php endif; ?>
 </div>
 
-<div class="card">
+<div class="card" data-tab-panel="audit">
   <div class="header-row">
     <div>
       <h3>Auditoria</h3>

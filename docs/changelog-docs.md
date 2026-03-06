@@ -1,11 +1,9 @@
 # Changelog da Documentacao
 
 ## 2026-03-05
-- Atualizacao de `docs/__planodedesenvolvimento.md` para marcar secao 6.4 (evolucao assistida por IA) como concluida no ciclo 9.19
-- Atualizacao de `README.md` com status da entrega 9.19 e nova rota `POST /people/documents/intelligence/run`
-- Atualizacao de `docs/02-architecture.md` para incluir `DocumentIntelligenceService` e tabelas `document_ai_*`
-- Atualizacao de `docs/07-security.md` com controle de acesso do endpoint `POST /people/documents/intelligence/run`
-- Adicionado checklist `tests/checklist-etapa-9.19-ia-assistida.md`
+- Reestruturado `docs/orgaos_estatais_autarquias_etc.md` como fonte operacional (escopo de campos, plano de importacao e dataset CSV embutido)
+- Atualizacao de `README.md` com status da entrega 9.20 (classificacao institucional de orgaos + importacao baseada em markdown)
+- Atualizacao de `CHANGELOG.md` com registro tecnico da entrega 9.20
 - Atualizacao de `docs/__planodedesenvolvimento.md` para marcar RF-45 e RNF-07 como concluidos (painel financeiro por status e observabilidade estruturada)
 - Atualizacao de `README.md` com status do ciclo 9.18, nova rota `GET /ops/health-panel` e painel financeiro por status no modulo de relatorios
 - Atualizacao de `docs/02-architecture.md` para incluir `OpsHealthPanelService` e evolucao do `ReportService` com consolidado financeiro por status

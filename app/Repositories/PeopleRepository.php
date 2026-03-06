@@ -121,6 +121,26 @@ final class PeopleRepository
             $params['priority'] = $priority;
         }
 
+        $monthlyEquivalentExpr = 'CASE
+            WHEN i.cost_type = "mensal"
+                 AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
+                 AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+            THEN i.amount
+            WHEN i.cost_type = "anual"
+                 AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
+                 AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+            THEN i.amount / 12
+            WHEN i.cost_type = "unico"
+                 AND (
+                    (i.start_date IS NOT NULL AND DATE_FORMAT(i.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                    OR (i.start_date IS NULL AND DATE_FORMAT(i.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                 )
+            THEN i.amount
+            ELSE 0
+        END';
+
+        $isAuxilioExpr = '(LOWER(i.item_name) LIKE "%auxilio%" OR LOWER(i.item_name) LIKE "%beneficio%")';
+
         $countSql = "
             SELECT COUNT(*) AS total
             FROM people p
@@ -157,12 +177,27 @@ final class PeopleRepository
                 a.assigned_user_id,
                 COALESCE(NULLIF(a.priority_level, ''), 'normal') AS assignment_priority,
                 a.updated_at AS assignment_updated_at,
-                au.name AS assigned_user_name
+                COALESCE(a.updated_at, p.updated_at) AS status_changed_at,
+                au.name AS assigned_user_name,
+                IFNULL(cost.monthly_total, 0) AS monthly_total,
+                IFNULL(cost.monthly_auxilios, 0) AS monthly_auxilios,
+                (IFNULL(cost.monthly_total, 0) - IFNULL(cost.monthly_auxilios, 0)) AS monthly_remuneration
             FROM people p
             INNER JOIN organs o ON o.id = p.organ_id
             LEFT JOIN modalities m ON m.id = p.desired_modality_id
             LEFT JOIN assignments a ON a.person_id = p.id AND a.deleted_at IS NULL
             LEFT JOIN users au ON au.id = a.assigned_user_id AND au.deleted_at IS NULL
+            LEFT JOIN (
+                SELECT
+                    cp.person_id,
+                    IFNULL(SUM(' . $monthlyEquivalentExpr . '), 0) AS monthly_total,
+                    IFNULL(SUM(CASE WHEN ' . $isAuxilioExpr . ' THEN ' . $monthlyEquivalentExpr . ' ELSE 0 END), 0) AS monthly_auxilios
+                FROM cost_plans cp
+                LEFT JOIN cost_plan_items i ON i.cost_plan_id = cp.id AND i.deleted_at IS NULL
+                WHERE cp.deleted_at IS NULL
+                  AND cp.is_active = 1
+                GROUP BY cp.person_id
+            ) cost ON cost.person_id = p.id
             {$where}
             ORDER BY {$sortColumn} {$direction}, p.id ASC
             LIMIT :limit OFFSET :offset
@@ -193,6 +228,7 @@ final class PeopleRepository
                 p.id,
                 p.organ_id,
                 p.desired_modality_id,
+                p.assignment_flow_id,
                 p.name,
                 p.cpf,
                 p.birth_date,
@@ -206,10 +242,12 @@ final class PeopleRepository
                 p.created_at,
                 p.updated_at,
                 o.name AS organ_name,
-                m.name AS modality_name
+                m.name AS modality_name,
+                f.name AS assignment_flow_name
              FROM people p
              INNER JOIN organs o ON o.id = p.organ_id
              LEFT JOIN modalities m ON m.id = p.desired_modality_id
+             LEFT JOIN assignment_flows f ON f.id = p.assignment_flow_id AND f.deleted_at IS NULL
              WHERE p.id = :id AND p.deleted_at IS NULL
              LIMIT 1'
         );
@@ -226,6 +264,7 @@ final class PeopleRepository
             'INSERT INTO people (
                 organ_id,
                 desired_modality_id,
+                assignment_flow_id,
                 name,
                 cpf,
                 birth_date,
@@ -241,6 +280,7 @@ final class PeopleRepository
             ) VALUES (
                 :organ_id,
                 :desired_modality_id,
+                :assignment_flow_id,
                 :name,
                 :cpf,
                 :birth_date,
@@ -259,6 +299,7 @@ final class PeopleRepository
         $stmt->execute([
             'organ_id' => $data['organ_id'],
             'desired_modality_id' => $data['desired_modality_id'],
+            'assignment_flow_id' => $data['assignment_flow_id'],
             'name' => $data['name'],
             'cpf' => $data['cpf'],
             'birth_date' => $data['birth_date'],
@@ -282,6 +323,7 @@ final class PeopleRepository
              SET
                 organ_id = :organ_id,
                 desired_modality_id = :desired_modality_id,
+                assignment_flow_id = :assignment_flow_id,
                 name = :name,
                 cpf = :cpf,
                 birth_date = :birth_date,
@@ -300,6 +342,7 @@ final class PeopleRepository
             'id' => $id,
             'organ_id' => $data['organ_id'],
             'desired_modality_id' => $data['desired_modality_id'],
+            'assignment_flow_id' => $data['assignment_flow_id'],
             'name' => $data['name'],
             'cpf' => $data['cpf'],
             'birth_date' => $data['birth_date'],
@@ -394,5 +437,57 @@ final class PeopleRepository
         $stmt->execute(['name' => $name]);
 
         return $stmt->fetch() !== false;
+    }
+
+    public function assignmentFlowExists(int $flowId): bool
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id
+             FROM assignment_flows
+             WHERE id = :id
+               AND deleted_at IS NULL
+               AND is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $flowId]);
+
+        return $stmt->fetch() !== false;
+    }
+
+    public function defaultAssignmentFlowId(): ?int
+    {
+        $stmt = $this->db->query(
+            'SELECT id
+             FROM assignment_flows
+             WHERE deleted_at IS NULL
+               AND is_active = 1
+             ORDER BY is_default DESC, id ASC
+             LIMIT 1'
+        );
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+
+        $flowId = (int) ($row['id'] ?? 0);
+
+        return $flowId > 0 ? $flowId : null;
+    }
+
+    /** @return array<int, string> */
+    public function activeStatusCodes(): array
+    {
+        $stmt = $this->db->query(
+            'SELECT code
+             FROM assignment_statuses
+             WHERE is_active = 1
+             ORDER BY sort_order ASC, id ASC'
+        );
+        $rows = $stmt->fetchAll();
+
+        return array_values(array_filter(array_map(
+            static fn (array $row): string => (string) ($row['code'] ?? ''),
+            $rows
+        ), static fn (string $code): bool => trim($code) !== ''));
     }
 }

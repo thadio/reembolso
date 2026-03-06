@@ -34,12 +34,13 @@ final class BudgetRepository
     }
 
     /** @return array<string, mixed>|null */
-    public function findCycleByYear(int $year): ?array
+    public function findCycleByYear(int $year, string $financialNature = 'despesa_reembolso'): ?array
     {
         $stmt = $this->db->prepare(
             'SELECT
                 bc.id,
                 bc.cycle_year,
+                bc.financial_nature,
                 bc.annual_factor,
                 bc.total_budget,
                 bc.status,
@@ -51,10 +52,14 @@ final class BudgetRepository
              FROM budget_cycles bc
              LEFT JOIN users u ON u.id = bc.created_by
              WHERE bc.cycle_year = :cycle_year
+               AND bc.financial_nature = :financial_nature
                AND bc.deleted_at IS NULL
              LIMIT 1'
         );
-        $stmt->execute(['cycle_year' => $year]);
+        $stmt->execute([
+            'cycle_year' => $year,
+            'financial_nature' => $this->normalizeFinancialNature($financialNature),
+        ]);
         $row = $stmt->fetch();
 
         return $row === false ? null : $row;
@@ -82,11 +87,20 @@ final class BudgetRepository
         return number_format($value, 2, '.', '');
     }
 
-    public function createCycle(int $year, float $annualFactor, string $totalBudget, ?int $createdBy): int
+    public function createCycle(
+        int $year,
+        float $annualFactor,
+        string $totalBudget,
+        ?int $createdBy,
+        string $financialNature = 'despesa_reembolso',
+        ?string $notes = null,
+        string $status = 'aberto'
+    ): int
     {
         $stmt = $this->db->prepare(
             'INSERT INTO budget_cycles (
                 cycle_year,
+                financial_nature,
                 annual_factor,
                 total_budget,
                 status,
@@ -97,10 +111,11 @@ final class BudgetRepository
                 deleted_at
             ) VALUES (
                 :cycle_year,
+                :financial_nature,
                 :annual_factor,
                 :total_budget,
-                "aberto",
-                NULL,
+                :status,
+                :notes,
                 :created_by,
                 NOW(),
                 NOW(),
@@ -110,8 +125,11 @@ final class BudgetRepository
 
         $stmt->execute([
             'cycle_year' => $year,
+            'financial_nature' => $this->normalizeFinancialNature($financialNature),
             'annual_factor' => number_format($annualFactor, 2, '.', ''),
             'total_budget' => $totalBudget,
+            'status' => mb_substr(trim($status) !== '' ? trim($status) : 'aberto', 0, 30),
+            'notes' => $notes,
             'created_by' => $createdBy,
         ]);
 
@@ -119,21 +137,33 @@ final class BudgetRepository
     }
 
     /** @return array<string, mixed> */
-    public function ensureCycle(int $year, float $annualFactor = 13.30, ?int $createdBy = null): array
-    {
-        $existing = $this->findCycleByYear($year);
+    public function ensureCycle(
+        int $year,
+        float $annualFactor = 13.30,
+        ?int $createdBy = null,
+        string $financialNature = 'despesa_reembolso'
+    ): array {
+        $normalizedNature = $this->normalizeFinancialNature($financialNature);
+        $existing = $this->findCycleByYear($year, $normalizedNature);
         if ($existing !== null) {
             return $existing;
         }
 
         $estimated = $this->estimatedTotalFromCdos($year);
-        $this->createCycle($year, $annualFactor, $estimated, $createdBy);
+        $this->createCycle(
+            year: $year,
+            annualFactor: $annualFactor,
+            totalBudget: $estimated,
+            createdBy: $createdBy,
+            financialNature: $normalizedNature
+        );
 
-        $cycle = $this->findCycleByYear($year);
+        $cycle = $this->findCycleByYear($year, $normalizedNature);
 
         return $cycle ?? [
             'id' => 0,
             'cycle_year' => $year,
+            'financial_nature' => $normalizedNature,
             'annual_factor' => number_format($annualFactor, 2, '.', ''),
             'total_budget' => $estimated,
             'status' => 'aberto',
@@ -143,6 +173,161 @@ final class BudgetRepository
             'updated_at' => null,
             'created_by_name' => null,
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function listCycles(string $financialNature = 'despesa_reembolso'): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                bc.id,
+                bc.cycle_year,
+                bc.financial_nature,
+                bc.annual_factor,
+                bc.total_budget,
+                bc.status,
+                bc.notes,
+                bc.created_by,
+                bc.created_at,
+                bc.updated_at,
+                u.name AS created_by_name,
+                (
+                    SELECT COUNT(*)
+                    FROM hiring_scenarios hs
+                    WHERE hs.budget_cycle_id = bc.id
+                      AND hs.deleted_at IS NULL
+                ) AS scenarios_count,
+                (
+                    SELECT COUNT(*)
+                    FROM budget_scenario_parameters bsp
+                    WHERE bsp.budget_cycle_id = bc.id
+                      AND bsp.deleted_at IS NULL
+                ) AS scenario_parameters_count
+             FROM budget_cycles bc
+             LEFT JOIN users u ON u.id = bc.created_by
+             WHERE bc.deleted_at IS NULL
+               AND bc.financial_nature = :financial_nature
+             ORDER BY bc.cycle_year DESC'
+        );
+        $stmt->execute([
+            'financial_nature' => $this->normalizeFinancialNature($financialNature),
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findCycleById(int $cycleId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                bc.id,
+                bc.cycle_year,
+                bc.financial_nature,
+                bc.annual_factor,
+                bc.total_budget,
+                bc.status,
+                bc.notes,
+                bc.created_by,
+                bc.created_at,
+                bc.updated_at,
+                u.name AS created_by_name,
+                (
+                    SELECT COUNT(*)
+                    FROM hiring_scenarios hs
+                    WHERE hs.budget_cycle_id = bc.id
+                      AND hs.deleted_at IS NULL
+                ) AS scenarios_count,
+                (
+                    SELECT COUNT(*)
+                    FROM budget_scenario_parameters bsp
+                    WHERE bsp.budget_cycle_id = bc.id
+                      AND bsp.deleted_at IS NULL
+                ) AS scenario_parameters_count
+             FROM budget_cycles bc
+             LEFT JOIN users u ON u.id = bc.created_by
+             WHERE bc.id = :id
+               AND bc.deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $cycleId]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    public function updateCycleTotalBudget(int $cycleId, string $totalBudget): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE budget_cycles
+             SET total_budget = :total_budget,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'id' => $cycleId,
+            'total_budget' => $totalBudget,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /** @return array{scenarios_count: int, scenario_parameters_count: int} */
+    public function cycleDependencies(int $cycleId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                (
+                    SELECT COUNT(*)
+                    FROM hiring_scenarios hs
+                    WHERE hs.budget_cycle_id = :cycle_id_scenarios
+                      AND hs.deleted_at IS NULL
+                ) AS scenarios_count,
+                (
+                    SELECT COUNT(*)
+                    FROM budget_scenario_parameters bsp
+                    WHERE bsp.budget_cycle_id = :cycle_id_parameters
+                      AND bsp.deleted_at IS NULL
+                ) AS scenario_parameters_count'
+        );
+        $stmt->execute([
+            'cycle_id_scenarios' => $cycleId,
+            'cycle_id_parameters' => $cycleId,
+        ]);
+
+        $row = $stmt->fetch();
+
+        return [
+            'scenarios_count' => (int) ($row['scenarios_count'] ?? 0),
+            'scenario_parameters_count' => (int) ($row['scenario_parameters_count'] ?? 0),
+        ];
+    }
+
+    public function deleteScenarioParametersByCycle(int $cycleId): int
+    {
+        $stmt = $this->db->prepare(
+            'DELETE FROM budget_scenario_parameters
+             WHERE budget_cycle_id = :budget_cycle_id
+               AND deleted_at IS NULL'
+        );
+        $stmt->execute(['budget_cycle_id' => $cycleId]);
+
+        return $stmt->rowCount();
+    }
+
+    public function deleteCycle(int $cycleId): bool
+    {
+        $stmt = $this->db->prepare(
+            'DELETE FROM budget_cycles
+             WHERE id = :id
+               AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $cycleId]);
+
+        return $stmt->rowCount() > 0;
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -356,12 +541,13 @@ final class BudgetRepository
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function scenarioParameters(int $cycleId): array
+    public function scenarioParameters(int $cycleId, string $financialNature = 'despesa_reembolso'): array
     {
         $stmt = $this->db->prepare(
             'SELECT
                 p.id,
                 p.budget_cycle_id,
+                p.financial_nature,
                 p.organ_id,
                 p.modality,
                 p.base_variation_percent,
@@ -377,21 +563,30 @@ final class BudgetRepository
              INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
              LEFT JOIN users u ON u.id = p.updated_by
              WHERE p.budget_cycle_id = :budget_cycle_id
+               AND p.financial_nature = :financial_nature
                AND p.deleted_at IS NULL
              ORDER BY o.name ASC, p.modality ASC'
         );
-        $stmt->execute(['budget_cycle_id' => $cycleId]);
+        $stmt->execute([
+            'budget_cycle_id' => $cycleId,
+            'financial_nature' => $this->normalizeFinancialNature($financialNature),
+        ]);
 
         return $stmt->fetchAll();
     }
 
     /** @return array<string, mixed>|null */
-    public function findScenarioParameterExact(int $cycleId, int $organId, string $modality): ?array
-    {
+    public function findScenarioParameterExact(
+        int $cycleId,
+        int $organId,
+        string $modality,
+        string $financialNature = 'despesa_reembolso'
+    ): ?array {
         $stmt = $this->db->prepare(
             'SELECT
                 p.id,
                 p.budget_cycle_id,
+                p.financial_nature,
                 p.organ_id,
                 p.modality,
                 p.base_variation_percent,
@@ -405,6 +600,7 @@ final class BudgetRepository
              FROM budget_scenario_parameters p
              INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
              WHERE p.budget_cycle_id = :budget_cycle_id
+               AND p.financial_nature = :financial_nature
                AND p.organ_id = :organ_id
                AND p.modality = :modality
                AND p.deleted_at IS NULL
@@ -412,6 +608,7 @@ final class BudgetRepository
         );
         $stmt->execute([
             'budget_cycle_id' => $cycleId,
+            'financial_nature' => $this->normalizeFinancialNature($financialNature),
             'organ_id' => $organId,
             'modality' => $modality,
         ]);
@@ -422,12 +619,17 @@ final class BudgetRepository
     }
 
     /** @return array<string, mixed>|null */
-    public function findScenarioParameter(int $cycleId, int $organId, string $modality): ?array
-    {
+    public function findScenarioParameter(
+        int $cycleId,
+        int $organId,
+        string $modality,
+        string $financialNature = 'despesa_reembolso'
+    ): ?array {
         $stmt = $this->db->prepare(
             'SELECT
                 p.id,
                 p.budget_cycle_id,
+                p.financial_nature,
                 p.organ_id,
                 p.modality,
                 p.base_variation_percent,
@@ -441,6 +643,7 @@ final class BudgetRepository
              FROM budget_scenario_parameters p
              INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
              WHERE p.budget_cycle_id = :budget_cycle_id
+               AND p.financial_nature = :financial_nature
                AND p.organ_id = :organ_id
                AND p.deleted_at IS NULL
                AND (p.modality = :modality_exact OR p.modality = "geral")
@@ -454,6 +657,7 @@ final class BudgetRepository
         );
         $stmt->execute([
             'budget_cycle_id' => $cycleId,
+            'financial_nature' => $this->normalizeFinancialNature($financialNature),
             'organ_id' => $organId,
             'modality_exact' => $modality,
             'modality_priority' => $modality,
@@ -466,6 +670,7 @@ final class BudgetRepository
 
     public function upsertScenarioParameter(
         int $cycleId,
+        string $financialNature,
         int $organId,
         string $modality,
         string $baseVariation,
@@ -477,6 +682,7 @@ final class BudgetRepository
         $stmt = $this->db->prepare(
             'INSERT INTO budget_scenario_parameters (
                 budget_cycle_id,
+                financial_nature,
                 organ_id,
                 modality,
                 base_variation_percent,
@@ -489,6 +695,7 @@ final class BudgetRepository
                 deleted_at
             ) VALUES (
                 :budget_cycle_id,
+                :financial_nature,
                 :organ_id,
                 :modality,
                 :base_variation_percent,
@@ -512,6 +719,7 @@ final class BudgetRepository
 
         $stmt->execute([
             'budget_cycle_id' => $cycleId,
+            'financial_nature' => $this->normalizeFinancialNature($financialNature),
             'organ_id' => $organId,
             'modality' => $modality,
             'base_variation_percent' => $baseVariation,
@@ -521,7 +729,7 @@ final class BudgetRepository
             'updated_by' => $updatedBy,
         ]);
 
-        $row = $this->findScenarioParameterExact($cycleId, $organId, $modality);
+        $row = $this->findScenarioParameterExact($cycleId, $organId, $modality, $financialNature);
 
         return (int) ($row['id'] ?? 0);
     }
@@ -566,8 +774,9 @@ final class BudgetRepository
     }
 
     /** @return array<string, mixed> */
-    public function financialSnapshot(int $year): array
+    public function financialSnapshot(int $year, string $financialNature = 'despesa_reembolso'): array
     {
+        $normalizedNature = $this->normalizeFinancialNature($financialNature);
         $nextYear = $year + 1;
         $nextYearStart = sprintf('%04d-01-01', $nextYear);
         $nextYearEnd = sprintf('%04d-12-31', $nextYear);
@@ -578,22 +787,27 @@ final class BudgetRepository
                  FROM payments p
                  INNER JOIN invoices i ON i.id = p.invoice_id AND i.deleted_at IS NULL
                  WHERE p.deleted_at IS NULL
+                   AND p.financial_nature = :financial_nature_paid_invoices
+                   AND i.financial_nature = :financial_nature_paid_invoices_invoice
                    AND YEAR(p.payment_date) = :year_paid_invoices) AS paid_invoices_amount,
                 (SELECT IFNULL(SUM(r.amount), 0)
                  FROM reimbursement_entries r
                  INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                  WHERE r.deleted_at IS NULL
+                   AND r.financial_nature = :financial_nature_paid_reimbursements
                    AND r.status = "pago"
                    AND YEAR(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at))) = :year_paid_reimbursements) AS paid_reimbursements_amount,
                 (SELECT IFNULL(SUM(GREATEST(i.total_amount - i.paid_amount, 0)), 0)
                  FROM invoices i
                  WHERE i.deleted_at IS NULL
+                   AND i.financial_nature = :financial_nature_committed_invoices
                    AND i.status <> "cancelado"
                    AND YEAR(i.reference_month) = :year_committed_invoices) AS committed_invoices_amount,
                 (SELECT IFNULL(SUM(r.amount), 0)
                  FROM reimbursement_entries r
                  INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                  WHERE r.deleted_at IS NULL
+                   AND r.financial_nature = :financial_nature_committed_reimbursements
                    AND r.status = "pendente"
                    AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :year_committed_reimbursements) AS committed_reimbursements_amount,
                 (SELECT IFNULL(SUM(
@@ -616,9 +830,14 @@ final class BudgetRepository
                    AND cp.is_active = 1) AS projected_monthly_base'
         );
         $stmt->execute([
+            'financial_nature_paid_invoices' => $normalizedNature,
+            'financial_nature_paid_invoices_invoice' => $normalizedNature,
             'year_paid_invoices' => $year,
+            'financial_nature_paid_reimbursements' => $normalizedNature,
             'year_paid_reimbursements' => $year,
+            'financial_nature_committed_invoices' => $normalizedNature,
             'year_committed_invoices' => $year,
+            'financial_nature_committed_reimbursements' => $normalizedNature,
             'year_committed_reimbursements' => $year,
             'next_year_start_mensal' => $nextYearStart,
             'next_year_end_mensal' => $nextYearEnd,
@@ -632,8 +851,9 @@ final class BudgetRepository
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function monthlyProjectionSeries(int $year): array
+    public function monthlyProjectionSeries(int $year, string $financialNature = 'despesa_reembolso'): array
     {
+        $normalizedNature = $this->normalizeFinancialNature($financialNature);
         $monthsSql = $this->monthsSql();
         $yearLiteral = (int) $year;
 
@@ -651,6 +871,8 @@ final class BudgetRepository
                     FROM payments p
                     INNER JOIN invoices i ON i.id = p.invoice_id AND i.deleted_at IS NULL
                     WHERE p.deleted_at IS NULL
+                      AND p.financial_nature = :projection_financial_nature_exec_payments
+                      AND i.financial_nature = :projection_financial_nature_exec_payments_invoice
                       AND YEAR(p.payment_date) = :projection_year_exec_payments
                     GROUP BY MONTH(p.payment_date)
 
@@ -660,6 +882,7 @@ final class BudgetRepository
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
+                      AND r.financial_nature = :projection_financial_nature_exec_reimbursement
                       AND r.status = "pago"
                       AND YEAR(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at))) = :projection_year_exec_reimbursement
                     GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)))
@@ -672,6 +895,7 @@ final class BudgetRepository
                     SELECT MONTH(i.reference_month) AS month_number, SUM(GREATEST(i.total_amount - i.paid_amount, 0)) AS amount
                     FROM invoices i
                     WHERE i.deleted_at IS NULL
+                      AND i.financial_nature = :projection_financial_nature_committed_invoices
                       AND i.status <> "cancelado"
                       AND YEAR(i.reference_month) = :projection_year_committed_invoices
                     GROUP BY MONTH(i.reference_month)
@@ -682,6 +906,7 @@ final class BudgetRepository
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
+                      AND r.financial_nature = :projection_financial_nature_committed_reimbursement
                       AND r.status = "pendente"
                       AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :projection_year_committed_reimbursement
                     GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at)))
@@ -717,9 +942,14 @@ final class BudgetRepository
         );
 
         $stmt->execute([
+            'projection_financial_nature_exec_payments' => $normalizedNature,
+            'projection_financial_nature_exec_payments_invoice' => $normalizedNature,
             'projection_year_exec_payments' => $year,
+            'projection_financial_nature_exec_reimbursement' => $normalizedNature,
             'projection_year_exec_reimbursement' => $year,
+            'projection_financial_nature_committed_invoices' => $normalizedNature,
             'projection_year_committed_invoices' => $year,
+            'projection_financial_nature_committed_reimbursement' => $normalizedNature,
             'projection_year_committed_reimbursement' => $year,
         ]);
 
@@ -732,6 +962,7 @@ final class BudgetRepository
         $stmt = $this->db->prepare(
             'INSERT INTO hiring_scenarios (
                 budget_cycle_id,
+                financial_nature,
                 organ_id,
                 modality,
                 movement_type,
@@ -755,6 +986,7 @@ final class BudgetRepository
                 deleted_at
             ) VALUES (
                 :budget_cycle_id,
+                :financial_nature,
                 :organ_id,
                 :modality,
                 :movement_type,
@@ -781,6 +1013,7 @@ final class BudgetRepository
 
         $stmt->execute([
             'budget_cycle_id' => $data['budget_cycle_id'],
+            'financial_nature' => $this->normalizeFinancialNature((string) ($data['financial_nature'] ?? 'despesa_reembolso')),
             'organ_id' => $data['organ_id'],
             'modality' => $data['modality'],
             'movement_type' => $data['movement_type'],
@@ -850,7 +1083,7 @@ final class BudgetRepository
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function recentScenarios(int $cycleId, int $limit = 20): array
+    public function recentScenarios(int $cycleId, string $financialNature = 'despesa_reembolso', int $limit = 20): array
     {
         $safeLimit = max(1, min(50, $limit));
 
@@ -858,6 +1091,7 @@ final class BudgetRepository
             'SELECT
                 hs.id,
                 hs.budget_cycle_id,
+                hs.financial_nature,
                 hs.organ_id,
                 hs.modality,
                 hs.movement_type,
@@ -888,10 +1122,12 @@ final class BudgetRepository
                ON hsi.hiring_scenario_id = hs.id
               AND hsi.deleted_at IS NULL
              WHERE hs.budget_cycle_id = :budget_cycle_id
+               AND hs.financial_nature = :financial_nature
                AND hs.deleted_at IS NULL
              GROUP BY
                 hs.id,
                 hs.budget_cycle_id,
+                hs.financial_nature,
                 hs.organ_id,
                 hs.modality,
                 hs.movement_type,
@@ -918,6 +1154,7 @@ final class BudgetRepository
              LIMIT :limit'
         );
         $stmt->bindValue(':budget_cycle_id', $cycleId, PDO::PARAM_INT);
+        $stmt->bindValue(':financial_nature', $this->normalizeFinancialNature($financialNature));
         $stmt->bindValue(':limit', $safeLimit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -925,7 +1162,7 @@ final class BudgetRepository
     }
 
     /** @return array<int, array<string, mixed>> */
-    public function topDeviationOffenders(int $cycleId, int $limit = 10): array
+    public function topDeviationOffenders(int $cycleId, string $financialNature = 'despesa_reembolso', int $limit = 10): array
     {
         $safeLimit = max(1, min(30, $limit));
 
@@ -955,12 +1192,14 @@ final class BudgetRepository
              LEFT JOIN organs o ON o.id = hs.organ_id
              LEFT JOIN users u ON u.id = hs.created_by
              WHERE hs.budget_cycle_id = :budget_cycle_id
+               AND hs.financial_nature = :financial_nature
                AND hs.deleted_at IS NULL
                AND hs.movement_type = "entrada"
              ORDER BY deficit_amount DESC, hsi.cost_current_year DESC, hs.created_at DESC
              LIMIT :limit'
         );
         $stmt->bindValue(':budget_cycle_id', $cycleId, PDO::PARAM_INT);
+        $stmt->bindValue(':financial_nature', $this->normalizeFinancialNature($financialNature));
         $stmt->bindValue(':limit', $safeLimit, PDO::PARAM_INT);
         $stmt->execute();
 
@@ -993,5 +1232,12 @@ final class BudgetRepository
         $text = preg_replace('/\s+/', ' ', $text) ?? $text;
 
         return mb_substr($text, 0, 120);
+    }
+
+    private function normalizeFinancialNature(string $value): string
+    {
+        $normalized = trim(mb_strtolower($value));
+
+        return $normalized === 'receita_reembolso' ? 'receita_reembolso' : 'despesa_reembolso';
     }
 }

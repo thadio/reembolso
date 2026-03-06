@@ -5,6 +5,7 @@ declare(strict_types=1);
 $filters = is_array($filters ?? null) ? $filters : [
     'q' => '',
     'status' => '',
+    'financial_nature' => '',
     'organ_id' => 0,
     'reference_month' => '',
     'payment_date_from' => '',
@@ -17,6 +18,7 @@ $pagination = is_array($pagination ?? null) ? $pagination : ['total' => 0, 'page
 $batches = is_array($batches ?? null) ? $batches : [];
 $candidates = is_array($candidates ?? null) ? $candidates : [];
 $statusOptions = is_array($statusOptions ?? null) ? $statusOptions : [];
+$financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financialNatureOptions : [];
 $organs = is_array($organs ?? null) ? $organs : [];
 $canManage = ($canManage ?? false) === true;
 $selectedPaymentIds = is_array($selectedPaymentIds ?? null) ? $selectedPaymentIds : [];
@@ -107,10 +109,27 @@ $statusBadgeClass = static function (string $status): string {
     };
 };
 
+$financialNatureLabel = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'Despesa (a pagar)',
+        'receita_reembolso' => 'Receita (a receber)',
+        default => ucfirst(str_replace('_', ' ', $nature)),
+    };
+};
+
+$financialNatureBadgeClass = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'badge-warning',
+        'receita_reembolso' => 'badge-success',
+        default => 'badge-neutral',
+    };
+};
+
 $buildUrl = static function (array $replace = []) use ($filters, $pagination): string {
     $params = [
         'q' => (string) ($filters['q'] ?? ''),
         'status' => (string) ($filters['status'] ?? ''),
+        'financial_nature' => (string) ($filters['financial_nature'] ?? ''),
         'organ_id' => (string) ($filters['organ_id'] ?? ''),
         'reference_month' => (string) ($filters['reference_month'] ?? ''),
         'payment_date_from' => (string) ($filters['payment_date_from'] ?? ''),
@@ -157,6 +176,16 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
           $label = (string) ($option['label'] ?? $value);
         ?>
         <option value="<?= e($value) ?>" <?= (string) ($filters['status'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+      <?php endforeach; ?>
+    </select>
+
+    <select name="financial_nature">
+      <?php foreach ($financialNatureOptions as $option): ?>
+        <?php
+          $value = (string) ($option['value'] ?? '');
+          $label = (string) ($option['label'] ?? $value);
+        ?>
+        <option value="<?= e($value) ?>" <?= (string) ($filters['financial_nature'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
       <?php endforeach; ?>
     </select>
 
@@ -208,6 +237,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
           <tr>
             <th><a href="<?= e($buildUrl(['sort' => 'batch_code', 'dir' => $nextDir('batch_code'), 'page' => 1])) ?>">Codigo</a></th>
             <th><a href="<?= e($buildUrl(['sort' => 'status', 'dir' => $nextDir('status'), 'page' => 1])) ?>">Status</a></th>
+            <th>Natureza</th>
             <th>Referencia</th>
             <th><a href="<?= e($buildUrl(['sort' => 'scheduled_payment_date', 'dir' => $nextDir('scheduled_payment_date'), 'page' => 1])) ?>">Previsto</a></th>
             <th><a href="<?= e($buildUrl(['sort' => 'payments_count', 'dir' => $nextDir('payments_count'), 'page' => 1])) ?>">Pagamentos</a></th>
@@ -235,6 +265,8 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
                   <?= e((string) ($batch['status_label'] ?? $statusLabel($batchStatus))) ?>
                 </span>
               </td>
+              <?php $batchNature = (string) ($batch['financial_nature'] ?? 'despesa_reembolso'); ?>
+              <td><span class="badge <?= e($financialNatureBadgeClass($batchNature)) ?>"><?= e($financialNatureLabel($batchNature)) ?></span></td>
               <td><?= e($formatMonth((string) ($batch['reference_month'] ?? ''))) ?></td>
               <td><?= e($formatDate((string) ($batch['scheduled_payment_date'] ?? ''))) ?></td>
               <td>
@@ -296,6 +328,23 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
       <form method="post" action="<?= e(url('/invoices/payment-batches/store')) ?>" class="form-grid">
         <?= csrf_field() ?>
 
+        <div class="field">
+          <label for="batch_financial_nature">Natureza financeira *</label>
+          <?php $selectedBatchNature = (string) old('financial_nature', (string) ($filters['financial_nature'] ?? '')); ?>
+          <select id="batch_financial_nature" name="financial_nature" required>
+            <?php foreach ($financialNatureOptions as $option): ?>
+              <?php
+                $value = (string) ($option['value'] ?? '');
+                $label = (string) ($option['label'] ?? $value);
+                if ($value === '') {
+                    continue;
+                }
+              ?>
+              <option value="<?= e($value) ?>" <?= $selectedBatchNature === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+
         <div class="field field-wide">
           <label for="batch_title">Titulo do lote</label>
           <input id="batch_title" name="title" type="text" maxlength="190" value="<?= e(old('title', '')) ?>" placeholder="Ex.: Lote FOPAG orgaos federais">
@@ -333,6 +382,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
                   <th>Boleto</th>
                   <th>Competencia</th>
                   <th>Orgao</th>
+                  <th>Natureza</th>
                   <th>Processo</th>
                 </tr>
               </thead>
@@ -358,6 +408,8 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
                     </td>
                     <td><?= e($formatMonth((string) ($candidate['invoice_reference_month'] ?? ''))) ?></td>
                     <td><?= e((string) ($candidate['organ_name'] ?? '-')) ?></td>
+                    <?php $candidateNature = (string) ($candidate['invoice_financial_nature'] ?? ($candidate['financial_nature'] ?? 'despesa_reembolso')); ?>
+                    <td><span class="badge <?= e($financialNatureBadgeClass($candidateNature)) ?>"><?= e($financialNatureLabel($candidateNature)) ?></span></td>
                     <td><?= e((string) ($candidate['process_reference'] ?? '-')) ?></td>
                   </tr>
                 <?php endforeach; ?>

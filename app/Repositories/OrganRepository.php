@@ -42,6 +42,9 @@ final class OrganRepository
             'name' => 'name',
             'acronym' => 'acronym',
             'cnpj' => 'cnpj',
+            'organ_type' => 'organ_type',
+            'government_level' => 'government_level',
+            'government_branch' => 'government_branch',
             'created_at' => 'created_at',
         ];
 
@@ -52,11 +55,23 @@ final class OrganRepository
         $params = [];
 
         if ($query !== '') {
-            $where .= ' AND (name LIKE :query_name OR acronym LIKE :query_acronym OR cnpj LIKE :query_cnpj)';
+            $where .= ' AND (
+                name LIKE :query_name
+                OR acronym LIKE :query_acronym
+                OR cnpj LIKE :query_cnpj
+                OR organ_type LIKE :query_organ_type
+                OR government_level LIKE :query_government_level
+                OR government_branch LIKE :query_government_branch
+                OR supervising_organ LIKE :query_supervising_organ
+            )';
             $search = '%' . $query . '%';
             $params['query_name'] = $search;
             $params['query_acronym'] = $search;
             $params['query_cnpj'] = $search;
+            $params['query_organ_type'] = $search;
+            $params['query_government_level'] = $search;
+            $params['query_government_branch'] = $search;
+            $params['query_supervising_organ'] = $search;
         }
 
         $countSql = "SELECT COUNT(*) AS total FROM organs {$where}";
@@ -74,6 +89,10 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                organ_type,
+                government_level,
+                government_branch,
+                supervising_organ,
                 contact_email,
                 contact_phone,
                 city,
@@ -111,6 +130,10 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                organ_type,
+                government_level,
+                government_branch,
+                supervising_organ,
                 contact_name,
                 contact_email,
                 contact_phone,
@@ -119,6 +142,8 @@ final class OrganRepository
                 state,
                 zip_code,
                 notes,
+                source_name,
+                source_url,
                 created_at,
                 updated_at
              FROM organs
@@ -139,6 +164,10 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                organ_type,
+                government_level,
+                government_branch,
+                supervising_organ,
                 contact_name,
                 contact_email,
                 contact_phone,
@@ -147,12 +176,18 @@ final class OrganRepository
                 state,
                 zip_code,
                 notes,
+                source_name,
+                source_url,
                 created_at,
                 updated_at
             ) VALUES (
                 :name,
                 :acronym,
                 :cnpj,
+                :organ_type,
+                :government_level,
+                :government_branch,
+                :supervising_organ,
                 :contact_name,
                 :contact_email,
                 :contact_phone,
@@ -161,6 +196,8 @@ final class OrganRepository
                 :state,
                 :zip_code,
                 :notes,
+                :source_name,
+                :source_url,
                 NOW(),
                 NOW()
             )'
@@ -170,6 +207,10 @@ final class OrganRepository
             'name' => $data['name'],
             'acronym' => $data['acronym'],
             'cnpj' => $data['cnpj'],
+            'organ_type' => $data['organ_type'],
+            'government_level' => $data['government_level'],
+            'government_branch' => $data['government_branch'],
+            'supervising_organ' => $data['supervising_organ'],
             'contact_name' => $data['contact_name'],
             'contact_email' => $data['contact_email'],
             'contact_phone' => $data['contact_phone'],
@@ -178,6 +219,8 @@ final class OrganRepository
             'state' => $data['state'],
             'zip_code' => $data['zip_code'],
             'notes' => $data['notes'],
+            'source_name' => $data['source_name'],
+            'source_url' => $data['source_url'],
         ]);
 
         return (int) $this->db->lastInsertId();
@@ -192,6 +235,10 @@ final class OrganRepository
                 name = :name,
                 acronym = :acronym,
                 cnpj = :cnpj,
+                organ_type = :organ_type,
+                government_level = :government_level,
+                government_branch = :government_branch,
+                supervising_organ = :supervising_organ,
                 contact_name = :contact_name,
                 contact_email = :contact_email,
                 contact_phone = :contact_phone,
@@ -200,6 +247,8 @@ final class OrganRepository
                 state = :state,
                 zip_code = :zip_code,
                 notes = :notes,
+                source_name = :source_name,
+                source_url = :source_url,
                 updated_at = NOW()
              WHERE id = :id AND deleted_at IS NULL'
         );
@@ -209,6 +258,10 @@ final class OrganRepository
             'name' => $data['name'],
             'acronym' => $data['acronym'],
             'cnpj' => $data['cnpj'],
+            'organ_type' => $data['organ_type'],
+            'government_level' => $data['government_level'],
+            'government_branch' => $data['government_branch'],
+            'supervising_organ' => $data['supervising_organ'],
             'contact_name' => $data['contact_name'],
             'contact_email' => $data['contact_email'],
             'contact_phone' => $data['contact_phone'],
@@ -217,6 +270,8 @@ final class OrganRepository
             'state' => $data['state'],
             'zip_code' => $data['zip_code'],
             'notes' => $data['notes'],
+            'source_name' => $data['source_name'],
+            'source_url' => $data['source_url'],
         ]);
     }
 

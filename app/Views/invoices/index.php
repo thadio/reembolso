@@ -5,6 +5,7 @@ declare(strict_types=1);
 $filters = $filters ?? [
     'q' => '',
     'status' => '',
+    'financial_nature' => '',
     'organ_id' => 0,
     'reference_month' => '',
     'sort' => 'due_date',
@@ -14,6 +15,7 @@ $filters = $filters ?? [
 $pagination = $pagination ?? ['total' => 0, 'page' => 1, 'per_page' => 10, 'pages' => 1];
 $invoices = $invoices ?? [];
 $statusOptions = $statusOptions ?? [];
+$financialNatureOptions = $financialNatureOptions ?? [];
 $organs = $organs ?? [];
 
 $sort = (string) ($filters['sort'] ?? 'due_date');
@@ -67,10 +69,27 @@ $statusBadgeClass = static function (string $status): string {
     };
 };
 
+$financialNatureLabel = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'Despesa (a pagar)',
+        'receita_reembolso' => 'Receita (a receber)',
+        default => ucfirst(str_replace('_', ' ', $nature)),
+    };
+};
+
+$financialNatureBadgeClass = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'badge-warning',
+        'receita_reembolso' => 'badge-success',
+        default => 'badge-neutral',
+    };
+};
+
 $buildUrl = static function (array $replace = []) use ($filters, $pagination): string {
     $params = [
         'q' => (string) ($filters['q'] ?? ''),
         'status' => (string) ($filters['status'] ?? ''),
+        'financial_nature' => (string) ($filters['financial_nature'] ?? ''),
         'organ_id' => (string) ($filters['organ_id'] ?? ''),
         'reference_month' => (string) ($filters['reference_month'] ?? ''),
         'sort' => (string) ($filters['sort'] ?? 'due_date'),
@@ -119,6 +138,16 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
           $label = (string) ($option['label'] ?? $value);
         ?>
         <option value="<?= e($value) ?>" <?= (string) ($filters['status'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+      <?php endforeach; ?>
+    </select>
+
+    <select name="financial_nature">
+      <?php foreach ($financialNatureOptions as $option): ?>
+        <?php
+          $value = (string) ($option['value'] ?? '');
+          $label = (string) ($option['label'] ?? $value);
+        ?>
+        <option value="<?= e($value) ?>" <?= (string) ($filters['financial_nature'] ?? '') === $value ? 'selected' : '' ?>><?= e($label) ?></option>
       <?php endforeach; ?>
     </select>
 
@@ -171,6 +200,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
             <th><a href="<?= e($buildUrl(['sort' => 'reference_month', 'dir' => $nextDir('reference_month'), 'page' => 1])) ?>">Competencia</a></th>
             <th><a href="<?= e($buildUrl(['sort' => 'due_date', 'dir' => $nextDir('due_date'), 'page' => 1])) ?>">Vencimento</a></th>
             <th><a href="<?= e($buildUrl(['sort' => 'status', 'dir' => $nextDir('status'), 'page' => 1])) ?>">Status</a></th>
+            <th>Natureza</th>
             <th><a href="<?= e($buildUrl(['sort' => 'total_amount', 'dir' => $nextDir('total_amount'), 'page' => 1])) ?>">Total</a></th>
             <th>Rateado</th>
             <th>Saldo</th>
@@ -193,6 +223,8 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
               <td><?= e($formatMonth((string) ($invoice['reference_month'] ?? ''))) ?></td>
               <td><?= e($formatDate((string) ($invoice['due_date'] ?? ''))) ?></td>
               <td><span class="badge <?= e($statusBadgeClass($status)) ?>"><?= e($statusLabel($status)) ?></span></td>
+              <?php $financialNature = (string) ($invoice['financial_nature'] ?? 'despesa_reembolso'); ?>
+              <td><span class="badge <?= e($financialNatureBadgeClass($financialNature)) ?>"><?= e($financialNatureLabel($financialNature)) ?></span></td>
               <td><?= e($formatMoney((float) ($invoice['total_amount'] ?? 0))) ?></td>
               <td><?= e($formatMoney((float) ($invoice['allocated_amount'] ?? 0))) ?></td>
               <td><?= e($formatMoney((float) ($invoice['available_amount'] ?? 0))) ?></td>

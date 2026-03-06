@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 $invoice = is_array($invoice ?? null) ? $invoice : [];
 $statusOptions = is_array($statusOptions ?? null) ? $statusOptions : [];
+$financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financialNatureOptions : [];
 $organs = is_array($organs ?? null) ? $organs : [];
 ?>
 <div class="card">
@@ -37,6 +38,23 @@ $organs = is_array($organs ?? null) ? $organs : [];
             $label = (string) ($option['label'] ?? $value);
           ?>
           <option value="<?= e($value) ?>" <?= $selectedStatus === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="financial_nature">Natureza financeira *</label>
+      <select id="financial_nature" name="financial_nature" required>
+        <?php $selectedNature = old('financial_nature', (string) ($invoice['financial_nature'] ?? 'despesa_reembolso')); ?>
+        <?php foreach ($financialNatureOptions as $option): ?>
+          <?php
+            $value = (string) ($option['value'] ?? '');
+            $label = (string) ($option['label'] ?? $value);
+            if ($value === '') {
+                continue;
+            }
+          ?>
+          <option value="<?= e($value) ?>" <?= $selectedNature === $value ? 'selected' : '' ?>><?= e($label) ?></option>
         <?php endforeach; ?>
       </select>
     </div>

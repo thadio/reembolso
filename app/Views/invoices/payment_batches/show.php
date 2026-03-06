@@ -64,6 +64,22 @@ $statusBadgeClass = static function (string $status): string {
     };
 };
 
+$financialNatureLabel = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'Despesa de reembolso (a pagar)',
+        'receita_reembolso' => 'Receita de reembolso (a receber)',
+        default => ucfirst(str_replace('_', ' ', $nature)),
+    };
+};
+
+$financialNatureBadgeClass = static function (string $nature): string {
+    return match ($nature) {
+        'despesa_reembolso' => 'badge-warning',
+        'receita_reembolso' => 'badge-success',
+        default => 'badge-neutral',
+    };
+};
+
 $riskLabel = static function (string $risk): string {
     return match ($risk) {
         'alto' => 'Alto',
@@ -115,12 +131,15 @@ $simulationNotes = is_array($activeFinalSimulation['risk_notes'] ?? null) ? $act
       <span class="badge <?= e($statusBadgeClass($batchStatus)) ?>">
         <?= e((string) ($batch['status_label'] ?? $statusLabel($batchStatus))) ?>
       </span>
+      <?php $batchNature = (string) ($batch['financial_nature'] ?? 'despesa_reembolso'); ?>
+      <span class="badge <?= e($financialNatureBadgeClass($batchNature)) ?>"><?= e($financialNatureLabel($batchNature)) ?></span>
       <a class="btn btn-outline" href="<?= e(url('/invoices/payment-batches')) ?>">Voltar para lotes</a>
     </div>
   </div>
 
   <div class="details-grid">
     <div><strong>Titulo:</strong> <?= e((string) ($batch['title'] ?? '-')) ?></div>
+    <div><strong>Natureza financeira:</strong> <?= e($financialNatureLabel((string) ($batch['financial_nature'] ?? 'despesa_reembolso'))) ?></div>
     <div><strong>Referencia:</strong> <?= e($formatMonth((string) ($batch['reference_month'] ?? ''))) ?></div>
     <div><strong>Data prevista:</strong> <?= e($formatDate((string) ($batch['scheduled_payment_date'] ?? ''))) ?></div>
     <div><strong>Pagamentos:</strong> <?= e((string) (int) ($batch['payments_count'] ?? 0)) ?></div>
@@ -269,6 +288,7 @@ $simulationNotes = is_array($activeFinalSimulation['risk_notes'] ?? null) ? $act
             <th>Boleto</th>
             <th>Competencia</th>
             <th>Orgao</th>
+            <th>Natureza</th>
             <th>Processo</th>
             <th>Comprovante</th>
           </tr>
@@ -285,6 +305,8 @@ $simulationNotes = is_array($activeFinalSimulation['risk_notes'] ?? null) ? $act
               </td>
               <td><?= e($formatMonth((string) ($item['invoice_reference_month'] ?? ''))) ?></td>
               <td><?= e((string) ($item['organ_name'] ?? '-')) ?></td>
+              <?php $itemNature = (string) ($item['invoice_financial_nature'] ?? ($item['financial_nature'] ?? ($batch['financial_nature'] ?? 'despesa_reembolso'))); ?>
+              <td><span class="badge <?= e($financialNatureBadgeClass($itemNature)) ?>"><?= e($financialNatureLabel($itemNature)) ?></span></td>
               <td><?= e((string) ($item['process_reference'] ?? '-')) ?></td>
               <td>
                 <?php if (!empty($item['proof_storage_path'])): ?>

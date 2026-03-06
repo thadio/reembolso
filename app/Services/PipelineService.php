@@ -13,6 +13,10 @@ final class PipelineService
     private const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'image/jpeg', 'image/png'];
     private const MAX_ATTACHMENT_SIZE = 10485760; // 10MB
     private const ALLOWED_QUEUE_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+    /** @var array<int, string> */
+    private const ALLOWED_MOVEMENT_DIRECTIONS = ['entrada_mte', 'saida_mte'];
+    /** @var array<int, string> */
+    private const ALLOWED_FINANCIAL_NATURES = ['despesa_reembolso', 'receita_reembolso'];
     private const CHECKLIST_CASE_LABELS = [
         'geral' => 'Geral',
         'cessao' => 'Cessao',
@@ -31,13 +35,56 @@ final class PipelineService
     }
 
     /** @return array<string, mixed>|null */
-    public function ensureAssignment(int $personId, ?int $modalityId, int $userId, string $ip, string $userAgent): ?array
+    public function ensureAssignment(
+        int $personId,
+        ?int $modalityId,
+        int $userId,
+        string $ip,
+        string $userAgent,
+        ?array $movementContext = null
+    ): ?array
     {
+        $movementResolved = $this->resolveMovementContext($personId, is_array($movementContext) ? $movementContext : [], false);
+        $movement = is_array($movementResolved['context'] ?? null) ? $movementResolved['context'] : [];
+
+        $flowId = $this->resolvePersonFlowId($personId);
         $assignment = $this->pipeline->assignmentByPersonId($personId);
         if ($assignment !== null) {
             $currentModalityId = isset($assignment['modality_id']) ? (int) $assignment['modality_id'] : null;
             if ($modalityId !== null && $modalityId > 0 && $currentModalityId !== $modalityId) {
                 $this->pipeline->updateAssignmentModality((int) $assignment['id'], $modalityId);
+                $assignment = $this->pipeline->assignmentByPersonId($personId);
+            }
+
+            if ($assignment !== null) {
+                $currentDirection = (string) ($assignment['movement_direction'] ?? 'entrada_mte');
+                $currentNature = (string) ($assignment['financial_nature'] ?? 'despesa_reembolso');
+                $currentCounterparty = isset($assignment['counterparty_organ_id']) ? (int) ($assignment['counterparty_organ_id'] ?? 0) : 0;
+                $currentOrigin = isset($assignment['origin_mte_destination_id']) ? (int) ($assignment['origin_mte_destination_id'] ?? 0) : 0;
+                $currentDestination = isset($assignment['destination_mte_destination_id']) ? (int) ($assignment['destination_mte_destination_id'] ?? 0) : 0;
+
+                if (
+                    $currentDirection !== (string) ($movement['movement_direction'] ?? 'entrada_mte')
+                    || $currentNature !== (string) ($movement['financial_nature'] ?? 'despesa_reembolso')
+                    || $currentCounterparty !== (int) ($movement['counterparty_organ_id'] ?? 0)
+                    || $currentOrigin !== (int) ($movement['origin_mte_destination_id'] ?? 0)
+                    || $currentDestination !== (int) ($movement['destination_mte_destination_id'] ?? 0)
+                ) {
+                    $this->pipeline->updateAssignmentMovementContext(
+                        assignmentId: (int) $assignment['id'],
+                        movementDirection: (string) ($movement['movement_direction'] ?? 'entrada_mte'),
+                        financialNature: (string) ($movement['financial_nature'] ?? 'despesa_reembolso'),
+                        counterpartyOrganId: isset($movement['counterparty_organ_id']) ? (int) $movement['counterparty_organ_id'] : null,
+                        originMteDestinationId: isset($movement['origin_mte_destination_id']) ? (int) $movement['origin_mte_destination_id'] : null,
+                        destinationMteDestinationId: isset($movement['destination_mte_destination_id']) ? (int) $movement['destination_mte_destination_id'] : null
+                    );
+                    $assignment = $this->pipeline->assignmentByPersonId($personId);
+                }
+            }
+
+            $assignmentFlowId = (int) ($assignment['flow_id'] ?? 0);
+            if ($flowId > 0 && $assignmentFlowId !== $flowId) {
+                $this->pipeline->updateAssignmentFlow((int) $assignment['id'], $flowId);
                 $assignment = $this->pipeline->assignmentByPersonId($personId);
             }
 
@@ -48,17 +95,24 @@ final class PipelineService
             return $assignment;
         }
 
-        $initial = $this->pipeline->initialStatus();
+        $initial = $this->pipeline->initialStatus($flowId > 0 ? $flowId : null);
         if ($initial === null) {
             return null;
         }
 
         $assignmentId = $this->pipeline->createAssignment(
             personId: $personId,
+            flowId: $flowId > 0 ? $flowId : null,
             modalityId: ($modalityId !== null && $modalityId > 0) ? $modalityId : null,
             statusId: (int) $initial['id'],
             assignedUserId: $userId > 0 ? $userId : null,
-            priorityLevel: 'normal'
+            priorityLevel: 'normal',
+            movementDirection: (string) ($movement['movement_direction'] ?? 'entrada_mte'),
+            financialNature: (string) ($movement['financial_nature'] ?? 'despesa_reembolso'),
+            counterpartyOrganId: isset($movement['counterparty_organ_id']) ? (int) $movement['counterparty_organ_id'] : null,
+            originMteDestinationId: isset($movement['origin_mte_destination_id']) ? (int) $movement['origin_mte_destination_id'] : null,
+            destinationMteDestinationId: isset($movement['destination_mte_destination_id']) ? (int) $movement['destination_mte_destination_id'] : null,
+            movementCode: $this->generateMovementCode($personId)
         );
 
         $this->pipeline->updatePersonStatus($personId, (string) $initial['code']);
@@ -84,7 +138,13 @@ final class PipelineService
             beforeData: null,
             afterData: [
                 'person_id' => $personId,
+                'flow_id' => $flowId > 0 ? $flowId : null,
                 'modality_id' => $modalityId,
+                'movement_direction' => $movement['movement_direction'] ?? 'entrada_mte',
+                'financial_nature' => $movement['financial_nature'] ?? 'despesa_reembolso',
+                'counterparty_organ_id' => $movement['counterparty_organ_id'] ?? null,
+                'origin_mte_destination_id' => $movement['origin_mte_destination_id'] ?? null,
+                'destination_mte_destination_id' => $movement['destination_mte_destination_id'] ?? null,
                 'status_code' => $initial['code'],
             ],
             metadata: null,
@@ -98,8 +158,11 @@ final class PipelineService
             type: 'pipeline.started',
             payload: [
                 'person_id' => $personId,
+                'flow_id' => $flowId > 0 ? $flowId : null,
                 'status_code' => $initial['code'],
                 'status_label' => $initial['label'],
+                'movement_direction' => $movement['movement_direction'] ?? 'entrada_mte',
+                'financial_nature' => $movement['financial_nature'] ?? 'despesa_reembolso',
             ],
             entityId: $personId,
             userId: $userId
@@ -113,9 +176,48 @@ final class PipelineService
     }
 
     /**
-     * @return array{ok: bool, message: string, assignment?: array<string, mixed>, next_status?: array<string, mixed>|null}
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, errors: array<int, string>, context: array<string, mixed>}
      */
-    public function advance(int $personId, int $userId, string $ip, string $userAgent): array
+    public function validateMovementContext(array $input): array
+    {
+        $resolved = $this->resolveMovementContext(0, $input, true);
+
+        return [
+            'ok' => ($resolved['errors'] ?? []) === [],
+            'errors' => $resolved['errors'] ?? [],
+            'context' => $resolved['context'] ?? [],
+        ];
+    }
+
+    /** @return array<int, array{value: string, label: string}> */
+    public function movementDirectionOptions(): array
+    {
+        return [
+            ['value' => 'entrada_mte', 'label' => 'Recebimento no MTE (MTE paga reembolso)'],
+            ['value' => 'saida_mte', 'label' => 'Cessao para fora do MTE (MTE recebe reembolso)'],
+        ];
+    }
+
+    /** @return array<int, array{value: string, label: string}> */
+    public function financialNatureOptions(): array
+    {
+        return [
+            ['value' => 'despesa_reembolso', 'label' => 'Despesa de reembolso (a pagar)'],
+            ['value' => 'receita_reembolso', 'label' => 'Receita de reembolso (a receber)'],
+        ];
+    }
+
+    /**
+     * @return array{
+     *   ok: bool,
+     *   message: string,
+     *   assignment?: array<string, mixed>,
+     *   next_status?: array<string, mixed>|null,
+     *   available_transitions?: array<int, array<string, mixed>>
+     * }
+     */
+    public function advance(int $personId, ?int $transitionId, int $userId, string $ip, string $userAgent): array
     {
         $assignment = $this->pipeline->assignmentByPersonId($personId);
         if ($assignment === null) {
@@ -128,21 +230,86 @@ final class PipelineService
             }
         }
 
-        $currentOrder = (int) ($assignment['current_status_order'] ?? 0);
-        $currentCode = (string) ($assignment['current_status_code'] ?? '');
-        $currentLabel = (string) ($assignment['current_status_label'] ?? '');
-        $next = $this->pipeline->nextStatus($currentOrder);
+        $flowId = (int) ($assignment['flow_id'] ?? 0);
+        if ($flowId <= 0) {
+            $flowId = $this->resolvePersonFlowId($personId);
+            if ($flowId > 0) {
+                $this->pipeline->updateAssignmentFlow((int) $assignment['id'], $flowId);
+                $assignment = $this->pipeline->assignmentByPersonId($personId) ?? $assignment;
+            }
+        }
 
-        if ($next === null) {
+        if ($flowId <= 0) {
             return [
                 'ok' => false,
-                'message' => 'Pessoa já está no status final do pipeline.',
+                'message' => 'Fluxo nao configurado para esta pessoa.',
                 'assignment' => $assignment,
                 'next_status' => null,
+                'available_transitions' => [],
             ];
         }
 
-        $effectiveStartDate = ((string) $next['code'] === 'ativo') ? date('Y-m-d') : null;
+        $currentStatusId = (int) ($assignment['current_status_id'] ?? 0);
+        $currentCode = (string) ($assignment['current_status_code'] ?? '');
+        $currentLabel = (string) ($assignment['current_status_label'] ?? '');
+        $availableTransitions = $this->pipeline->transitionsFromStatus($flowId, $currentStatusId);
+
+        if ($availableTransitions === []) {
+            return [
+                'ok' => false,
+                'message' => 'Pessoa ja esta em uma etapa final deste fluxo.',
+                'assignment' => $assignment,
+                'next_status' => null,
+                'available_transitions' => [],
+            ];
+        }
+
+        $selectedTransition = null;
+        if ($transitionId !== null && $transitionId > 0) {
+            $candidate = $this->pipeline->transitionById($flowId, $transitionId);
+            if ($candidate === null || (int) ($candidate['from_status_id'] ?? 0) !== $currentStatusId) {
+                return [
+                    'ok' => false,
+                    'message' => 'Transicao selecionada nao e valida para a etapa atual.',
+                    'assignment' => $assignment,
+                    'next_status' => null,
+                    'available_transitions' => $availableTransitions,
+                ];
+            }
+
+            $selectedTransition = $candidate;
+        } elseif (count($availableTransitions) === 1) {
+            $selectedTransition = $availableTransitions[0];
+        } else {
+            return [
+                'ok' => false,
+                'message' => 'Escolha a proxima transicao para continuar o fluxo.',
+                'assignment' => $assignment,
+                'next_status' => null,
+                'available_transitions' => $availableTransitions,
+            ];
+        }
+
+        $next = [
+            'id' => (int) ($selectedTransition['to_status_id'] ?? 0),
+            'code' => (string) ($selectedTransition['to_code'] ?? ''),
+            'label' => (string) ($selectedTransition['to_label'] ?? ''),
+            'event_type' => (string) ($selectedTransition['event_type'] ?? ''),
+            'next_action_label' => (string) ($selectedTransition['action_label'] ?? ''),
+        ];
+
+        if ((int) ($next['id'] ?? 0) <= 0 || (string) ($next['code'] ?? '') === '') {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel identificar a etapa de destino da transicao.',
+                'assignment' => $assignment,
+                'next_status' => null,
+                'available_transitions' => $availableTransitions,
+            ];
+        }
+
+        $isFinalNode = (string) ($selectedTransition['to_node_kind'] ?? '') === 'final';
+        $effectiveStartDate = ((string) $next['code'] === 'ativo' || $isFinalNode) ? date('Y-m-d') : null;
 
         $this->pipeline->updateAssignmentStatus(
             assignmentId: (int) $assignment['id'],
@@ -155,12 +322,22 @@ final class PipelineService
         $this->pipeline->insertTimelineEvent(
             personId: $personId,
             assignmentId: (int) $assignment['id'],
-            eventType: (string) ($next['event_type'] ?? 'pipeline.status_changed'),
+            eventType: (string) ($next['event_type'] !== '' ? $next['event_type'] : 'pipeline.status_changed'),
             title: 'Status alterado para ' . (string) $next['label'],
-            description: sprintf('Transição do pipeline: %s -> %s', $currentLabel, (string) $next['label']),
+            description: sprintf(
+                'Transicao do fluxo: %s -> %s%s',
+                $currentLabel,
+                (string) $next['label'],
+                trim((string) ($selectedTransition['transition_label'] ?? '')) !== ''
+                    ? ' (' . (string) $selectedTransition['transition_label'] . ')'
+                    : ''
+            ),
             createdBy: $userId,
             eventDate: date('Y-m-d H:i:s'),
             metadata: [
+                'flow_id' => $flowId,
+                'transition_id' => (int) ($selectedTransition['id'] ?? 0),
+                'transition_label' => $selectedTransition['transition_label'] ?? null,
                 'from_code' => $currentCode,
                 'from_label' => $currentLabel,
                 'to_code' => $next['code'],
@@ -180,7 +357,11 @@ final class PipelineService
                 'status_code' => $next['code'],
                 'status_label' => $next['label'],
             ],
-            metadata: null,
+            metadata: [
+                'flow_id' => $flowId,
+                'transition_id' => (int) ($selectedTransition['id'] ?? 0),
+                'transition_label' => $selectedTransition['transition_label'] ?? null,
+            ],
             userId: $userId,
             ip: $ip,
             userAgent: $userAgent
@@ -193,6 +374,8 @@ final class PipelineService
                 'from' => $currentCode,
                 'to' => $next['code'],
                 'label' => $next['label'],
+                'flow_id' => $flowId,
+                'transition_id' => (int) ($selectedTransition['id'] ?? 0),
             ],
             entityId: $personId,
             userId: $userId
@@ -205,6 +388,7 @@ final class PipelineService
             'message' => 'Status atualizado para ' . (string) $next['label'] . '.',
             'assignment' => $updatedAssignment,
             'next_status' => $next,
+            'available_transitions' => $this->pipeline->transitionsFromStatus($flowId, (int) ($next['id'] ?? 0)),
         ];
     }
 
@@ -492,15 +676,43 @@ final class PipelineService
             ];
         }
 
+        $assignmentContext = $this->pipeline->assignmentByPersonId($personId);
+        $effectiveAssignmentId = $assignmentId;
+        if (($effectiveAssignmentId === null || $effectiveAssignmentId <= 0) && $assignmentContext !== null) {
+            $resolvedAssignmentId = (int) ($assignmentContext['id'] ?? 0);
+            $effectiveAssignmentId = $resolvedAssignmentId > 0 ? $resolvedAssignmentId : null;
+        }
+
+        $eventMetadata = ['manual' => true];
+        if ($assignmentContext !== null) {
+            $flowId = (int) ($assignmentContext['flow_id'] ?? 0);
+            $flowName = trim((string) ($assignmentContext['flow_name'] ?? ''));
+            $statusCode = trim((string) ($assignmentContext['current_status_code'] ?? ''));
+            $statusLabel = trim((string) ($assignmentContext['current_status_label'] ?? ''));
+
+            if ($flowId > 0) {
+                $eventMetadata['flow_id'] = $flowId;
+            }
+            if ($flowName !== '') {
+                $eventMetadata['flow_name'] = $flowName;
+            }
+            if ($statusCode !== '') {
+                $eventMetadata['pipeline_status_code'] = $statusCode;
+            }
+            if ($statusLabel !== '') {
+                $eventMetadata['pipeline_status_label'] = $statusLabel;
+            }
+        }
+
         $eventId = $this->pipeline->insertTimelineEvent(
             personId: $personId,
-            assignmentId: $assignmentId,
+            assignmentId: $effectiveAssignmentId,
             eventType: $eventType,
             title: $title,
             description: $description === '' ? null : $description,
             createdBy: $userId,
             eventDate: $eventDate,
-            metadata: ['manual' => true]
+            metadata: $eventMetadata
         );
 
         $warnings = $this->storeAttachments($personId, $eventId, $files, $userId);
@@ -514,7 +726,7 @@ final class PipelineService
                 'event_type' => $eventType,
                 'title' => $title,
             ],
-            metadata: ['manual' => true],
+            metadata: $eventMetadata,
             userId: $userId,
             ip: $ip,
             userAgent: $userAgent
@@ -574,19 +786,46 @@ final class PipelineService
 
         $title = 'Retificação: ' . (string) ($source['title'] ?? 'Evento');
         $description = $trimmedNote;
+        $assignmentContext = $this->pipeline->assignmentByPersonId($personId);
+        $effectiveAssignmentId = $assignmentId;
+        if (($effectiveAssignmentId === null || $effectiveAssignmentId <= 0) && $assignmentContext !== null) {
+            $resolvedAssignmentId = (int) ($assignmentContext['id'] ?? 0);
+            $effectiveAssignmentId = $resolvedAssignmentId > 0 ? $resolvedAssignmentId : null;
+        }
+
+        $rectificationMetadata = [
+            'rectifies_event_id' => $sourceEventId,
+            'source_event_type' => (string) ($source['event_type'] ?? ''),
+        ];
+        if ($assignmentContext !== null) {
+            $flowId = (int) ($assignmentContext['flow_id'] ?? 0);
+            $flowName = trim((string) ($assignmentContext['flow_name'] ?? ''));
+            $statusCode = trim((string) ($assignmentContext['current_status_code'] ?? ''));
+            $statusLabel = trim((string) ($assignmentContext['current_status_label'] ?? ''));
+
+            if ($flowId > 0) {
+                $rectificationMetadata['flow_id'] = $flowId;
+            }
+            if ($flowName !== '') {
+                $rectificationMetadata['flow_name'] = $flowName;
+            }
+            if ($statusCode !== '') {
+                $rectificationMetadata['pipeline_status_code'] = $statusCode;
+            }
+            if ($statusLabel !== '') {
+                $rectificationMetadata['pipeline_status_label'] = $statusLabel;
+            }
+        }
 
         $eventId = $this->pipeline->insertTimelineEvent(
             personId: $personId,
-            assignmentId: $assignmentId,
+            assignmentId: $effectiveAssignmentId,
             eventType: 'retificacao',
             title: $title,
             description: $description,
             createdBy: $userId,
             eventDate: date('Y-m-d H:i:s'),
-            metadata: [
-                'rectifies_event_id' => $sourceEventId,
-                'source_event_type' => (string) ($source['event_type'] ?? ''),
-            ]
+            metadata: $rectificationMetadata
         );
 
         $warnings = $this->storeAttachments($personId, $eventId, $files, $userId);
@@ -603,7 +842,7 @@ final class PipelineService
                 'title' => $title,
                 'description' => $description,
             ],
-            metadata: ['rectifies_event_id' => $sourceEventId],
+            metadata: $rectificationMetadata,
             userId: $userId,
             ip: $ip,
             userAgent: $userAgent
@@ -631,8 +870,10 @@ final class PipelineService
     /**
      * @return array{
      *   assignment: array<string, mixed>|null,
+     *   flow: array<string, mixed>|null,
      *   statuses: array<int, array<string, mixed>>,
      *   next_status: array<string, mixed>|null,
+     *   available_transitions: array<int, array<string, mixed>>,
      *   timeline: array<int, array<string, mixed>>,
      *   timeline_pagination: array<string, int>,
      *   event_types: array<int, array<string, mixed>>,
@@ -656,21 +897,63 @@ final class PipelineService
     ): array
     {
         $assignment = $this->pipeline->assignmentByPersonId($personId);
-        $statuses = $this->pipeline->allStatuses();
+        $flow = null;
+        $statuses = [];
+        $availableTransitions = [];
         $checklist = $this->emptyChecklist();
 
         $nextStatus = null;
         if ($assignment !== null) {
-            $nextStatus = $this->pipeline->nextStatus((int) ($assignment['current_status_order'] ?? 0));
+            $flowId = (int) ($assignment['flow_id'] ?? 0);
+            if ($flowId <= 0) {
+                $flowId = $this->resolvePersonFlowId($personId);
+                if ($flowId > 0) {
+                    $this->pipeline->updateAssignmentFlow((int) ($assignment['id'] ?? 0), $flowId);
+                    $assignment = $this->pipeline->assignmentByPersonId($personId) ?? $assignment;
+                }
+            }
+
+            $flow = $flowId > 0 ? $this->pipeline->activeFlowById($flowId) : null;
+            $statuses = $flowId > 0 ? $this->pipeline->statusesForFlow($flowId) : [];
+            if ($statuses === []) {
+                $statuses = $this->pipeline->allStatuses();
+            }
+            $availableTransitions = $flowId > 0
+                ? $this->pipeline->transitionsFromStatus($flowId, (int) ($assignment['current_status_id'] ?? 0))
+                : [];
+
+            if (count($availableTransitions) === 1) {
+                $transition = $availableTransitions[0];
+                $nextStatus = [
+                    'id' => (int) ($transition['to_status_id'] ?? 0),
+                    'code' => (string) ($transition['to_code'] ?? ''),
+                    'label' => (string) ($transition['to_label'] ?? ''),
+                    'next_action_label' => (string) ($transition['action_label'] ?? ''),
+                    'event_type' => (string) ($transition['event_type'] ?? ''),
+                    'transition_id' => (int) ($transition['id'] ?? 0),
+                    'transition_label' => (string) ($transition['transition_label'] ?? ''),
+                ];
+            }
+
             $checklist = $this->ensureChecklistForAssignment($assignment, $actorUserId, $ip, $userAgent);
+        } else {
+            $defaultFlow = $this->pipeline->defaultFlow();
+            if ($defaultFlow !== null) {
+                $flow = $defaultFlow;
+                $statuses = $this->pipeline->statusesForFlow((int) ($defaultFlow['id'] ?? 0));
+            } else {
+                $statuses = $this->pipeline->allStatuses();
+            }
         }
 
         $timelinePageResult = $this->pipeline->timelinePaginateByPerson($personId, $timelinePage, $timelinePerPage);
 
         return [
             'assignment' => $assignment,
+            'flow' => $flow,
             'statuses' => $statuses,
             'next_status' => $nextStatus,
+            'available_transitions' => $availableTransitions,
             'timeline' => $timelinePageResult['items'],
             'timeline_pagination' => [
                 'total' => $timelinePageResult['total'],
@@ -700,6 +983,106 @@ final class PipelineService
     public function queueUsers(int $limit = 300): array
     {
         return $this->pipeline->activeAssignableUsers($limit);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function activeFlows(): array
+    {
+        return $this->pipeline->activeFlows();
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{
+     *   context: array<string, mixed>,
+     *   errors: array<int, string>
+     * }
+     */
+    private function resolveMovementContext(int $personId, array $input, bool $strict): array
+    {
+        $defaults = $personId > 0 ? ($this->pipeline->personMovementDefaults($personId) ?? []) : [];
+
+        $rawDirection = mb_strtolower(trim((string) ($input['movement_direction'] ?? '')));
+        $direction = in_array($rawDirection, self::ALLOWED_MOVEMENT_DIRECTIONS, true)
+            ? $rawDirection
+            : 'entrada_mte';
+
+        $rawNature = mb_strtolower(trim((string) ($input['financial_nature'] ?? '')));
+        $expectedNature = $this->financialNatureFromDirection($direction);
+        $financialNature = in_array($rawNature, self::ALLOWED_FINANCIAL_NATURES, true)
+            ? $rawNature
+            : $expectedNature;
+
+        $counterpartyOrganId = max(0, (int) ($input['counterparty_organ_id'] ?? ($defaults['organ_id'] ?? 0)));
+        $originMteDestinationId = max(0, (int) ($input['origin_mte_destination_id'] ?? $input['mte_origin_destination_id'] ?? 0));
+        $destinationMteDestinationId = max(0, (int) ($input['destination_mte_destination_id'] ?? $input['mte_destination_id'] ?? 0));
+
+        $errors = [];
+
+        if ($counterpartyOrganId > 0 && !$this->pipeline->organExists($counterpartyOrganId)) {
+            $errors[] = 'Orgao de contraparte invalido para o movimento.';
+        }
+
+        if ($originMteDestinationId > 0 && !$this->pipeline->mteDestinationExistsById($originMteDestinationId)) {
+            $errors[] = 'Lotacao de origem MTE invalida.';
+        }
+
+        if ($destinationMteDestinationId > 0 && !$this->pipeline->mteDestinationExistsById($destinationMteDestinationId)) {
+            $errors[] = 'Lotacao de destino MTE invalida.';
+        }
+
+        if ($strict) {
+            if ($counterpartyOrganId <= 0) {
+                $errors[] = 'Orgao de contraparte e obrigatorio para abrir o movimento.';
+            }
+
+            if ($direction === 'entrada_mte' && $destinationMteDestinationId <= 0) {
+                $errors[] = 'Lotacao de destino no MTE e obrigatoria para movimento de entrada.';
+            }
+
+            if ($direction === 'saida_mte' && $originMteDestinationId <= 0) {
+                $errors[] = 'Lotacao de origem no MTE e obrigatoria para movimento de saida.';
+            }
+
+            if ($financialNature !== $expectedNature) {
+                $errors[] = 'Natureza financeira invalida para a direcao selecionada.';
+            }
+        }
+
+        if ($direction === 'entrada_mte') {
+            $originMteDestinationId = 0;
+            $financialNature = 'despesa_reembolso';
+        } else {
+            $destinationMteDestinationId = 0;
+            $financialNature = 'receita_reembolso';
+        }
+
+        return [
+            'context' => [
+                'movement_direction' => $direction,
+                'financial_nature' => $financialNature,
+                'counterparty_organ_id' => $counterpartyOrganId > 0 ? $counterpartyOrganId : null,
+                'origin_mte_destination_id' => $originMteDestinationId > 0 ? $originMteDestinationId : null,
+                'destination_mte_destination_id' => $destinationMteDestinationId > 0 ? $destinationMteDestinationId : null,
+            ],
+            'errors' => array_values(array_unique($errors)),
+        ];
+    }
+
+    private function financialNatureFromDirection(string $direction): string
+    {
+        return $direction === 'saida_mte' ? 'receita_reembolso' : 'despesa_reembolso';
+    }
+
+    private function generateMovementCode(int $personId): string
+    {
+        try {
+            $suffix = strtoupper(bin2hex(random_bytes(3)));
+        } catch (\Throwable) {
+            $suffix = strtoupper((string) mt_rand(100000, 999999));
+        }
+
+        return sprintf('MOV-%d-%s-%s', $personId, date('YmdHis'), $suffix);
     }
 
     /**
@@ -1155,6 +1538,26 @@ final class PipelineService
         $globalLimit = max(1048576, $this->security->uploadMaxBytes());
 
         return min(self::MAX_ATTACHMENT_SIZE, $globalLimit);
+    }
+
+    private function resolvePersonFlowId(int $personId): int
+    {
+        $personFlow = $this->pipeline->personFlow($personId);
+        $personFlowId = (int) ($personFlow['assignment_flow_id'] ?? 0);
+        $isPersonFlowActive = (int) ($personFlow['flow_is_active'] ?? 0) === 1;
+
+        if ($personFlowId > 0 && $isPersonFlowActive) {
+            return $personFlowId;
+        }
+
+        $defaultFlow = $this->pipeline->defaultFlow();
+        $defaultFlowId = $defaultFlow !== null ? (int) ($defaultFlow['id'] ?? 0) : 0;
+
+        if ($defaultFlowId > 0) {
+            $this->pipeline->updatePersonFlow($personId, $defaultFlowId);
+        }
+
+        return $defaultFlowId;
     }
 
     private function normalizeQueuePriority(string $priority): ?string

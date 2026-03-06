@@ -92,7 +92,6 @@ O sistema cobre o ciclo de movimentacao de pessoas para o MTE e o ciclo financei
 - `[x]` RF-52 exportacoes executivas completas (CSV/PDF/ZIP no modulo premium)
 - `[x]` RNF-05 LGPD avancado (trilhas de visualizacao e retencao)
 - `[x]` RNF-07 observabilidade operacional estruturada
-- `[x]` Evolucao assistida por IA para conferencia documental e sugestao de justificativas (ciclo 9.19)
 
 ### 2.4 Lacunas criticas pendentes
 
@@ -497,14 +496,6 @@ Integracao com entidades existentes:
 - `[x]` Gestao de lotes de pagamento (ciclo 9.14)
 - `[x]` Busca global por CPF/SEI/DOU/orgao/documento (ciclo 9.15)
 - `[x]` Simulacao previa antes da aprovacao final (ciclo 9.16)
-
-### 6.4 Evolucao assistida por IA (ciclo 9.19 concluido)
-
-- `[x]` Extracao de dados de documentos para conferencia automatica (campos SEI/CPF/competencia/valor no Perfil 360)
-- `[x]` Deteccao de inconsistencias por regras e anomalias (SEI divergente/ausente, competencia ausente, duplicidade e outlier estatistico)
-- `[x]` Sugestao de justificativas para divergencias recorrentes (base historica + template por regra)
-
----
 
 ## 7) Dependencias entre fases (ordem recomendada)
 

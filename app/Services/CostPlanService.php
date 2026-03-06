@@ -18,7 +18,7 @@ final class CostPlanService
     }
 
     /**
-     * @return array{active_plan: array<string, mixed>|null, items: array<int, array<string, mixed>>, summary: array<string, mixed>, versions: array<int, array<string, mixed>>, previous_plan: array<string, mixed>|null, comparison: array<string, float|int|null>}
+     * @return array{active_plan: array<string, mixed>|null, items: array<int, array<string, mixed>>, summary: array<string, mixed>, versions: array<int, array<string, mixed>>, version_items: array<int, array<int, array<string, mixed>>>, previous_plan: array<string, mixed>|null, comparison: array<string, float|int|null>}
      */
     public function profileData(int $personId): array
     {
@@ -39,6 +39,22 @@ final class CostPlanService
         $items = [];
         if ($activePlan !== null) {
             $items = $this->costs->itemsByPlan((int) ($activePlan['id'] ?? 0));
+        }
+
+        $versionItems = [];
+        $activePlanId = (int) ($activePlan['id'] ?? 0);
+        foreach ($versions as $version) {
+            $versionPlanId = (int) ($version['id'] ?? 0);
+            if ($versionPlanId <= 0) {
+                continue;
+            }
+
+            if ($activePlanId > 0 && $versionPlanId === $activePlanId) {
+                $versionItems[$versionPlanId] = $items;
+                continue;
+            }
+
+            $versionItems[$versionPlanId] = $this->costs->itemsByPlan($versionPlanId);
         }
 
         $summary = [
@@ -74,6 +90,7 @@ final class CostPlanService
             'items' => $items,
             'summary' => $summary,
             'versions' => $versions,
+            'version_items' => $versionItems,
             'previous_plan' => $previousPlan,
             'comparison' => $comparison,
         ];
