@@ -92,6 +92,27 @@ final class PeopleRepository
             $params['modality_id'] = $modalityId;
         }
 
+        $movementBucket = mb_strtolower(trim((string) ($filters['movement_bucket'] ?? '')));
+        if (in_array($movementBucket, ['entrando', 'saindo'], true)) {
+            $movementDirection = $movementBucket === 'saindo' ? 'saida_mte' : 'entrada_mte';
+            $where .= ' AND a.movement_direction = :movement_direction';
+            $params['movement_direction'] = $movementDirection;
+
+            $allowedModalityIds = $this->movementBucketModalityIds($movementBucket);
+            if ($allowedModalityIds === []) {
+                $where .= ' AND 1 = 0';
+            } else {
+                $placeholders = [];
+                foreach ($allowedModalityIds as $index => $allowedModalityId) {
+                    $paramName = 'movement_modality_' . $index;
+                    $placeholders[] = ':' . $paramName;
+                    $params[$paramName] = $allowedModalityId;
+                }
+
+                $where .= ' AND p.desired_modality_id IN (' . implode(', ', $placeholders) . ')';
+            }
+        }
+
         $tag = trim((string) ($filters['tag'] ?? ''));
         if ($tag !== '') {
             $where .= ' AND p.tags LIKE :tag';
@@ -139,7 +160,7 @@ final class PeopleRepository
             ELSE 0
         END';
 
-        $isAuxilioExpr = '(LOWER(i.item_name) LIKE "%auxilio%" OR LOWER(i.item_name) LIKE "%beneficio%")';
+        $isAuxilioExpr = '((ci.linkage_code = 510) OR (ci.id IS NULL AND (LOWER(i.item_name) LIKE "%auxilio%" OR LOWER(i.item_name) LIKE "%beneficio%")))';
 
         $countSql = "
             SELECT COUNT(*) AS total
@@ -194,6 +215,7 @@ final class PeopleRepository
                     IFNULL(SUM(CASE WHEN ' . $isAuxilioExpr . ' THEN ' . $monthlyEquivalentExpr . ' ELSE 0 END), 0) AS monthly_auxilios
                 FROM cost_plans cp
                 LEFT JOIN cost_plan_items i ON i.cost_plan_id = cp.id AND i.deleted_at IS NULL
+                LEFT JOIN cost_item_catalog ci ON ci.id = i.cost_item_catalog_id
                 WHERE cp.deleted_at IS NULL
                   AND cp.is_active = 1
                 GROUP BY cp.person_id
@@ -489,5 +511,88 @@ final class PeopleRepository
             static fn (array $row): string => (string) ($row['code'] ?? ''),
             $rows
         ), static fn (string $code): bool => trim($code) !== ''));
+    }
+
+    /** @return array<int, int> */
+    private function movementBucketModalityIds(string $bucket): array
+    {
+        $normalizedBucket = mb_strtolower(trim($bucket));
+        if (!in_array($normalizedBucket, ['entrando', 'saindo'], true)) {
+            return [];
+        }
+
+        $allowedReasonTypes = $normalizedBucket === 'saindo'
+            ? ['cessao', 'requisicao', 'cft']
+            : ['cessao', 'cft'];
+
+        $stmt = $this->db->query(
+            'SELECT id, name
+             FROM modalities
+             WHERE is_active = 1
+             ORDER BY id ASC'
+        );
+        $rows = $stmt->fetchAll();
+
+        $allowedIds = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $reasonType = $this->movementReasonType((string) ($row['name'] ?? ''));
+            if ($reasonType === null || !in_array($reasonType, $allowedReasonTypes, true)) {
+                continue;
+            }
+
+            $allowedIds[] = $id;
+        }
+
+        return $allowedIds;
+    }
+
+    private function movementReasonType(string $modalityName): ?string
+    {
+        $normalized = $this->normalizeLookup($modalityName);
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_contains($normalized, 'cess')) {
+            return 'cessao';
+        }
+
+        if (str_contains($normalized, 'requis')) {
+            return 'requisicao';
+        }
+
+        if (str_contains($normalized, 'forca') || str_contains($normalized, 'cft')) {
+            return 'cft';
+        }
+
+        return null;
+    }
+
+    private function normalizeLookup(string $value): string
+    {
+        $normalized = mb_strtolower(trim($value));
+        if ($normalized === '') {
+            return '';
+        }
+
+        return strtr($normalized, [
+            'ã' => 'a',
+            'á' => 'a',
+            'à' => 'a',
+            'â' => 'a',
+            'é' => 'e',
+            'ê' => 'e',
+            'í' => 'i',
+            'õ' => 'o',
+            'ó' => 'o',
+            'ô' => 'o',
+            'ú' => 'u',
+            'ç' => 'c',
+        ]);
     }
 }

@@ -67,11 +67,29 @@ $documents = $documents ?? [
     ],
     'document_types' => [],
     'sensitivity_options' => [],
+    'context' => [
+        'context_event_id' => null,
+        'context_event_title' => '',
+        'flow_id' => null,
+        'status_code' => '',
+        'status_label' => '',
+        'expected_document_types' => [],
+        'suggested_document_type_id' => null,
+        'suggested_document_type_name' => '',
+    ],
 ];
 $documentItems = $documents['items'] ?? [];
 $documentsPagination = $documents['pagination'] ?? ['total' => 0, 'page' => 1, 'per_page' => 8, 'pages' => 1];
 $documentTypes = $documents['document_types'] ?? [];
 $documentSensitivityOptions = $documents['sensitivity_options'] ?? [];
+$documentContext = is_array($documents['context'] ?? null) ? $documents['context'] : [];
+$documentContextEventId = max(0, (int) ($documentContext['context_event_id'] ?? 0));
+$documentContextTitle = trim((string) ($documentContext['context_event_title'] ?? ''));
+$documentContextStatusCode = trim((string) ($documentContext['status_code'] ?? ''));
+$documentContextStatusLabel = trim((string) ($documentContext['status_label'] ?? ''));
+$documentContextExpectedTypes = is_array($documentContext['expected_document_types'] ?? null) ? $documentContext['expected_document_types'] : [];
+$documentContextSuggestedTypeId = max(0, (int) ($documentContext['suggested_document_type_id'] ?? 0));
+$documentContextSuggestedTypeName = trim((string) ($documentContext['suggested_document_type_name'] ?? ''));
 $canViewSensitiveDocuments = ($canViewSensitiveDocuments ?? false) === true;
 if ($documentSensitivityOptions === []) {
     $documentSensitivityOptions = [['value' => 'public', 'label' => 'Publico']];
@@ -93,6 +111,8 @@ $costs = $costs ?? [
         'previous_version_number' => null,
     ],
 ];
+$costItemCatalog = is_array($costItemCatalog ?? null) ? $costItemCatalog : [];
+$canManageCostItems = ($canManageCostItems ?? false) === true;
 $activeCostPlan = $costs['active_plan'] ?? null;
 $costItems = $costs['items'] ?? [];
 $costSummary = $costs['summary'] ?? ['monthly_total' => 0, 'annualized_total' => 0, 'items_count' => 0];
@@ -426,6 +446,41 @@ $costTypeLabel = static function (string $type): string {
     };
 };
 
+$costLinkageLabel = static function (int|string|null $code, string $itemName = ''): string {
+    $numericCode = (int) $code;
+    if ($numericCode === 510) {
+        return 'Beneficios e auxilios (510)';
+    }
+
+    if ($numericCode === 309) {
+        return 'Remuneracao (309)';
+    }
+
+    $normalizedName = mb_strtolower(trim($itemName));
+    if (str_contains($normalizedName, 'auxilio') || str_contains($normalizedName, 'beneficio')) {
+        return 'Beneficios e auxilios (inferido)';
+    }
+
+    return 'Remuneracao (inferido)';
+};
+
+$costReimbursableLabel = static function (int|string|null $flag, string $itemName = ''): string {
+    if ((int) $flag === 1) {
+        return 'Reembolsavel';
+    }
+
+    if ((int) $flag === 0 && $flag !== null && (string) $flag !== '') {
+        return 'Nao-reembolsavel';
+    }
+
+    $normalizedName = mb_strtolower(trim($itemName));
+    if (str_contains($normalizedName, 'auxilio') || str_contains($normalizedName, 'beneficio')) {
+        return 'Reembolsavel (inferido)';
+    }
+
+    return 'Nao-reembolsavel (inferido)';
+};
+
 $reimbursementTypeLabel = static function (string $type): string {
     return match ($type) {
         'boleto' => 'Boleto',
@@ -655,8 +710,8 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <?php
     $movementDirection = (string) ($assignment['movement_direction'] ?? 'entrada_mte');
     $movementDirectionLabel = match ($movementDirection) {
-        'saida_mte' => 'Cessao para fora do MTE',
-        default => 'Recebimento no MTE',
+        'saida_mte' => 'Pessoa saindo do MTE',
+        default => 'Pessoa entrando no MTE',
     };
     $financialNature = (string) ($assignment['financial_nature'] ?? 'despesa_reembolso');
     $financialNatureLabel = match ($financialNature) {
@@ -687,6 +742,10 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     <div><strong>Órgão de contraparte:</strong> <?= e((string) ($assignment['counterparty_organ_name'] ?? $person['organ_name'] ?? '-')) ?></div>
     <div><strong>Lotação origem MTE:</strong> <?= e((string) ($assignment['origin_mte_destination_name'] ?? '-')) ?></div>
     <div><strong>Lotação destino MTE:</strong> <?= e((string) ($assignment['destination_mte_destination_name'] ?? '-')) ?></div>
+    <div><strong>Início efetivo (previsto):</strong> <?= e($formatDate((string) ($assignment['target_start_date'] ?? ''))) ?></div>
+    <div><strong>Início efetivo (real):</strong> <?= e($formatDate((string) ($assignment['effective_start_date'] ?? ''))) ?></div>
+    <div><strong>Término efetivo (previsto):</strong> <?= e($formatDate((string) ($assignment['requested_end_date'] ?? ''))) ?></div>
+    <div><strong>Término efetivo (real):</strong> <?= e($formatDate((string) ($assignment['effective_end_date'] ?? ''))) ?></div>
     <div><strong>CPF:</strong>
       <?php if (($canViewCpfFull ?? false) === true): ?>
         <?= e((string) ($person['cpf'] ?? '-')) ?>
@@ -1104,6 +1163,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
       </div>
     <?php endif; ?>
   <?php endif; ?>
+
 </div>
 
 <div id="timeline-history" class="card" data-tab-panel="timeline">
@@ -1118,9 +1178,55 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   </div>
 
   <?php if (($canManage ?? false) === true): ?>
+    <?php
+      $timelineContextEventId = max(0, (int) ($_GET['timeline_context_event_id'] ?? '0'));
+      $timelineContextEvent = null;
+      foreach ($timeline as $timelineCandidate) {
+          if ((int) ($timelineCandidate['id'] ?? 0) === $timelineContextEventId) {
+              $timelineContextEvent = $timelineCandidate;
+              break;
+          }
+      }
+      $timelineContextMetadata = $timelineContextEvent !== null ? $decodeMetadata($timelineContextEvent['metadata'] ?? null) : [];
+      $timelineContextStatusCode = trim((string) ($timelineContextMetadata['pipeline_status_code'] ?? ($timelineContextMetadata['status_code'] ?? '')));
+      $timelineContextStatusLabel = trim((string) ($timelineContextMetadata['pipeline_status_label'] ?? ($timelineContextMetadata['status_label'] ?? '')));
+      $timelineContextTitle = trim((string) ($timelineContextEvent['title'] ?? ''));
+      $timelineDefaultTitle = '';
+      if ($timelineContextEvent !== null && $timelineContextTitle !== '') {
+          $timelineDefaultTitle = mb_substr('Evidencia complementar - ' . $timelineContextTitle, 0, 190);
+      }
+      $closeStepTransitionCount = count($availableTransitions);
+      $singleCloseTransition = $closeStepTransitionCount === 1 ? $availableTransitions[0] : null;
+    ?>
     <form method="post" action="<?= e(url('/people/timeline/store')) ?>" enctype="multipart/form-data" class="timeline-form">
       <?= csrf_field() ?>
       <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+      <?php if ($timelineContextEvent !== null): ?>
+        <?php
+          $timelineContextLabel = trim((string) ($timelineContextEvent['title'] ?? 'evento de timeline'));
+          $timelineContextType = trim((string) ($timelineContextEvent['event_type'] ?? 'evento'));
+        ?>
+        <div id="timeline-evidence-form" class="timeline-context-alert">
+          <strong>Evidencia contextual ativa</strong>
+          <p class="muted">
+            Novo registro vinculado ao evento #<?= e((string) ((int) ($timelineContextEvent['id'] ?? 0))) ?>
+            (<?= e($eventTypeLabel($timelineContextType)) ?>: <?= e($timelineContextLabel) ?>).
+          </p>
+          <div class="actions-inline">
+            <a class="btn btn-ghost" href="<?= e($buildProfileUrl(['tab' => 'timeline'], ['timeline_context_event_id'])) ?>#timeline-evidence-form">Remover contexto</a>
+          </div>
+        </div>
+        <input type="hidden" name="context_event_id" value="<?= e((string) ((int) ($timelineContextEvent['id'] ?? 0))) ?>">
+        <?php if ($timelineContextStatusCode !== ''): ?>
+          <input type="hidden" name="context_status_code" value="<?= e($timelineContextStatusCode) ?>">
+        <?php endif; ?>
+        <?php if ($timelineContextStatusLabel !== ''): ?>
+          <input type="hidden" name="context_status_label" value="<?= e($timelineContextStatusLabel) ?>">
+        <?php endif; ?>
+      <?php else: ?>
+        <div id="timeline-evidence-form"></div>
+      <?php endif; ?>
+
       <div class="form-grid timeline-form-grid">
         <div class="field">
           <label for="event_type">Tipo de evento</label>
@@ -1137,7 +1243,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         </div>
         <div class="field field-wide">
           <label for="timeline_title">Título</label>
-          <input id="timeline_title" name="title" type="text" minlength="3" maxlength="190" required>
+          <input id="timeline_title" name="title" type="text" minlength="3" maxlength="190" required value="<?= e($timelineDefaultTitle) ?>">
         </div>
         <div class="field field-wide">
           <label for="timeline_description">Descrição</label>
@@ -1147,9 +1253,54 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           <label for="timeline_attachments">Anexos (PDF/JPG/PNG até 10MB)</label>
           <input id="timeline_attachments" name="attachments[]" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
         </div>
+        <div class="field field-wide">
+          <label for="timeline_evidence_links">Links de evidência (1 por linha, opcional)</label>
+          <textarea id="timeline_evidence_links" name="evidence_links" rows="3" placeholder="https://exemplo.gov.br/documento&#10;Portal SEI | https://sei.exemplo.gov.br/consulta"></textarea>
+        </div>
+        <?php if ($assignment !== null && $closeStepTransitionCount > 1): ?>
+          <div class="field field-wide">
+            <label for="timeline_close_transition_id">Transição para encerrar etapa (opcional)</label>
+            <select id="timeline_close_transition_id" name="close_transition_id">
+              <option value="">Selecionar no momento do encerramento</option>
+              <?php foreach ($availableTransitions as $transitionOption): ?>
+                <?php
+                  $closeTransitionId = (int) ($transitionOption['id'] ?? 0);
+                  $closeTransitionLabel = trim((string) ($transitionOption['action_label'] ?? ''));
+                  if ($closeTransitionLabel === '') {
+                      $closeTransitionLabel = trim((string) ($transitionOption['transition_label'] ?? ''));
+                  }
+                  if ($closeTransitionLabel === '') {
+                      $closeTransitionLabel = 'Avancar para ' . (string) ($transitionOption['to_label'] ?? 'proxima etapa');
+                  }
+                ?>
+                <option value="<?= e((string) $closeTransitionId) ?>"><?= e($closeTransitionLabel) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <p class="muted">Campo usado apenas quando acionar "Salvar e encerrar etapa".</p>
+          </div>
+        <?php elseif ($assignment !== null && $singleCloseTransition !== null): ?>
+          <input type="hidden" name="close_transition_id" value="<?= e((string) ((int) ($singleCloseTransition['id'] ?? 0))) ?>">
+          <div class="field field-wide">
+            <p class="muted">
+              Encerramento rapido disponivel para:
+              <?= e((string) ($singleCloseTransition['action_label'] ?? $singleCloseTransition['transition_label'] ?? 'Proxima etapa')) ?>
+            </p>
+          </div>
+        <?php endif; ?>
       </div>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Registrar evento</button>
+        <?php if ($assignment !== null && $availableTransitions !== []): ?>
+          <button
+            type="submit"
+            class="btn btn-outline"
+            name="close_step"
+            value="1"
+            onclick="return confirm('Salvar a evidencia e tentar encerrar a etapa atual agora?');"
+          >
+            Salvar e encerrar etapa
+          </button>
+        <?php endif; ?>
       </div>
     </form>
   <?php endif; ?>
@@ -1163,7 +1314,10 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           $eventType = (string) ($event['event_type'] ?? 'evento');
           $metadata = $decodeMetadata($event['metadata'] ?? null);
           $attachments = is_array($event['attachments'] ?? null) ? $event['attachments'] : [];
+          $links = is_array($event['links'] ?? null) ? $event['links'] : [];
           $rectifiesEventId = isset($metadata['rectifies_event_id']) ? (int) $metadata['rectifies_event_id'] : 0;
+          $contextEventId = isset($metadata['context_event_id']) ? (int) $metadata['context_event_id'] : 0;
+          $contextEventTitle = trim((string) ($metadata['context_event_title'] ?? ''));
           $eventId = (int) ($event['id'] ?? 0);
           $eventFromCode = trim((string) ($metadata['from_code'] ?? ''));
           $eventFromLabel = trim((string) ($metadata['from_label'] ?? ''));
@@ -1217,6 +1371,15 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
             <p class="muted">Retifica o evento #<?= e((string) $rectifiesEventId) ?> (evento original preservado).</p>
           <?php endif; ?>
 
+          <?php if ($contextEventId > 0): ?>
+            <p class="muted">
+              Evidencia complementar vinculada ao evento #<?= e((string) $contextEventId) ?>
+              <?php if ($contextEventTitle !== ''): ?>
+                (<?= e($contextEventTitle) ?>)
+              <?php endif; ?>.
+            </p>
+          <?php endif; ?>
+
           <?php if ($attachments !== []): ?>
             <div class="timeline-attachments">
               <strong>Anexos</strong>
@@ -1233,9 +1396,35 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
             </div>
           <?php endif; ?>
 
+          <?php if ($links !== []): ?>
+            <div class="timeline-attachments">
+              <strong>Links</strong>
+              <ul class="attachments-list">
+                <?php foreach ($links as $link): ?>
+                  <?php
+                    $linkUrl = trim((string) ($link['url'] ?? ''));
+                    $linkLabel = trim((string) ($link['label'] ?? ''));
+                  ?>
+                  <?php if ($linkUrl !== ''): ?>
+                    <li>
+                      <a href="<?= e($linkUrl) ?>" target="_blank" rel="noopener noreferrer">
+                        <?= e($linkLabel !== '' ? $linkLabel : $linkUrl) ?>
+                      </a>
+                    </li>
+                  <?php endif; ?>
+                <?php endforeach; ?>
+              </ul>
+            </div>
+          <?php endif; ?>
+
           <p class="muted">Responsável: <?= e((string) ($event['created_by_name'] ?? 'Sistema')) ?></p>
 
           <?php if (($canManage ?? false) === true && $eventId > 0): ?>
+            <div class="actions-inline timeline-item-actions">
+              <a class="btn btn-outline" href="<?= e($buildProfileUrl(['tab' => 'timeline', 'timeline_context_event_id' => $eventId])) ?>#timeline-evidence-form">Adicionar evidencia desta etapa</a>
+              <a class="btn btn-ghost" href="<?= e($buildProfileUrl(['tab' => 'documents', 'document_context_event_id' => $eventId])) ?>#document-upload-form">Anexar documento desta etapa</a>
+            </div>
+
             <details class="timeline-rectify-details">
               <summary>Retificar este evento</summary>
               <form method="post" action="<?= e(url('/people/timeline/rectify')) ?>" enctype="multipart/form-data" class="timeline-rectify-form">
@@ -1250,8 +1439,46 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                   <label for="rectification_attachments_<?= e((string) $eventId) ?>">Anexos da retificação</label>
                   <input id="rectification_attachments_<?= e((string) $eventId) ?>" name="attachments[]" type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
                 </div>
+                <div class="field">
+                  <label for="rectification_links_<?= e((string) $eventId) ?>">Links de evidência (1 por linha)</label>
+                  <textarea id="rectification_links_<?= e((string) $eventId) ?>" name="evidence_links" rows="3" placeholder="https://exemplo.gov.br/documento&#10;Portal SEI | https://sei.exemplo.gov.br/consulta"></textarea>
+                </div>
+                <?php if ($assignment !== null && count($availableTransitions) > 1): ?>
+                  <div class="field">
+                    <label for="rectification_close_transition_<?= e((string) $eventId) ?>">Transição para encerrar etapa (opcional)</label>
+                    <select id="rectification_close_transition_<?= e((string) $eventId) ?>" name="close_transition_id">
+                      <option value="">Selecionar no momento do encerramento</option>
+                      <?php foreach ($availableTransitions as $transitionOption): ?>
+                        <?php
+                          $closeTransitionId = (int) ($transitionOption['id'] ?? 0);
+                          $closeTransitionLabel = trim((string) ($transitionOption['action_label'] ?? ''));
+                          if ($closeTransitionLabel === '') {
+                              $closeTransitionLabel = trim((string) ($transitionOption['transition_label'] ?? ''));
+                          }
+                          if ($closeTransitionLabel === '') {
+                              $closeTransitionLabel = 'Avancar para ' . (string) ($transitionOption['to_label'] ?? 'proxima etapa');
+                          }
+                        ?>
+                        <option value="<?= e((string) $closeTransitionId) ?>"><?= e($closeTransitionLabel) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                <?php elseif ($assignment !== null && count($availableTransitions) === 1): ?>
+                  <input type="hidden" name="close_transition_id" value="<?= e((string) ((int) ($availableTransitions[0]['id'] ?? 0))) ?>">
+                <?php endif; ?>
                 <div class="form-actions">
                   <button type="submit" class="btn btn-ghost">Registrar retificação</button>
+                  <?php if ($assignment !== null && $availableTransitions !== []): ?>
+                    <button
+                      type="submit"
+                      class="btn btn-outline"
+                      name="close_step"
+                      value="1"
+                      onclick="return confirm('Salvar a retificacao e tentar encerrar a etapa atual agora?');"
+                    >
+                      Salvar e encerrar etapa
+                    </button>
+                  <?php endif; ?>
                 </div>
               </form>
             </details>
@@ -1281,6 +1508,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
       </div>
     </div>
   <?php endif; ?>
+
 </div>
 
 <div class="card" data-tab-panel="documents">
@@ -1293,69 +1521,6 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
 
   <?php if (!$canViewSensitiveDocuments): ?>
     <p class="muted">Somente documentos classificados como Publico sao exibidos para o seu perfil.</p>
-  <?php endif; ?>
-
-  <?php if (($canManage ?? false) === true): ?>
-    <form method="post" action="<?= e(url('/people/documents/store')) ?>" enctype="multipart/form-data" class="document-form">
-      <?= csrf_field() ?>
-      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
-      <div class="form-grid">
-        <div class="field">
-          <label for="document_type_id">Tipo de documento</label>
-          <select id="document_type_id" name="document_type_id" required>
-            <option value="">Selecione...</option>
-            <?php foreach ($documentTypes as $type): ?>
-              <option value="<?= e((string) ((int) ($type['id'] ?? 0))) ?>">
-                <?= e((string) ($type['name'] ?? 'Tipo')) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div class="field">
-          <label for="document_sensitivity_level">Sensibilidade</label>
-          <select id="document_sensitivity_level" name="sensitivity_level" required>
-            <?php foreach ($documentSensitivityOptions as $option): ?>
-              <option value="<?= e((string) ($option['value'] ?? 'public')) ?>" <?= (($option['value'] ?? '') === 'public') ? 'selected' : '' ?>>
-                <?= e((string) ($option['label'] ?? 'Publico')) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <?php if (!$canViewSensitiveDocuments): ?>
-            <small class="muted">Classificacoes Restrito/Sensivel exigem permissao adicional.</small>
-          <?php endif; ?>
-        </div>
-        <div class="field">
-          <label for="document_date">Data do documento</label>
-          <input id="document_date" name="document_date" type="date">
-        </div>
-        <div class="field">
-          <label for="document_title">Título (opcional)</label>
-          <input id="document_title" name="title" type="text" maxlength="190" placeholder="Ex.: Ofício 123/2026">
-        </div>
-        <div class="field">
-          <label for="document_reference_sei">Referência SEI</label>
-          <input id="document_reference_sei" name="reference_sei" type="text" maxlength="120" placeholder="00000.000000/2026-00">
-        </div>
-        <div class="field field-wide">
-          <label for="document_tags">Tags</label>
-          <input id="document_tags" name="tags" type="text" placeholder="oficio, resposta, cdo">
-        </div>
-        <div class="field field-wide">
-          <label for="document_notes">Observações</label>
-          <textarea id="document_notes" name="notes" rows="3"></textarea>
-        </div>
-        <div class="field field-wide">
-          <label for="document_files">Arquivos (PDF/JPG/PNG até 10MB)</label>
-          <div class="dropzone" data-input-id="document_files">
-            <p class="dropzone-text muted">Arraste e solte arquivos aqui ou clique para selecionar.</p>
-            <input id="document_files" class="dropzone-input" name="files[]" type="file" multiple required accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
-          </div>
-        </div>
-      </div>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Enviar documentos</button>
-      </div>
-    </form>
   <?php endif; ?>
 
   <?php if ($documentItems === []): ?>
@@ -1462,6 +1627,112 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
       </div>
     </div>
   <?php endif; ?>
+
+  <?php if (($canManage ?? false) === true): ?>
+    <details id="document-upload-form" class="document-form-toggle" <?= $documentContextEventId > 0 ? 'open' : '' ?>>
+      <summary class="btn btn-outline">Inserir documento</summary>
+      <form method="post" action="<?= e(url('/people/documents/store')) ?>" enctype="multipart/form-data" class="document-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+        <?php if ($documentContextEventId > 0): ?>
+          <input type="hidden" name="context_event_id" value="<?= e((string) $documentContextEventId) ?>">
+          <div class="document-context-alert">
+            <strong>Contexto da etapa ativo</strong>
+            <p class="muted">
+              Upload vinculado ao evento #<?= e((string) $documentContextEventId) ?>
+              <?php if ($documentContextTitle !== ''): ?>
+                (<?= e($documentContextTitle) ?>)
+              <?php endif; ?>.
+            </p>
+            <?php if ($documentContextStatusCode !== '' || $documentContextStatusLabel !== ''): ?>
+              <p class="muted">
+                Etapa de referencia:
+                <?= e($resolveStatusLabel($documentContextStatusCode, $documentContextStatusLabel)) ?>
+              </p>
+            <?php endif; ?>
+            <?php if ($documentContextExpectedTypes !== []): ?>
+              <div class="bpmn-tags-list">
+                <?php foreach ($documentContextExpectedTypes as $expectedType): ?>
+                  <?php $expectedTypeName = trim((string) ($expectedType['name'] ?? 'Tipo')); ?>
+                  <span class="badge badge-info"><?= e($expectedTypeName) ?></span>
+                <?php endforeach; ?>
+              </div>
+            <?php else: ?>
+              <p class="muted">Nao ha tipos mapeados para esta etapa. Selecione o tipo manualmente.</p>
+            <?php endif; ?>
+            <div class="actions-inline">
+              <a class="btn btn-ghost" href="<?= e($buildProfileUrl(['tab' => 'documents'], ['document_context_event_id'])) ?>#document-upload-form">Remover contexto</a>
+            </div>
+          </div>
+        <?php endif; ?>
+        <div class="form-grid">
+          <div class="field">
+            <label for="document_type_id">Tipo de documento</label>
+            <select id="document_type_id" name="document_type_id" required>
+              <option value="">Selecione...</option>
+              <?php foreach ($documentTypes as $type): ?>
+                <?php
+                  $typeId = (int) ($type['id'] ?? 0);
+                  $isSuggestedType = $documentContextEventId > 0
+                      && $documentContextSuggestedTypeId > 0
+                      && $typeId === $documentContextSuggestedTypeId;
+                ?>
+                <option value="<?= e((string) $typeId) ?>" <?= $isSuggestedType ? 'selected' : '' ?>>
+                  <?= e((string) ($type['name'] ?? 'Tipo')) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <?php if ($documentContextEventId > 0 && $documentContextSuggestedTypeId > 0 && $documentContextSuggestedTypeName !== ''): ?>
+              <small class="muted">Sugestao automatica da etapa: <?= e($documentContextSuggestedTypeName) ?>.</small>
+            <?php endif; ?>
+          </div>
+          <div class="field">
+            <label for="document_sensitivity_level">Sensibilidade</label>
+            <select id="document_sensitivity_level" name="sensitivity_level" required>
+              <?php foreach ($documentSensitivityOptions as $option): ?>
+                <option value="<?= e((string) ($option['value'] ?? 'public')) ?>" <?= (($option['value'] ?? '') === 'public') ? 'selected' : '' ?>>
+                  <?= e((string) ($option['label'] ?? 'Publico')) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <?php if (!$canViewSensitiveDocuments): ?>
+              <small class="muted">Classificacoes Restrito/Sensivel exigem permissao adicional.</small>
+            <?php endif; ?>
+          </div>
+          <div class="field">
+            <label for="document_date">Data do documento</label>
+            <input id="document_date" name="document_date" type="date">
+          </div>
+          <div class="field">
+            <label for="document_title">Título (opcional)</label>
+            <input id="document_title" name="title" type="text" maxlength="190" placeholder="Ex.: Ofício 123/2026">
+          </div>
+          <div class="field">
+            <label for="document_reference_sei">Referência SEI</label>
+            <input id="document_reference_sei" name="reference_sei" type="text" maxlength="120" placeholder="00000.000000/2026-00">
+          </div>
+          <div class="field field-wide">
+            <label for="document_tags">Tags</label>
+            <input id="document_tags" name="tags" type="text" placeholder="oficio, resposta, cdo">
+          </div>
+          <div class="field field-wide">
+            <label for="document_notes">Observações</label>
+            <textarea id="document_notes" name="notes" rows="3"></textarea>
+          </div>
+          <div class="field field-wide">
+            <label for="document_files">Arquivos (PDF/JPG/PNG até 10MB)</label>
+            <div class="dropzone" data-input-id="document_files">
+              <p class="dropzone-text muted">Arraste e solte arquivos aqui ou clique para selecionar.</p>
+              <input id="document_files" class="dropzone-input" name="files[]" type="file" multiple required accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Enviar documentos</button>
+        </div>
+      </form>
+    </details>
+  <?php endif; ?>
 </div>
 
 <div class="card" data-tab-panel="costs">
@@ -1528,17 +1799,36 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
       <?= csrf_field() ?>
       <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
       <div class="form-grid">
-        <div class="field">
-          <label for="cost_item_name">Item de custo</label>
-          <input id="cost_item_name" name="item_name" type="text" minlength="3" maxlength="190" required placeholder="Ex.: Auxílio transporte">
-        </div>
-        <div class="field">
-          <label for="cost_type">Tipo</label>
-          <select id="cost_type" name="cost_type">
-            <option value="mensal">Mensal</option>
-            <option value="anual">Anual</option>
-            <option value="unico">Único</option>
+        <div class="field field-wide">
+          <label for="cost_item_catalog_id">Item de custo</label>
+          <select id="cost_item_catalog_id" name="cost_item_catalog_id" required>
+            <option value="">Selecione...</option>
+            <?php foreach ($costItemCatalog as $catalogItem): ?>
+              <?php
+                $catalogId = (int) ($catalogItem['id'] ?? 0);
+                if ($catalogId <= 0) {
+                    continue;
+                }
+                $catalogName = (string) ($catalogItem['name'] ?? '');
+                $catalogLinkage = $costLinkageLabel((int) ($catalogItem['linkage_code'] ?? 0), $catalogName);
+                $catalogParcel = $costReimbursableLabel((int) ($catalogItem['is_reimbursable'] ?? 0), $catalogName);
+                $catalogPeriodicity = $costTypeLabel((string) ($catalogItem['payment_periodicity'] ?? ''));
+              ?>
+              <option value="<?= e((string) $catalogId) ?>">
+                <?= e($catalogName . ' - ' . $catalogLinkage . ' - ' . $catalogParcel . ' - ' . $catalogPeriodicity) ?>
+              </option>
+            <?php endforeach; ?>
           </select>
+          <?php if ($costItemCatalog === []): ?>
+            <small class="muted">Nenhum item de custo cadastrado no catalogo. Cadastre ao menos um item para lancar custos.</small>
+          <?php else: ?>
+            <small class="muted">Vinculo, parcela e periodicidade sao herdados do item selecionado.</small>
+          <?php endif; ?>
+          <?php if ($canManageCostItems): ?>
+            <div class="actions-inline" style="margin-top: 6px;">
+              <a class="btn btn-ghost" href="<?= e(url('/cost-items')) ?>">Gerenciar catalogo de itens de custo</a>
+            </div>
+          <?php endif; ?>
         </div>
         <div class="field">
           <label for="cost_amount">Valor</label>
@@ -1558,7 +1848,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         </div>
       </div>
       <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Adicionar item</button>
+        <button type="submit" class="btn btn-primary" <?= $costItemCatalog === [] ? 'disabled' : '' ?>>Adicionar item</button>
       </div>
     </form>
   <?php endif; ?>
@@ -1571,6 +1861,8 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         <thead>
           <tr>
             <th>Item</th>
+            <th>Vinculo</th>
+            <th>Parcela</th>
             <th>Tipo</th>
             <th>Valor informado</th>
             <th>Início</th>
@@ -1580,13 +1872,20 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         </thead>
         <tbody>
           <?php foreach ($costItems as $item): ?>
+            <?php
+              $itemName = (string) ($item['item_name'] ?? '');
+              $itemLinkage = $costLinkageLabel($item['catalog_linkage_code'] ?? null, $itemName);
+              $itemParcel = $costReimbursableLabel($item['catalog_is_reimbursable'] ?? null, $itemName);
+            ?>
             <tr>
               <td>
-                <strong><?= e((string) ($item['item_name'] ?? '-')) ?></strong>
+                <strong><?= e($itemName !== '' ? $itemName : '-') ?></strong>
                 <?php if (trim((string) ($item['notes'] ?? '')) !== ''): ?>
                   <div class="muted"><?= e((string) $item['notes']) ?></div>
                 <?php endif; ?>
               </td>
+              <td><?= e($itemLinkage) ?></td>
+              <td><?= e($itemParcel) ?></td>
               <td><?= e($costTypeLabel((string) ($item['cost_type'] ?? ''))) ?></td>
               <td><?= e($formatMoney((float) ($item['amount'] ?? 0))) ?></td>
               <td><?= e($formatDate((string) ($item['start_date'] ?? ''))) ?></td>
@@ -1662,6 +1961,8 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                             <thead>
                               <tr>
                                 <th>Item</th>
+                                <th>Vinculo</th>
+                                <th>Parcela</th>
                                 <th>Tipo</th>
                                 <th>Valor informado</th>
                                 <th>Início</th>
@@ -1671,13 +1972,20 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                             </thead>
                             <tbody>
                               <?php foreach ($versionItemsList as $versionItem): ?>
+                                <?php
+                                  $versionItemName = (string) ($versionItem['item_name'] ?? '');
+                                  $versionItemLinkage = $costLinkageLabel($versionItem['catalog_linkage_code'] ?? null, $versionItemName);
+                                  $versionItemParcel = $costReimbursableLabel($versionItem['catalog_is_reimbursable'] ?? null, $versionItemName);
+                                ?>
                                 <tr>
                                   <td>
-                                    <strong><?= e((string) ($versionItem['item_name'] ?? '-')) ?></strong>
+                                    <strong><?= e($versionItemName !== '' ? $versionItemName : '-') ?></strong>
                                     <?php if (trim((string) ($versionItem['notes'] ?? '')) !== ''): ?>
                                       <div class="muted"><?= e((string) ($versionItem['notes'] ?? '')) ?></div>
                                     <?php endif; ?>
                                   </td>
+                                  <td><?= e($versionItemLinkage) ?></td>
+                                  <td><?= e($versionItemParcel) ?></td>
                                   <td><?= e($costTypeLabel((string) ($versionItem['cost_type'] ?? ''))) ?></td>
                                   <td><?= e($formatMoney((float) ($versionItem['amount'] ?? 0))) ?></td>
                                   <td><?= e($formatDate((string) ($versionItem['start_date'] ?? ''))) ?></td>

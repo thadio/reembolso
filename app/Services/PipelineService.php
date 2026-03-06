@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Core\Config;
 use App\Repositories\PipelineRepository;
+use DateTimeImmutable;
 
 final class PipelineService
 {
@@ -41,11 +42,13 @@ final class PipelineService
         int $userId,
         string $ip,
         string $userAgent,
-        ?array $movementContext = null
+        ?array $movementContext = null,
+        ?array $scheduleContext = null
     ): ?array
     {
         $movementResolved = $this->resolveMovementContext($personId, is_array($movementContext) ? $movementContext : [], false);
         $movement = is_array($movementResolved['context'] ?? null) ? $movementResolved['context'] : [];
+        $schedule = is_array($scheduleContext) ? $this->normalizedScheduleContext($scheduleContext) : null;
 
         $flowId = $this->resolvePersonFlowId($personId);
         $assignment = $this->pipeline->assignmentByPersonId($personId);
@@ -82,6 +85,59 @@ final class PipelineService
                 }
             }
 
+            if ($assignment !== null && $schedule !== null) {
+                $currentTargetStartDate = $this->normalizeDate((string) ($assignment['target_start_date'] ?? ''));
+                $currentRequestedEndDate = $this->normalizeDate((string) ($assignment['requested_end_date'] ?? ''));
+                $nextTargetStartDate = $this->normalizeDate((string) ($schedule['target_start_date'] ?? ''));
+                $nextRequestedEndDate = $this->normalizeDate((string) ($schedule['requested_end_date'] ?? ''));
+                if (
+                    $currentTargetStartDate !== $nextTargetStartDate
+                    || $currentRequestedEndDate !== $nextRequestedEndDate
+                ) {
+                    $this->pipeline->updateAssignmentSchedule(
+                        assignmentId: (int) $assignment['id'],
+                        targetStartDate: $nextTargetStartDate,
+                        requestedEndDate: $nextRequestedEndDate
+                    );
+
+                    if ($userId > 0) {
+                        $this->audit->log(
+                            entity: 'assignment',
+                            entityId: (int) $assignment['id'],
+                            action: 'schedule.update',
+                            beforeData: [
+                                'target_start_date' => $currentTargetStartDate,
+                                'requested_end_date' => $currentRequestedEndDate,
+                            ],
+                            afterData: [
+                                'target_start_date' => $nextTargetStartDate,
+                                'requested_end_date' => $nextRequestedEndDate,
+                            ],
+                            metadata: [
+                                'person_id' => $personId,
+                            ],
+                            userId: $userId,
+                            ip: $ip,
+                            userAgent: $userAgent
+                        );
+
+                        $this->events->recordEvent(
+                            entity: 'person',
+                            type: 'assignment.schedule_updated',
+                            payload: [
+                                'assignment_id' => (int) $assignment['id'],
+                                'target_start_date' => $nextTargetStartDate,
+                                'requested_end_date' => $nextRequestedEndDate,
+                            ],
+                            entityId: $personId,
+                            userId: $userId
+                        );
+                    }
+
+                    $assignment = $this->pipeline->assignmentByPersonId($personId);
+                }
+            }
+
             $assignmentFlowId = (int) ($assignment['flow_id'] ?? 0);
             if ($flowId > 0 && $assignmentFlowId !== $flowId) {
                 $this->pipeline->updateAssignmentFlow((int) $assignment['id'], $flowId);
@@ -112,7 +168,9 @@ final class PipelineService
             counterpartyOrganId: isset($movement['counterparty_organ_id']) ? (int) $movement['counterparty_organ_id'] : null,
             originMteDestinationId: isset($movement['origin_mte_destination_id']) ? (int) $movement['origin_mte_destination_id'] : null,
             destinationMteDestinationId: isset($movement['destination_mte_destination_id']) ? (int) $movement['destination_mte_destination_id'] : null,
-            movementCode: $this->generateMovementCode($personId)
+            movementCode: $this->generateMovementCode($personId),
+            targetStartDate: $schedule['target_start_date'] ?? null,
+            requestedEndDate: $schedule['requested_end_date'] ?? null
         );
 
         $this->pipeline->updatePersonStatus($personId, (string) $initial['code']);
@@ -146,6 +204,8 @@ final class PipelineService
                 'origin_mte_destination_id' => $movement['origin_mte_destination_id'] ?? null,
                 'destination_mte_destination_id' => $movement['destination_mte_destination_id'] ?? null,
                 'status_code' => $initial['code'],
+                'target_start_date' => $schedule['target_start_date'] ?? null,
+                'requested_end_date' => $schedule['requested_end_date'] ?? null,
             ],
             metadata: null,
             userId: $userId,
@@ -163,6 +223,8 @@ final class PipelineService
                 'status_label' => $initial['label'],
                 'movement_direction' => $movement['movement_direction'] ?? 'entrada_mte',
                 'financial_nature' => $movement['financial_nature'] ?? 'despesa_reembolso',
+                'target_start_date' => $schedule['target_start_date'] ?? null,
+                'requested_end_date' => $schedule['requested_end_date'] ?? null,
             ],
             entityId: $personId,
             userId: $userId
@@ -190,12 +252,48 @@ final class PipelineService
         ];
     }
 
+    /**
+     * @param array<string, mixed> $input
+     * @return array{
+     *   ok: bool,
+     *   errors: array<int, string>,
+     *   context: array{target_start_date: string|null, requested_end_date: string|null}
+     * }
+     */
+    public function validateScheduleContext(array $input): array
+    {
+        $targetStartDate = $this->normalizeDate((string) ($input['target_start_date'] ?? ''));
+        $requestedEndDate = $this->normalizeDate((string) ($input['requested_end_date'] ?? ''));
+        $errors = [];
+
+        $targetStartRaw = trim((string) ($input['target_start_date'] ?? ''));
+        $requestedEndRaw = trim((string) ($input['requested_end_date'] ?? ''));
+        if ($targetStartRaw !== '' && $targetStartDate === null) {
+            $errors[] = 'Data prevista de inicio efetivo invalida.';
+        }
+        if ($requestedEndRaw !== '' && $requestedEndDate === null) {
+            $errors[] = 'Data prevista de termino efetivo invalida.';
+        }
+        if ($targetStartDate !== null && $requestedEndDate !== null && $requestedEndDate < $targetStartDate) {
+            $errors[] = 'Data prevista de termino efetivo deve ser maior ou igual a data prevista de inicio efetivo.';
+        }
+
+        return [
+            'ok' => $errors === [],
+            'errors' => $errors,
+            'context' => [
+                'target_start_date' => $targetStartDate,
+                'requested_end_date' => $requestedEndDate,
+            ],
+        ];
+    }
+
     /** @return array<int, array{value: string, label: string}> */
     public function movementDirectionOptions(): array
     {
         return [
-            ['value' => 'entrada_mte', 'label' => 'Recebimento no MTE (MTE paga reembolso)'],
-            ['value' => 'saida_mte', 'label' => 'Cessao para fora do MTE (MTE recebe reembolso)'],
+            ['value' => 'entrada_mte', 'label' => 'Pessoa entrando no MTE (MTE paga reembolso)'],
+            ['value' => 'saida_mte', 'label' => 'Pessoa saindo do MTE (MTE recebe reembolso)'],
         ];
     }
 
@@ -253,6 +351,35 @@ final class PipelineService
         $currentCode = (string) ($assignment['current_status_code'] ?? '');
         $currentLabel = (string) ($assignment['current_status_label'] ?? '');
         $availableTransitions = $this->pipeline->transitionsFromStatus($flowId, $currentStatusId);
+        $currentStep = $this->pipeline->flowStepByStatus($flowId, $currentStatusId);
+        $requiresEvidenceClose = (int) ($currentStep['requires_evidence_close'] ?? 0) === 1;
+        $effectiveCurrentCode = trim($currentCode) !== ''
+            ? trim($currentCode)
+            : trim((string) ($currentStep['status_code'] ?? ''));
+
+        if ($requiresEvidenceClose) {
+            $hasEvidence = $this->pipeline->hasEvidenceForStatus($personId, $effectiveCurrentCode);
+            if (!$hasEvidence) {
+                $stepLabel = trim($currentLabel);
+                if ($stepLabel === '') {
+                    $stepLabel = trim((string) ($currentStep['status_label'] ?? ''));
+                }
+                if ($stepLabel === '') {
+                    $stepLabel = 'etapa atual';
+                }
+
+                return [
+                    'ok' => false,
+                    'message' => sprintf(
+                        'A etapa "%s" exige ao menos um anexo ou link de evidencia antes do encerramento.',
+                        $stepLabel
+                    ),
+                    'assignment' => $assignment,
+                    'next_status' => null,
+                    'available_transitions' => $availableTransitions,
+                ];
+            }
+        }
 
         if ($availableTransitions === []) {
             return [
@@ -281,9 +408,20 @@ final class PipelineService
         } elseif (count($availableTransitions) === 1) {
             $selectedTransition = $availableTransitions[0];
         } else {
+            $stepLabel = trim($currentLabel);
+            if ($stepLabel === '') {
+                $stepLabel = trim((string) ($currentStep['status_label'] ?? ''));
+            }
+            if ($stepLabel === '') {
+                $stepLabel = 'etapa atual';
+            }
+
             return [
                 'ok' => false,
-                'message' => 'Escolha a proxima transicao para continuar o fluxo.',
+                'message' => sprintf(
+                    'A etapa "%s" possui mais de uma transicao. Selecione a proxima acao antes de encerrar.',
+                    $stepLabel
+                ),
                 'assignment' => $assignment,
                 'next_status' => null,
                 'available_transitions' => $availableTransitions,
@@ -309,12 +447,28 @@ final class PipelineService
         }
 
         $isFinalNode = (string) ($selectedTransition['to_node_kind'] ?? '') === 'final';
-        $effectiveStartDate = ((string) $next['code'] === 'ativo' || $isFinalNode) ? date('Y-m-d') : null;
+        $destinationStep = $this->pipeline->flowStepByStatus($flowId, (int) $next['id']);
+        $currentStepTags = $this->normalizeTagList((string) ($currentStep['step_tags'] ?? ''));
+        $destinationStepTags = $this->normalizeTagList((string) ($destinationStep['step_tags'] ?? ''));
+        $hasEffectiveTransferTag = in_array('data_transferencia_efetiva', $currentStepTags, true)
+            || in_array('data_transferencia_efetiva', $destinationStepTags, true);
+        $movementDirection = (string) ($assignment['movement_direction'] ?? 'entrada_mte');
+        $autoSetEffectiveDate = ((string) $next['code'] === 'ativo' || $isFinalNode || $hasEffectiveTransferTag);
+        $effectiveStartDate = null;
+        $effectiveEndDate = null;
+        if ($autoSetEffectiveDate) {
+            if ($movementDirection === 'saida_mte') {
+                $effectiveEndDate = date('Y-m-d');
+            } else {
+                $effectiveStartDate = date('Y-m-d');
+            }
+        }
 
         $this->pipeline->updateAssignmentStatus(
             assignmentId: (int) $assignment['id'],
             statusId: (int) $next['id'],
-            effectiveStartDate: $effectiveStartDate
+            effectiveStartDate: $effectiveStartDate,
+            effectiveEndDate: $effectiveEndDate
         );
 
         $this->pipeline->updatePersonStatus($personId, (string) $next['code']);
@@ -648,6 +802,11 @@ final class PipelineService
         $title = trim((string) ($input['title'] ?? ''));
         $description = trim((string) ($input['description'] ?? ''));
         $eventDateInput = trim((string) ($input['event_date'] ?? ''));
+        $linksInput = (string) ($input['evidence_links'] ?? '');
+        $contextEventId = max(0, (int) ($input['context_event_id'] ?? 0));
+        $contextStatusCodeInput = trim((string) ($input['context_status_code'] ?? ''));
+        $contextStatusLabelInput = trim((string) ($input['context_status_label'] ?? ''));
+        $contextEvent = null;
 
         $errors = [];
 
@@ -665,6 +824,18 @@ final class PipelineService
         $eventDate = $this->normalizeDateTime($eventDateInput);
         if ($eventDate === null) {
             $errors[] = 'Data do evento inválida.';
+        }
+
+        $parsedLinks = $this->parseEvidenceLinks($linksInput);
+        if ($parsedLinks['errors'] !== []) {
+            $errors = array_merge($errors, $parsedLinks['errors']);
+        }
+
+        if ($contextEventId > 0) {
+            $contextEvent = $this->pipeline->findTimelineEventById($contextEventId, $personId);
+            if ($contextEvent === null) {
+                $errors[] = 'Evento de contexto invalido para vincular evidencia.';
+            }
         }
 
         if ($errors !== []) {
@@ -704,6 +875,43 @@ final class PipelineService
             }
         }
 
+        if ($contextEvent !== null) {
+            $resolvedContextId = (int) ($contextEvent['id'] ?? 0);
+            if ($resolvedContextId > 0) {
+                $eventMetadata['context_event_id'] = $resolvedContextId;
+            }
+
+            $contextEventType = trim((string) ($contextEvent['event_type'] ?? ''));
+            if ($contextEventType !== '') {
+                $eventMetadata['context_event_type'] = $contextEventType;
+            }
+
+            $contextEventTitle = trim((string) ($contextEvent['title'] ?? ''));
+            if ($contextEventTitle !== '') {
+                $eventMetadata['context_event_title'] = $contextEventTitle;
+            }
+
+            $contextMetadata = $this->decodeJsonObject((string) ($contextEvent['metadata'] ?? ''));
+            $contextStatusCode = trim((string) ($contextMetadata['pipeline_status_code'] ?? ($contextMetadata['status_code'] ?? '')));
+            if ($contextStatusCode === '') {
+                $contextStatusCode = $contextStatusCodeInput;
+            }
+
+            $contextStatusLabel = trim((string) ($contextMetadata['pipeline_status_label'] ?? ($contextMetadata['status_label'] ?? '')));
+            if ($contextStatusLabel === '') {
+                $contextStatusLabel = $contextStatusLabelInput;
+            }
+
+            if ($contextStatusCode !== '') {
+                $eventMetadata['pipeline_status_code'] = $contextStatusCode;
+                $eventMetadata['context_status_code'] = $contextStatusCode;
+            }
+            if ($contextStatusLabel !== '') {
+                $eventMetadata['pipeline_status_label'] = $contextStatusLabel;
+                $eventMetadata['context_status_label'] = $contextStatusLabel;
+            }
+        }
+
         $eventId = $this->pipeline->insertTimelineEvent(
             personId: $personId,
             assignmentId: $effectiveAssignmentId,
@@ -716,6 +924,12 @@ final class PipelineService
         );
 
         $warnings = $this->storeAttachments($personId, $eventId, $files, $userId);
+        $warnings = array_merge($warnings, $this->storeLinks(
+            personId: $personId,
+            eventId: $eventId,
+            links: $parsedLinks['links'],
+            userId: $userId
+        ));
 
         $this->audit->log(
             entity: 'timeline_event',
@@ -725,6 +939,7 @@ final class PipelineService
             afterData: [
                 'event_type' => $eventType,
                 'title' => $title,
+                'context_event_id' => $eventMetadata['context_event_id'] ?? null,
             ],
             metadata: $eventMetadata,
             userId: $userId,
@@ -738,6 +953,7 @@ final class PipelineService
             payload: [
                 'event_type' => $eventType,
                 'title' => $title,
+                'context_event_id' => $eventMetadata['context_event_id'] ?? null,
             ],
             entityId: $personId,
             userId: $userId
@@ -759,6 +975,7 @@ final class PipelineService
         ?int $assignmentId,
         int $sourceEventId,
         string $note,
+        string $linksInput,
         array $files,
         int $userId,
         string $ip,
@@ -781,6 +998,16 @@ final class PipelineService
                 'message' => 'Informe a justificativa da retificação.',
                 'warnings' => [],
                 'errors' => ['Justificativa de retificação é obrigatória.'],
+            ];
+        }
+
+        $parsedLinks = $this->parseEvidenceLinks($linksInput);
+        if ($parsedLinks['errors'] !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel registrar a retificacao.',
+                'warnings' => [],
+                'errors' => $parsedLinks['errors'],
             ];
         }
 
@@ -829,6 +1056,12 @@ final class PipelineService
         );
 
         $warnings = $this->storeAttachments($personId, $eventId, $files, $userId);
+        $warnings = array_merge($warnings, $this->storeLinks(
+            personId: $personId,
+            eventId: $eventId,
+            links: $parsedLinks['links'],
+            userId: $userId
+        ));
 
         $this->audit->log(
             entity: 'timeline_event',
@@ -992,6 +1225,143 @@ final class PipelineService
     }
 
     /**
+     * @return array{
+     *   context_event_id: int|null,
+     *   context_event_title: string,
+     *   flow_id: int|null,
+     *   status_code: string,
+     *   status_label: string,
+     *   expected_document_types: array<int, array<string, mixed>>,
+     *   suggested_document_type_id: int|null,
+     *   suggested_document_type_name: string
+     * }
+     */
+    public function documentTypeContext(int $personId, ?int $contextEventId = null): array
+    {
+        $assignment = $this->pipeline->assignmentByPersonId($personId);
+        $flowId = $assignment !== null ? max(0, (int) ($assignment['flow_id'] ?? 0)) : 0;
+        $statusCode = trim((string) ($assignment['current_status_code'] ?? ''));
+        $statusLabel = trim((string) ($assignment['current_status_label'] ?? ''));
+        $contextEventTitle = '';
+        $resolvedContextEventId = null;
+
+        if ($contextEventId !== null && $contextEventId > 0) {
+            $event = $this->pipeline->findTimelineEventById($contextEventId, $personId);
+            if ($event !== null) {
+                $resolvedContextEventId = (int) ($event['id'] ?? 0);
+                $contextEventTitle = trim((string) ($event['title'] ?? ''));
+                $metadata = $this->decodeJsonObject((string) ($event['metadata'] ?? ''));
+                $eventFlowId = max(0, (int) ($metadata['flow_id'] ?? 0));
+                if ($eventFlowId > 0) {
+                    $flowId = $eventFlowId;
+                }
+
+                $statusCodeCandidates = [
+                    trim((string) ($metadata['context_status_code'] ?? '')),
+                    trim((string) ($metadata['pipeline_status_code'] ?? '')),
+                    trim((string) ($metadata['status_code'] ?? '')),
+                    trim((string) ($metadata['to_code'] ?? '')),
+                ];
+                foreach ($statusCodeCandidates as $candidate) {
+                    if ($candidate !== '') {
+                        $statusCode = $candidate;
+                        break;
+                    }
+                }
+
+                $statusLabelCandidates = [
+                    trim((string) ($metadata['context_status_label'] ?? '')),
+                    trim((string) ($metadata['pipeline_status_label'] ?? '')),
+                    trim((string) ($metadata['status_label'] ?? '')),
+                    trim((string) ($metadata['to_label'] ?? '')),
+                ];
+                foreach ($statusLabelCandidates as $candidate) {
+                    if ($candidate !== '') {
+                        $statusLabel = $candidate;
+                        break;
+                    }
+                }
+            }
+        }
+
+        $expectedDocumentTypes = ($flowId > 0 && $statusCode !== '')
+            ? $this->pipeline->expectedDocumentTypesForFlowStatusCode($flowId, $statusCode)
+            : [];
+        $suggested = $expectedDocumentTypes[0] ?? null;
+        $suggestedId = $suggested !== null ? max(0, (int) ($suggested['id'] ?? 0)) : 0;
+
+        return [
+            'context_event_id' => $resolvedContextEventId,
+            'context_event_title' => $contextEventTitle,
+            'flow_id' => $flowId > 0 ? $flowId : null,
+            'status_code' => $statusCode,
+            'status_label' => $statusLabel,
+            'expected_document_types' => $expectedDocumentTypes,
+            'suggested_document_type_id' => $suggestedId > 0 ? $suggestedId : null,
+            'suggested_document_type_name' => trim((string) ($suggested['name'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{
+     *   resolved_document_type_id: int|null,
+     *   warning: string,
+     *   context: array<string, mixed>
+     * }
+     */
+    public function resolveDocumentTypeForUpload(int $personId, ?int $contextEventId, ?int $requestedDocumentTypeId): array
+    {
+        $context = $this->documentTypeContext($personId, $contextEventId);
+        $resolvedContextEventId = max(0, (int) ($context['context_event_id'] ?? 0));
+        $expectedTypes = is_array($context['expected_document_types'] ?? null) ? $context['expected_document_types'] : [];
+        $expectedMap = [];
+
+        foreach ($expectedTypes as $type) {
+            $typeId = (int) ($type['id'] ?? 0);
+            if ($typeId <= 0) {
+                continue;
+            }
+
+            $expectedMap[$typeId] = (string) ($type['name'] ?? ('Tipo #' . $typeId));
+        }
+
+        $requestedId = $requestedDocumentTypeId !== null ? max(0, $requestedDocumentTypeId) : 0;
+        $resolvedId = $requestedId > 0 ? $requestedId : null;
+        $warning = '';
+
+        if ($resolvedContextEventId <= 0) {
+            return [
+                'resolved_document_type_id' => $resolvedId,
+                'warning' => '',
+                'context' => $context,
+            ];
+        }
+
+        if ($expectedMap !== [] && !isset($expectedMap[$requestedId])) {
+            $suggestedId = max(0, (int) ($context['suggested_document_type_id'] ?? 0));
+            if ($suggestedId > 0) {
+                $resolvedId = $suggestedId;
+                $suggestedName = trim((string) ($context['suggested_document_type_name'] ?? ($expectedMap[$suggestedId] ?? '')));
+                if ($requestedId > 0) {
+                    $warning = $suggestedName !== ''
+                        ? sprintf('Tipo de documento ajustado automaticamente para "%s" conforme etapa vinculada.', $suggestedName)
+                        : 'Tipo de documento ajustado automaticamente conforme etapa vinculada.';
+                } else {
+                    $warning = $suggestedName !== ''
+                        ? sprintf('Tipo de documento sugerido automaticamente: "%s".', $suggestedName)
+                        : 'Tipo de documento sugerido automaticamente conforme etapa vinculada.';
+                }
+            }
+        }
+
+        return [
+            'resolved_document_type_id' => $resolvedId,
+            'warning' => $warning,
+            'context' => $context,
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $input
      * @return array{
      *   context: array<string, mixed>,
@@ -1001,9 +1371,11 @@ final class PipelineService
     private function resolveMovementContext(int $personId, array $input, bool $strict): array
     {
         $defaults = $personId > 0 ? ($this->pipeline->personMovementDefaults($personId) ?? []) : [];
+        $mteOrganId = $this->pipeline->findMteOrganId();
 
         $rawDirection = mb_strtolower(trim((string) ($input['movement_direction'] ?? '')));
-        $direction = in_array($rawDirection, self::ALLOWED_MOVEMENT_DIRECTIONS, true)
+        $hasValidDirection = in_array($rawDirection, self::ALLOWED_MOVEMENT_DIRECTIONS, true);
+        $direction = $hasValidDirection
             ? $rawDirection
             : 'entrada_mte';
 
@@ -1032,19 +1404,27 @@ final class PipelineService
         }
 
         if ($strict) {
+            if (!$hasValidDirection) {
+                $errors[] = 'Selecione a direcao do movimento (entrada ou saida no MTE).';
+            }
+
             if ($counterpartyOrganId <= 0) {
                 $errors[] = 'Orgao de contraparte e obrigatorio para abrir o movimento.';
             }
 
-            if ($direction === 'entrada_mte' && $destinationMteDestinationId <= 0) {
+            if ($hasValidDirection && $direction === 'entrada_mte' && $destinationMteDestinationId <= 0) {
                 $errors[] = 'Lotacao de destino no MTE e obrigatoria para movimento de entrada.';
             }
 
-            if ($direction === 'saida_mte' && $originMteDestinationId <= 0) {
+            if ($hasValidDirection && $direction === 'entrada_mte' && $mteOrganId !== null && $counterpartyOrganId === $mteOrganId) {
+                $errors[] = 'Para movimento de entrada no MTE, o orgao de origem deve ser diferente do MTE.';
+            }
+
+            if ($hasValidDirection && $direction === 'saida_mte' && $originMteDestinationId <= 0) {
                 $errors[] = 'Lotacao de origem no MTE e obrigatoria para movimento de saida.';
             }
 
-            if ($financialNature !== $expectedNature) {
+            if ($hasValidDirection && $financialNature !== $expectedNature) {
                 $errors[] = 'Natureza financeira invalida para a direcao selecionada.';
             }
         }
@@ -1479,6 +1859,175 @@ final class PipelineService
         }
 
         return $warnings;
+    }
+
+    /**
+     * @param array<int, array{url: string, label: ?string}> $links
+     * @return array<int, string>
+     */
+    private function storeLinks(int $personId, int $eventId, array $links, int $userId): array
+    {
+        $warnings = [];
+
+        foreach ($links as $link) {
+            $url = trim((string) ($link['url'] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+
+            $label = isset($link['label']) ? trim((string) $link['label']) : '';
+            $this->pipeline->createEventLink(
+                eventId: $eventId,
+                personId: $personId,
+                url: $url,
+                label: $label === '' ? null : $label,
+                createdBy: $userId > 0 ? $userId : null
+            );
+        }
+
+        return $warnings;
+    }
+
+    /** @return array<string, mixed> */
+    private function decodeJsonObject(string $raw): array
+    {
+        $value = trim($raw);
+        if ($value === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @return array{links: array<int, array{url: string, label: ?string}>, errors: array<int, string>}
+     */
+    private function parseEvidenceLinks(string $raw): array
+    {
+        $trimmed = trim($raw);
+        if ($trimmed === '') {
+            return ['links' => [], 'errors' => []];
+        }
+
+        $lines = preg_split('/\\r\\n|\\r|\\n/', $trimmed);
+        if (!is_array($lines)) {
+            return ['links' => [], 'errors' => ['Formato de links inválido.']];
+        }
+
+        $links = [];
+        $errors = [];
+        $seen = [];
+
+        foreach ($lines as $index => $line) {
+            $candidate = trim((string) $line);
+            if ($candidate === '') {
+                continue;
+            }
+
+            $label = null;
+            $url = $candidate;
+            if (str_contains($candidate, '|')) {
+                [$labelPart, $urlPart] = array_map('trim', explode('|', $candidate, 2));
+                if ($urlPart !== '') {
+                    $label = $labelPart !== '' ? $labelPart : null;
+                    $url = $urlPart;
+                }
+            }
+
+            if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+                $errors[] = sprintf('Link inválido na linha %d.', $index + 1);
+                continue;
+            }
+
+            $scheme = mb_strtolower((string) parse_url($url, PHP_URL_SCHEME));
+            if (!in_array($scheme, ['http', 'https'], true)) {
+                $errors[] = sprintf('Apenas links http/https são aceitos (linha %d).', $index + 1);
+                continue;
+            }
+
+            $url = mb_substr($url, 0, 1000);
+            if (isset($seen[$url])) {
+                continue;
+            }
+            $seen[$url] = true;
+
+            if ($label !== null) {
+                $label = trim((string) $label);
+                $label = $label === '' ? null : mb_substr($label, 0, 190);
+            }
+
+            if (count($links) >= 20) {
+                $errors[] = 'Informe no máximo 20 links por operação.';
+                break;
+            }
+
+            $links[] = [
+                'url' => $url,
+                'label' => $label,
+            ];
+        }
+
+        return [
+            'links' => $links,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return array{target_start_date: string|null, requested_end_date: string|null}
+     */
+    private function normalizedScheduleContext(array $context): array
+    {
+        return [
+            'target_start_date' => $this->normalizeDate((string) ($context['target_start_date'] ?? '')),
+            'requested_end_date' => $this->normalizeDate((string) ($context['requested_end_date'] ?? '')),
+        ];
+    }
+
+    private function normalizeDate(string $value): ?string
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        $date = DateTimeImmutable::createFromFormat('Y-m-d', $trimmed);
+        if ($date === false || $date->format('Y-m-d') !== $trimmed) {
+            return null;
+        }
+
+        return $date->format('Y-m-d');
+    }
+
+    /** @return array<int, string> */
+    private function normalizeTagList(string $value): array
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return [];
+        }
+
+        $parts = preg_split('/[\s,;|]+/', $trimmed);
+        if (!is_array($parts)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($parts as $part) {
+            $tag = mb_strtolower(trim((string) $part));
+            if ($tag === '') {
+                continue;
+            }
+            $normalized[$tag] = $tag;
+        }
+
+        return array_values($normalized);
     }
 
     /**

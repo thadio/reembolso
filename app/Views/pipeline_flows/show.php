@@ -11,6 +11,7 @@ $nodeKindOptions = $nodeKindOptions ?? [
     ['value' => 'gateway', 'label' => 'Decisão'],
     ['value' => 'final', 'label' => 'Final'],
 ];
+$documentTypeCatalog = $documentTypeCatalog ?? [];
 
 $nodeKindLabel = static function (string $kind): string {
     return match ($kind) {
@@ -37,6 +38,8 @@ foreach ($steps as $step) {
         'sort_order' => (int) ($step['sort_order'] ?? 10),
         'is_initial' => (int) ($step['is_initial'] ?? 0),
         'is_active' => (int) ($step['is_active'] ?? 0),
+        'requires_evidence_close' => (int) ($step['requires_evidence_close'] ?? 0),
+        'step_tags' => (string) ($step['step_tags'] ?? ''),
     ];
 }
 
@@ -132,7 +135,9 @@ if (!is_string($diagramPayloadJson)) {
             <th>Código</th>
             <th>Rótulo</th>
             <th>Tipo</th>
+            <th>Documentos esperados</th>
             <th>Ordem</th>
+            <th>Evidência</th>
             <th>Inicial</th>
             <th>Ativa</th>
             <th>Ações</th>
@@ -146,7 +151,11 @@ if (!is_string($diagramPayloadJson)) {
               $stepSortOrder = (int) ($step['sort_order'] ?? 10);
               $stepIsInitial = (int) ($step['is_initial'] ?? 0) === 1;
               $stepIsActive = (int) ($step['is_active'] ?? 0) === 1;
+              $stepRequiresEvidenceClose = (int) ($step['requires_evidence_close'] ?? 0) === 1;
+              $stepTags = trim((string) ($step['step_tags'] ?? ''));
               $statusIsActive = (int) ($step['status_is_active'] ?? 0) === 1;
+              $stepExpectedDocumentTypes = is_array($step['expected_document_types'] ?? null) ? $step['expected_document_types'] : [];
+              $stepExpectedDocumentTypeIds = is_array($step['expected_document_type_ids'] ?? null) ? $step['expected_document_type_ids'] : [];
             ?>
             <tr>
               <td><?= e((string) ($step['status_code'] ?? '-')) ?></td>
@@ -158,9 +167,30 @@ if (!is_string($diagramPayloadJson)) {
                 <?php if (trim((string) ($step['status_event_type'] ?? '')) !== ''): ?>
                   <div class="muted">Evento: <?= e((string) $step['status_event_type']) ?></div>
                 <?php endif; ?>
+                <?php if ($stepTags !== ''): ?>
+                  <div class="muted">Tags: <?= e($stepTags) ?></div>
+                <?php endif; ?>
               </td>
               <td><?= e($nodeKindLabel($stepNodeKind)) ?></td>
+              <td>
+                <?php if ($stepExpectedDocumentTypes === []): ?>
+                  <span class="muted">Nao definido</span>
+                <?php else: ?>
+                  <div class="bpmn-tags-list">
+                    <?php foreach ($stepExpectedDocumentTypes as $expectedType): ?>
+                      <?php
+                        $expectedName = trim((string) ($expectedType['document_type_name'] ?? 'Tipo'));
+                        $expectedActive = (int) ($expectedType['document_type_is_active'] ?? 0) === 1;
+                      ?>
+                      <span class="badge <?= $expectedActive ? 'badge-info' : 'badge-neutral' ?>">
+                        <?= e($expectedName . ($expectedActive ? '' : ' (inativo)')) ?>
+                      </span>
+                    <?php endforeach; ?>
+                  </div>
+                <?php endif; ?>
+              </td>
               <td><?= e((string) $stepSortOrder) ?></td>
+              <td><span class="badge <?= $stepRequiresEvidenceClose ? 'badge-warning' : 'badge-neutral' ?>"><?= $stepRequiresEvidenceClose ? 'Obrigatória' : 'Opcional' ?></span></td>
               <td><span class="badge <?= $stepIsInitial ? 'badge-info' : 'badge-neutral' ?>"><?= $stepIsInitial ? 'Sim' : 'Não' ?></span></td>
               <td><span class="badge <?= $stepIsActive ? 'badge-success' : 'badge-neutral' ?>"><?= $stepIsActive ? 'Sim' : 'Não' ?></span></td>
               <td class="actions-cell">
@@ -198,9 +228,34 @@ if (!is_string($diagramPayloadJson)) {
                       <input name="step_sort_order" type="number" min="1" value="<?= e((string) $stepSortOrder) ?>" required>
                     </div>
                     <div class="field field-wide">
+                      <label>Tags da etapa</label>
+                      <input name="step_tags" type="text" value="<?= e($stepTags) ?>" placeholder="Ex.: data_transferencia_efetiva, financeiro">
+                    </div>
+                    <div class="field field-wide">
+                      <label>Tipos de documento esperados</label>
+                      <?php if ($documentTypeCatalog === []): ?>
+                        <p class="muted">Nenhum tipo de documento cadastrado.</p>
+                      <?php else: ?>
+                        <div class="checkbox-grid">
+                          <?php foreach ($documentTypeCatalog as $typeOption): ?>
+                            <?php
+                              $typeOptionId = (int) ($typeOption['id'] ?? 0);
+                              $typeOptionIsActive = (int) ($typeOption['is_active'] ?? 0) === 1;
+                              $typeChecked = in_array($typeOptionId, $stepExpectedDocumentTypeIds, true);
+                            ?>
+                            <label>
+                              <input type="checkbox" name="step_document_type_ids[]" value="<?= e((string) $typeOptionId) ?>" <?= $typeChecked ? 'checked' : '' ?>>
+                              <?= e((string) ($typeOption['name'] ?? 'Tipo')) ?><?= $typeOptionIsActive ? '' : ' (inativo)' ?>
+                            </label>
+                          <?php endforeach; ?>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+                    <div class="field field-wide">
                       <label><input type="checkbox" name="status_is_active" value="1" <?= $statusIsActive ? 'checked' : '' ?>> Status ativo no catálogo global</label>
                       <label><input type="checkbox" name="step_is_initial" value="1" <?= $stepIsInitial ? 'checked' : '' ?>> Definir como etapa inicial</label>
                       <label><input type="checkbox" name="step_is_active" value="1" <?= $stepIsActive ? 'checked' : '' ?>> Etapa ativa no fluxo</label>
+                      <label><input type="checkbox" name="step_requires_evidence_close" value="1" <?= $stepRequiresEvidenceClose ? 'checked' : '' ?>> Exigir anexo ou link para encerrar etapa</label>
                     </div>
                     <div class="form-actions field-wide">
                       <button type="submit" class="btn btn-outline">Salvar etapa</button>
@@ -283,11 +338,35 @@ if (!is_string($diagramPayloadJson)) {
         <label for="step_sort_order_new">Ordem no fluxo</label>
         <input id="step_sort_order_new" name="step_sort_order" type="number" min="1" value="10" required>
       </div>
+      <div class="field field-wide">
+        <label for="step_tags_new">Tags da etapa</label>
+        <input id="step_tags_new" name="step_tags" type="text" placeholder="Ex.: data_transferencia_efetiva, financeiro">
+      </div>
+      <div class="field field-wide">
+        <label>Tipos de documento esperados</label>
+        <?php if ($documentTypeCatalog === []): ?>
+          <p class="muted">Nenhum tipo de documento cadastrado.</p>
+        <?php else: ?>
+          <div class="checkbox-grid">
+            <?php foreach ($documentTypeCatalog as $typeOption): ?>
+              <?php
+                $typeOptionId = (int) ($typeOption['id'] ?? 0);
+                $typeOptionIsActive = (int) ($typeOption['is_active'] ?? 0) === 1;
+              ?>
+              <label>
+                <input type="checkbox" name="step_document_type_ids[]" value="<?= e((string) $typeOptionId) ?>">
+                <?= e((string) ($typeOption['name'] ?? 'Tipo')) ?><?= $typeOptionIsActive ? '' : ' (inativo)' ?>
+              </label>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+      </div>
 
       <div class="field">
         <label><input type="checkbox" name="step_is_initial" value="1"> Definir como etapa inicial</label>
         <label><input type="checkbox" name="step_is_active" value="1" checked> Etapa ativa no fluxo</label>
         <label><input type="checkbox" name="status_is_active" value="1" checked> Status ativo no catálogo</label>
+        <label><input type="checkbox" name="step_requires_evidence_close" value="1"> Exigir anexo ou link para encerrar etapa</label>
       </div>
 
       <div class="form-actions field-wide">

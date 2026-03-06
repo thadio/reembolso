@@ -136,6 +136,7 @@ final class DocumentService
         $tags = $this->normalizeTags($this->clean($input['tags'] ?? null));
         $notes = $this->clean($input['notes'] ?? null);
         $sensitivityLevel = $this->normalizeSensitivityLevel($input['sensitivity_level'] ?? null);
+        $contextEventId = max(0, (int) ($input['context_event_id'] ?? 0));
 
         $errors = [];
         $warnings = [];
@@ -320,6 +321,7 @@ final class DocumentService
                     'reference_sei' => $referenceSei,
                     'document_date' => $documentDate,
                     'tags' => $tags,
+                    'context_event_id' => $contextEventId > 0 ? $contextEventId : null,
                 ],
                 userId: $userId,
                 ip: $ip,
@@ -349,6 +351,7 @@ final class DocumentService
                 'document_type_id' => $documentTypeId,
                 'sensitivity_level' => $sensitivityLevel,
                 'document_ids' => $createdIds,
+                'context_event_id' => $contextEventId > 0 ? $contextEventId : null,
             ],
             entityId: $personId,
             userId: $userId

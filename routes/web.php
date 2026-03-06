@@ -7,7 +7,9 @@ use App\Controllers\BudgetController;
 use App\Controllers\CdosController;
 use App\Controllers\CostMirrorReconciliationController;
 use App\Controllers\CostMirrorsController;
+use App\Controllers\CostItemsController;
 use App\Controllers\DashboardController;
+use App\Controllers\DocumentTypesController;
 use App\Controllers\GlobalSearchController;
 use App\Controllers\HealthController;
 use App\Controllers\InvoicesController;
@@ -38,6 +40,7 @@ $router->post('/users/password/update', [UsersController::class, 'updateOwnPassw
 
 $router->get('/', [DashboardController::class, 'index'], ['auth', 'permission:dashboard.view']);
 $router->get('/dashboard', [DashboardController::class, 'index'], ['auth', 'permission:dashboard.view']);
+$router->get('/dashboard2', [DashboardController::class, 'legacy'], ['auth', 'permission:dashboard.view']);
 $router->get('/global-search', [GlobalSearchController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/users', [UsersController::class, 'index'], ['auth', 'permission:users.view']);
 $router->get('/users/create', [UsersController::class, 'create'], ['auth', 'permission:users.manage']);
@@ -163,6 +166,20 @@ $router->post('/people/timeline/store', [PeopleController::class, 'storeTimeline
 $router->post('/people/timeline/rectify', [PeopleController::class, 'rectifyTimelineEvent'], ['auth', 'permission:people.manage', 'csrf']);
 $router->get('/people/timeline/attachment', [PeopleController::class, 'downloadTimelineAttachment'], ['auth', 'permission:people.view']);
 $router->get('/people/timeline/print', [PeopleController::class, 'timelinePrint'], ['auth', 'permission:people.view']);
+$router->get('/document-types', [DocumentTypesController::class, 'index'], ['auth', 'permission:document_type.view']);
+$router->get('/document-types/create', [DocumentTypesController::class, 'create'], ['auth', 'permission:document_type.manage']);
+$router->post('/document-types/store', [DocumentTypesController::class, 'store'], ['auth', 'permission:document_type.manage', 'csrf']);
+$router->get('/document-types/show', [DocumentTypesController::class, 'show'], ['auth', 'permission:document_type.view']);
+$router->get('/document-types/edit', [DocumentTypesController::class, 'edit'], ['auth', 'permission:document_type.manage']);
+$router->post('/document-types/update', [DocumentTypesController::class, 'update'], ['auth', 'permission:document_type.manage', 'csrf']);
+$router->post('/document-types/toggle-active', [DocumentTypesController::class, 'toggleActive'], ['auth', 'permission:document_type.manage', 'csrf']);
+$router->get('/cost-items', [CostItemsController::class, 'index'], ['auth', 'permission:cost_item.view']);
+$router->get('/cost-items/create', [CostItemsController::class, 'create'], ['auth', 'permission:cost_item.manage']);
+$router->post('/cost-items/store', [CostItemsController::class, 'store'], ['auth', 'permission:cost_item.manage', 'csrf']);
+$router->get('/cost-items/show', [CostItemsController::class, 'show'], ['auth', 'permission:cost_item.view']);
+$router->get('/cost-items/edit', [CostItemsController::class, 'edit'], ['auth', 'permission:cost_item.manage']);
+$router->post('/cost-items/update', [CostItemsController::class, 'update'], ['auth', 'permission:cost_item.manage', 'csrf']);
+$router->post('/cost-items/delete', [CostItemsController::class, 'destroy'], ['auth', 'permission:cost_item.manage', 'csrf']);
 $router->post('/people/documents/store', [PeopleController::class, 'storeDocument'], ['auth', 'permission:people.manage', 'csrf']);
 $router->get('/people/documents/download', [PeopleController::class, 'downloadDocument'], ['auth', 'permission:people.view']);
 $router->post('/people/documents/version/store', [PeopleController::class, 'storeDocumentVersion'], ['auth', 'permission:people.manage', 'csrf']);

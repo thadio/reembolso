@@ -89,6 +89,7 @@ final class PipelineFlowsController extends Controller
             'transitions' => $detail['transitions'],
             'statusCatalog' => $detail['status_catalog'],
             'nodeKindOptions' => $detail['node_kind_options'],
+            'documentTypeCatalog' => $detail['document_type_catalog'],
         ]);
     }
 

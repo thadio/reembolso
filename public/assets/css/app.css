@@ -111,6 +111,17 @@ a:hover { text-decoration: underline; }
   font-size: 0.92rem;
 }
 
+.menu-item-sub {
+  margin-left: 10px;
+  color: #d8ecf2;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.menu-item-sub .menu-icon {
+  opacity: 0.92;
+}
+
 .logout-form { margin-top: auto; }
 
 .main-content {
@@ -671,6 +682,14 @@ th a {
   padding: 12px;
 }
 
+.timeline-context-alert {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #cfe1ee;
+  border-radius: 8px;
+  background: #f1f8fd;
+}
+
 .timeline-form-grid {
   margin-bottom: 10px;
 }
@@ -698,6 +717,28 @@ th a {
 
 .timeline-item-description {
   margin: 8px 0;
+}
+
+.timeline-item-actions {
+  margin: 8px 0 4px;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 12px;
+}
+
+.checkbox-grid label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bpmn-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .timeline-stage-meta {
@@ -739,6 +780,32 @@ th a {
   border-radius: 10px;
   background: #fbfdff;
   padding: 12px;
+}
+
+.document-context-alert {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #d7e5ef;
+  border-radius: 8px;
+  background: #f4f9fd;
+}
+
+.document-form-toggle {
+  margin-top: 12px;
+}
+
+.document-form-toggle > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.document-form-toggle > summary::-webkit-details-marker {
+  display: none;
+}
+
+.document-form-toggle[open] > summary {
+  margin-bottom: 8px;
 }
 
 .document-list {
@@ -884,6 +951,19 @@ th a {
   margin: 6px 0 0;
   color: #4a5568;
   font-size: 0.88rem;
+}
+
+.dashboard-chart-wrap {
+  margin-top: 10px;
+}
+
+.dashboard-chart-canvas {
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid #d7e3ec;
+  border-radius: 10px;
+  background: #fcfeff;
 }
 
 .cost-version-form,

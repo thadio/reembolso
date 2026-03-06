@@ -6,6 +6,87 @@ $person = $person ?? [];
 $assignment = is_array($assignment ?? null) ? $assignment : [];
 $movementDirectionOptions = is_array($movementDirectionOptions ?? null) ? $movementDirectionOptions : [];
 $financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financialNatureOptions : [];
+$mteOrganId = max(0, (int) ($mteOrganId ?? 0));
+
+$selectedMovementDirection = (string) old(
+    'movement_direction',
+    (string) ($assignment['movement_direction'] ?? $person['movement_direction'] ?? '')
+);
+$selectedFinancialNature = (string) old(
+    'financial_nature',
+    (string) ($assignment['financial_nature'] ?? $person['financial_nature'] ?? '')
+);
+
+if ($selectedMovementDirection === 'saida_mte') {
+    $selectedFinancialNature = 'receita_reembolso';
+} elseif ($selectedMovementDirection === 'entrada_mte') {
+    $selectedFinancialNature = 'despesa_reembolso';
+}
+
+$financialNatureLabels = [];
+foreach ($financialNatureOptions as $option) {
+    $value = trim((string) ($option['value'] ?? ''));
+    $label = trim((string) ($option['label'] ?? $value));
+    if ($value === '') {
+        continue;
+    }
+
+    $financialNatureLabels[$value] = $label;
+}
+
+$isEntryDirection = $selectedMovementDirection === 'entrada_mte';
+$isExitDirection = $selectedMovementDirection === 'saida_mte';
+$organFieldLabel = $isExitDirection
+    ? 'Órgão de destino *'
+    : ($isEntryDirection ? 'Órgão de origem *' : 'Órgão de origem/destino *');
+$organHelpText = $isExitDirection
+    ? 'Obrigatório para informar o órgão de destino da pessoa.'
+    : ($isEntryDirection
+        ? 'Obrigatório. Para entrada no MTE, selecione um órgão de origem diferente do MTE.'
+        : 'Selecione primeiro a direção do movimento para definir se o órgão é de origem ou destino.');
+
+$normalizeLookup = static function (string $value): string {
+    $normalized = mb_strtolower(trim($value));
+    if ($normalized === '') {
+        return '';
+    }
+
+    return strtr($normalized, [
+        'ã' => 'a',
+        'á' => 'a',
+        'à' => 'a',
+        'â' => 'a',
+        'é' => 'e',
+        'ê' => 'e',
+        'í' => 'i',
+        'õ' => 'o',
+        'ó' => 'o',
+        'ô' => 'o',
+        'ú' => 'u',
+        'ç' => 'c',
+    ]);
+};
+
+$movementReasonType = static function (string $modalityName) use ($normalizeLookup): string {
+    $normalized = $normalizeLookup($modalityName);
+    if ($normalized === '') {
+        return '';
+    }
+
+    if (str_contains($normalized, 'cess')) {
+        return 'cessao';
+    }
+
+    if (str_contains($normalized, 'requis')) {
+        return 'requisicao';
+    }
+
+    if (str_contains($normalized, 'forca') || str_contains($normalized, 'cft')) {
+        return 'cft';
+    }
+
+    return '';
+};
 ?>
 <div class="card">
   <form method="post" action="<?= e($action) ?>" class="form-grid">
@@ -13,6 +94,161 @@ $financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financial
     <?php if (($isEdit ?? false) === true): ?>
       <input type="hidden" name="id" value="<?= e((string) ($person['id'] ?? '')) ?>">
     <?php endif; ?>
+
+    <?php $selectedOrgan = (int) old('organ_id', (string) ($person['organ_id'] ?? '0')); ?>
+    <?php
+      $selectedOriginDestination = (int) old(
+          'origin_mte_destination_id',
+          (string) ($assignment['origin_mte_destination_id'] ?? $person['origin_mte_destination_id'] ?? '0')
+      );
+    ?>
+    <?php
+      $selectedDestination = (int) old(
+          'destination_mte_destination_id',
+          (string) ($assignment['destination_mte_destination_id'] ?? $person['destination_mte_destination_id'] ?? '0')
+      );
+    ?>
+
+    <div class="field field-wide">
+      <label>Direção do movimento *</label>
+      <div class="chips-row" id="movement_direction_group">
+        <?php $directionIndex = 0; ?>
+        <?php foreach ($movementDirectionOptions as $option): ?>
+          <?php
+            $value = trim((string) ($option['value'] ?? ''));
+            $label = trim((string) ($option['label'] ?? $value));
+            if ($value === '') {
+                continue;
+            }
+          ?>
+          <label>
+            <input
+              type="radio"
+              name="movement_direction"
+              value="<?= e($value) ?>"
+              <?= $selectedMovementDirection === $value ? 'checked' : '' ?>
+              <?= $directionIndex === 0 ? 'required' : '' ?>
+            >
+            <?= e($label) ?>
+          </label>
+          <?php $directionIndex++; ?>
+        <?php endforeach; ?>
+      </div>
+      <p class="muted">Selecione a direção para liberar os campos aplicáveis no cadastro.</p>
+    </div>
+
+    <div class="field" id="mte_origin_fixed_field" <?= $isExitDirection ? '' : 'style="display: none;"' ?>>
+      <label for="mte_origin_name">Órgão de origem</label>
+      <input id="mte_origin_name" type="text" value="MTE - Ministério do Trabalho e Emprego" readonly>
+    </div>
+
+    <div class="field" id="organ_id_field">
+      <label id="organ_id_label" for="organ_id"><?= e($organFieldLabel) ?></label>
+      <select id="organ_id" name="organ_id">
+        <option value="0">Selecione</option>
+        <?php foreach (($organs ?? []) as $organ): ?>
+          <?php
+            $organId = (int) ($organ['id'] ?? 0);
+            $isMteOption = $mteOrganId > 0 && $organId === $mteOrganId;
+            $organAcronym = trim((string) ($organ['acronym'] ?? ''));
+            $organName = trim((string) ($organ['name'] ?? ''));
+            $organLabel = $organName;
+            if ($organAcronym !== '') {
+                $organLabel .= ' (' . $organAcronym . ')';
+            }
+          ?>
+          <option
+            value="<?= e((string) $organId) ?>"
+            data-is-mte="<?= $isMteOption ? '1' : '0' ?>"
+            <?= $selectedOrgan === $organId ? 'selected' : '' ?>
+          >
+            <?= e($organLabel) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <p class="muted" id="organ_id_help"><?= e($organHelpText) ?></p>
+    </div>
+
+    <div class="field">
+      <label for="financial_nature_label">Natureza financeira *</label>
+      <input type="hidden" id="financial_nature" name="financial_nature" value="<?= e($selectedFinancialNature) ?>">
+      <input
+        id="financial_nature_label"
+        type="text"
+        value="<?= e((string) ($financialNatureLabels[$selectedFinancialNature] ?? '')) ?>"
+        readonly
+      >
+      <p class="muted">A natureza financeira é definida automaticamente pela direção do movimento.</p>
+    </div>
+
+    <div class="field" id="origin_mte_destination_wrapper" <?= $isExitDirection ? '' : 'style="display: none;"' ?>>
+      <label for="origin_mte_destination_id">Lotação de origem no MTE</label>
+      <select id="origin_mte_destination_id" name="origin_mte_destination_id">
+        <option value="0">Selecione</option>
+        <?php foreach (($mteDestinations ?? []) as $destination): ?>
+          <?php
+            $destinationId = (int) ($destination['id'] ?? 0);
+            $destinationName = trim((string) ($destination['name'] ?? ''));
+            if ($destinationName === '') {
+                continue;
+            }
+
+            $destinationCode = trim((string) ($destination['code'] ?? ''));
+            $destinationLabel = $destinationCode === '' ? $destinationName : ($destinationCode . ' - ' . $destinationName);
+          ?>
+          <option value="<?= e((string) $destinationId) ?>" <?= $selectedOriginDestination === $destinationId ? 'selected' : '' ?>>
+            <?= e($destinationLabel) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <p class="muted">Obrigatória quando a direção for "Pessoa saindo do MTE".</p>
+    </div>
+
+    <div class="field" id="destination_mte_destination_wrapper" <?= $isEntryDirection ? '' : 'style="display: none;"' ?>>
+      <label for="destination_mte_destination_id">Lotação de destino no MTE</label>
+      <select id="destination_mte_destination_id" name="destination_mte_destination_id">
+        <option value="0">Selecione</option>
+        <?php foreach (($mteDestinations ?? []) as $destination): ?>
+          <?php
+            $destinationId = (int) ($destination['id'] ?? 0);
+            $destinationName = trim((string) ($destination['name'] ?? ''));
+            if ($destinationName === '') {
+                continue;
+            }
+
+            $destinationCode = trim((string) ($destination['code'] ?? ''));
+            $destinationLabel = $destinationCode === '' ? $destinationName : ($destinationCode . ' - ' . $destinationName);
+          ?>
+          <option value="<?= e((string) $destinationId) ?>" <?= $selectedDestination === $destinationId ? 'selected' : '' ?>>
+            <?= e($destinationLabel) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+      <p class="muted">Obrigatória quando a direção for "Pessoa entrando no MTE".</p>
+    </div>
+
+    <?php
+      $targetStartDate = (string) old(
+          'target_start_date',
+          (string) ($assignment['target_start_date'] ?? $person['target_start_date'] ?? '')
+      );
+      $requestedEndDate = (string) old(
+          'requested_end_date',
+          (string) ($assignment['requested_end_date'] ?? $person['requested_end_date'] ?? '')
+      );
+    ?>
+
+    <div class="field">
+      <label for="target_start_date">Data prevista de início efetivo</label>
+      <input id="target_start_date" name="target_start_date" type="date" value="<?= e($targetStartDate) ?>">
+      <p class="muted">Usada nas projeções financeiras até o registro da data efetiva.</p>
+    </div>
+
+    <div class="field">
+      <label for="requested_end_date">Data prevista de término efetivo</label>
+      <input id="requested_end_date" name="requested_end_date" type="date" value="<?= e($requestedEndDate) ?>">
+      <p class="muted">Para movimentações com término previsto, substituída automaticamente quando houver data efetiva.</p>
+    </div>
 
     <div class="field field-wide">
       <label for="name">Nome completo *</label>
@@ -40,74 +276,33 @@ $financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financial
     </div>
 
     <div class="field">
-      <label for="organ_id">Órgão de origem *</label>
-      <?php $selectedOrgan = (int) old('organ_id', (string) ($person['organ_id'] ?? '0')); ?>
-      <select id="organ_id" name="organ_id" required>
-        <option value="0">Selecione</option>
-        <?php foreach (($organs ?? []) as $organ): ?>
-          <option value="<?= e((string) $organ['id']) ?>" <?= $selectedOrgan === (int) $organ['id'] ? 'selected' : '' ?>><?= e((string) $organ['name']) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="movement_direction">Direção do movimento *</label>
-      <?php
-        $selectedMovementDirection = (string) old(
-            'movement_direction',
-            (string) ($assignment['movement_direction'] ?? $person['movement_direction'] ?? 'entrada_mte')
-        );
-      ?>
-      <select id="movement_direction" name="movement_direction" required>
-        <?php foreach ($movementDirectionOptions as $option): ?>
-          <?php
-            $value = (string) ($option['value'] ?? '');
-            $label = (string) ($option['label'] ?? $value);
-            if ($value === '') {
-                continue;
-            }
-          ?>
-          <option value="<?= e($value) ?>" <?= $selectedMovementDirection === $value ? 'selected' : '' ?>>
-            <?= e($label) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="financial_nature">Natureza financeira *</label>
-      <?php
-        $selectedFinancialNature = (string) old(
-            'financial_nature',
-            (string) ($assignment['financial_nature'] ?? $person['financial_nature'] ?? 'despesa_reembolso')
-        );
-      ?>
-      <select id="financial_nature" name="financial_nature" required>
-        <?php foreach ($financialNatureOptions as $option): ?>
-          <?php
-            $value = (string) ($option['value'] ?? '');
-            $label = (string) ($option['label'] ?? $value);
-            if ($value === '') {
-                continue;
-            }
-          ?>
-          <option value="<?= e($value) ?>" <?= $selectedFinancialNature === $value ? 'selected' : '' ?>>
-            <?= e($label) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <p class="muted">A natureza é ajustada automaticamente conforme a direção.</p>
-    </div>
-
-    <div class="field">
-      <label for="desired_modality_id">Modalidade pretendida</label>
+      <label for="desired_modality_id">Motivo do movimento *</label>
       <?php $selectedModality = (int) old('desired_modality_id', (string) ($person['desired_modality_id'] ?? '0')); ?>
-      <select id="desired_modality_id" name="desired_modality_id">
-        <option value="0">Não informada</option>
+      <select id="desired_modality_id" name="desired_modality_id" required>
+        <option value="0">Selecione</option>
         <?php foreach (($modalities ?? []) as $modality): ?>
-          <option value="<?= e((string) $modality['id']) ?>" <?= $selectedModality === (int) $modality['id'] ? 'selected' : '' ?>><?= e((string) $modality['name']) ?></option>
+          <?php
+            $modalityName = (string) ($modality['name'] ?? '');
+            $reasonType = $movementReasonType($modalityName);
+            if ($reasonType === '') {
+                continue;
+            }
+
+            $allowedDirections = $reasonType === 'requisicao'
+                ? 'saida_mte'
+                : 'entrada_mte,saida_mte';
+          ?>
+          <option
+            value="<?= e((string) $modality['id']) ?>"
+            data-reason-type="<?= e($reasonType) ?>"
+            data-allowed-directions="<?= e($allowedDirections) ?>"
+            <?= $selectedModality === (int) $modality['id'] ? 'selected' : '' ?>
+          >
+            <?= e($modalityName) ?>
+          </option>
         <?php endforeach; ?>
       </select>
+      <p class="muted">Entrada: Cessão ou Composição de Força de Trabalho. Saída: Cessão, Requisição ou Composição de Força de Trabalho.</p>
     </div>
 
     <div class="field">
@@ -129,63 +324,6 @@ $financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financial
       <input id="sei_process_number" name="sei_process_number" type="text" value="<?= e(old('sei_process_number', (string) ($person['sei_process_number'] ?? ''))) ?>">
     </div>
 
-    <div class="field">
-      <label for="origin_mte_destination_id">Lotação de origem no MTE</label>
-      <?php
-        $selectedOriginDestination = (int) old(
-            'origin_mte_destination_id',
-            (string) ($assignment['origin_mte_destination_id'] ?? $person['origin_mte_destination_id'] ?? '0')
-        );
-      ?>
-      <select id="origin_mte_destination_id" name="origin_mte_destination_id">
-        <option value="0">Selecione</option>
-        <?php foreach (($mteDestinations ?? []) as $destination): ?>
-          <?php
-            $destinationId = (int) ($destination['id'] ?? 0);
-            $destinationName = trim((string) ($destination['name'] ?? ''));
-            if ($destinationName === '') {
-                continue;
-            }
-
-            $destinationCode = trim((string) ($destination['code'] ?? ''));
-            $destinationLabel = $destinationCode === '' ? $destinationName : ($destinationCode . ' - ' . $destinationName);
-          ?>
-          <option value="<?= e((string) $destinationId) ?>" <?= $selectedOriginDestination === $destinationId ? 'selected' : '' ?>>
-            <?= e($destinationLabel) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <p class="muted">Obrigatória quando a direção for "Cessão para fora do MTE".</p>
-    </div>
-
-    <div class="field">
-      <label for="destination_mte_destination_id">Lotação de destino no MTE</label>
-      <?php
-        $selectedDestination = (int) old(
-            'destination_mte_destination_id',
-            (string) ($assignment['destination_mte_destination_id'] ?? $person['destination_mte_destination_id'] ?? '0')
-        );
-      ?>
-      <select id="destination_mte_destination_id" name="destination_mte_destination_id">
-        <option value="0">Selecione</option>
-        <?php foreach (($mteDestinations ?? []) as $destination): ?>
-          <?php
-            $destinationId = (int) ($destination['id'] ?? 0);
-            $destinationName = trim((string) ($destination['name'] ?? ''));
-            if ($destinationName === '') {
-                continue;
-            }
-
-            $destinationCode = trim((string) ($destination['code'] ?? ''));
-            $destinationLabel = $destinationCode === '' ? $destinationName : ($destinationCode . ' - ' . $destinationName);
-          ?>
-          <option value="<?= e((string) $destinationId) ?>" <?= $selectedDestination === $destinationId ? 'selected' : '' ?>>
-            <?= e($destinationLabel) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <p class="muted">Obrigatória quando a direção for "Recebimento no MTE".</p>
-    </div>
 
     <div class="field">
       <label for="tags">Tags (separadas por vírgula)</label>
@@ -205,22 +343,164 @@ $financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financial
 </div>
 <script>
   (function () {
-    var direction = document.getElementById('movement_direction');
-    var nature = document.getElementById('financial_nature');
+    var directionRadios = document.querySelectorAll('input[name="movement_direction"]');
+    var organField = document.getElementById('organ_id');
+    var organLabel = document.getElementById('organ_id_label');
+    var organHelp = document.getElementById('organ_id_help');
+    var mteOriginField = document.getElementById('mte_origin_fixed_field');
+    var financialNatureInput = document.getElementById('financial_nature');
+    var financialNatureLabel = document.getElementById('financial_nature_label');
+    var reasonField = document.getElementById('desired_modality_id');
     var originField = document.getElementById('origin_mte_destination_id');
     var destinationField = document.getElementById('destination_mte_destination_id');
-    if (!direction || !nature || !originField || !destinationField) {
+    var originWrapper = document.getElementById('origin_mte_destination_wrapper');
+    var destinationWrapper = document.getElementById('destination_mte_destination_wrapper');
+    if (
+      !directionRadios.length ||
+      !organField ||
+      !financialNatureInput ||
+      !financialNatureLabel ||
+      !reasonField ||
+      !originField ||
+      !destinationField ||
+      !originWrapper ||
+      !destinationWrapper
+    ) {
       return;
     }
 
-    function syncByDirection() {
-      var isSaida = direction.value === 'saida_mte';
-      nature.value = isSaida ? 'receita_reembolso' : 'despesa_reembolso';
-      originField.disabled = !isSaida;
-      destinationField.disabled = isSaida;
+    var financialNatureLabels = {
+      despesa_reembolso: 'Despesa de reembolso (a pagar)',
+      receita_reembolso: 'Receita de reembolso (a receber)'
+    };
+
+    function selectedDirection() {
+      var selected = '';
+      Array.prototype.forEach.call(directionRadios, function (radio) {
+        if (radio.checked) {
+          selected = radio.value || '';
+        }
+      });
+
+      return selected;
     }
 
-    direction.addEventListener('change', syncByDirection);
+    function syncReasonOptions(directionValue) {
+      var hasSelectedAllowed = false;
+      var selectedValue = reasonField.value;
+
+      Array.prototype.forEach.call(reasonField.options, function (option) {
+        var value = option.value || '';
+        if (value === '0') {
+          option.hidden = false;
+          option.disabled = false;
+          return;
+        }
+
+        var allowed = (option.getAttribute('data-allowed-directions') || '').split(',').map(function (item) {
+          return item.trim();
+        });
+        var enabled = directionValue !== '' && allowed.indexOf(directionValue) >= 0;
+        option.hidden = !enabled;
+        option.disabled = !enabled;
+
+        if (enabled && value === selectedValue) {
+          hasSelectedAllowed = true;
+        }
+      });
+
+      if (!hasSelectedAllowed) {
+        reasonField.value = '0';
+      }
+    }
+
+    function syncOrganOptions(directionValue) {
+      var isEntrada = directionValue === 'entrada_mte';
+      var hasSelectedAllowed = false;
+
+      Array.prototype.forEach.call(organField.options, function (option) {
+        var value = option.value || '';
+        if (value === '0') {
+          option.hidden = false;
+          option.disabled = false;
+          return;
+        }
+
+        var isMte = option.getAttribute('data-is-mte') === '1';
+        var enabled = !(isEntrada && isMte);
+        option.hidden = !enabled;
+        option.disabled = !enabled;
+
+        if (enabled && value === organField.value) {
+          hasSelectedAllowed = true;
+        }
+      });
+
+      if (!hasSelectedAllowed) {
+        organField.value = '0';
+      }
+    }
+
+    function syncFinancialNature(directionValue) {
+      var financialNature = '';
+      if (directionValue === 'saida_mte') {
+        financialNature = 'receita_reembolso';
+      } else if (directionValue === 'entrada_mte') {
+        financialNature = 'despesa_reembolso';
+      }
+
+      financialNatureInput.value = financialNature;
+      financialNatureLabel.value = financialNatureLabels[financialNature] || '';
+    }
+
+    function syncByDirection() {
+      var directionValue = selectedDirection();
+      var isSaida = directionValue === 'saida_mte';
+      var isEntrada = directionValue === 'entrada_mte';
+
+      syncFinancialNature(directionValue);
+      syncReasonOptions(directionValue);
+      syncOrganOptions(directionValue);
+
+      if (mteOriginField) {
+        mteOriginField.style.display = isSaida ? '' : 'none';
+      }
+
+      if (organLabel) {
+        organLabel.textContent = isSaida
+          ? 'Órgão de destino *'
+          : (isEntrada ? 'Órgão de origem *' : 'Órgão de origem/destino *');
+      }
+
+      if (organHelp) {
+        organHelp.textContent = isSaida
+          ? 'Obrigatório para informar o órgão de destino da pessoa.'
+          : (isEntrada
+            ? 'Obrigatório. Para entrada no MTE, selecione um órgão de origem diferente do MTE.'
+            : 'Selecione primeiro a direção do movimento para definir se o órgão é de origem ou destino.');
+      }
+
+      organField.required = isSaida || isEntrada;
+
+      originWrapper.style.display = isSaida ? '' : 'none';
+      destinationWrapper.style.display = isEntrada ? '' : 'none';
+      originField.disabled = !isSaida;
+      destinationField.disabled = !isEntrada;
+      originField.required = isSaida;
+      destinationField.required = isEntrada;
+
+      if (!isSaida) {
+        originField.value = '0';
+      }
+
+      if (!isEntrada) {
+        destinationField.value = '0';
+      }
+    }
+
+    Array.prototype.forEach.call(directionRadios, function (radio) {
+      radio.addEventListener('change', syncByDirection);
+    });
     syncByDirection();
   })();
 </script>
