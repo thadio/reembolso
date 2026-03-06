@@ -815,16 +815,21 @@ final class BudgetRepository
                         WHEN cpi.cost_type = "mensal"
                              AND (cpi.start_date IS NULL OR cpi.start_date <= :next_year_end_mensal)
                              AND (cpi.end_date IS NULL OR cpi.end_date >= :next_year_start_mensal)
+                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= :next_year_end_mensal)
+                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= :next_year_start_mensal)
                         THEN cpi.amount
                         WHEN cpi.cost_type = "anual"
                              AND (cpi.start_date IS NULL OR cpi.start_date <= :next_year_end_anual)
                              AND (cpi.end_date IS NULL OR cpi.end_date >= :next_year_start_anual)
+                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= :next_year_end_anual)
+                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= :next_year_start_anual)
                         THEN cpi.amount / 12
                         ELSE 0
                     END
                  ), 0)
                  FROM cost_plans cp
                  INNER JOIN people p ON p.id = cp.person_id AND p.deleted_at IS NULL
+                 LEFT JOIN assignments a ON a.person_id = p.id AND a.deleted_at IS NULL
                  INNER JOIN cost_plan_items cpi ON cpi.cost_plan_id = cp.id AND cpi.deleted_at IS NULL
                  WHERE cp.deleted_at IS NULL
                    AND cp.is_active = 1) AS projected_monthly_base'
@@ -856,6 +861,8 @@ final class BudgetRepository
         $normalizedNature = $this->normalizeFinancialNature($financialNature);
         $monthsSql = $this->monthsSql();
         $yearLiteral = (int) $year;
+        $monthStartExpr = 'STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")';
+        $monthEndExpr = 'LAST_DAY(' . $monthStartExpr . ')';
 
         $stmt = $this->db->prepare(
             'SELECT
@@ -919,15 +926,21 @@ final class BudgetRepository
                     IFNULL(SUM(
                         CASE
                             WHEN cpi.cost_type = "mensal"
-                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= ' . $monthEndExpr . ')
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= ' . $monthStartExpr . ')
+                                 AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= ' . $monthEndExpr . ')
+                                 AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')
                             THEN cpi.amount
                             WHEN cpi.cost_type = "anual"
-                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= ' . $monthEndExpr . ')
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= ' . $monthStartExpr . ')
+                                 AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= ' . $monthEndExpr . ')
+                                 AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')
                             THEN cpi.amount / 12
                             WHEN cpi.cost_type = "unico"
-                                 AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"), "%Y-%m")
+                                 AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(' . $monthStartExpr . ', "%Y-%m")
+                                 AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= ' . $monthEndExpr . ')
+                                 AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')
                             THEN cpi.amount
                             ELSE 0
                         END
@@ -935,6 +948,7 @@ final class BudgetRepository
                 FROM (' . $monthsSql . ') mm
                 LEFT JOIN cost_plans cp ON cp.deleted_at IS NULL AND cp.is_active = 1
                 LEFT JOIN people p ON p.id = cp.person_id AND p.deleted_at IS NULL
+                LEFT JOIN assignments a ON a.person_id = p.id AND a.deleted_at IS NULL
                 LEFT JOIN cost_plan_items cpi ON cpi.cost_plan_id = cp.id AND cpi.deleted_at IS NULL
                 GROUP BY mm.month_number
              ) base_tot ON base_tot.month_number = m.month_number

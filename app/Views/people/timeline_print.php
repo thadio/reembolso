@@ -83,6 +83,7 @@ $formatBytes = static function (int $size): string {
           $eventType = (string) ($event['event_type'] ?? 'evento');
           $metadata = $decodeMetadata($event['metadata'] ?? null);
           $attachments = is_array($event['attachments'] ?? null) ? $event['attachments'] : [];
+          $links = is_array($event['links'] ?? null) ? $event['links'] : [];
           $rectifiesEventId = isset($metadata['rectifies_event_id']) ? (int) $metadata['rectifies_event_id'] : 0;
         ?>
         <article class="timeline-item">
@@ -107,6 +108,21 @@ $formatBytes = static function (int $size): string {
             <ul class="attachments">
               <?php foreach ($attachments as $attachment): ?>
                 <li><?= e((string) ($attachment['original_name'] ?? 'anexo')) ?> (<?= e($formatBytes((int) ($attachment['file_size'] ?? 0))) ?>)</li>
+              <?php endforeach; ?>
+            </ul>
+          <?php endif; ?>
+
+          <?php if ($links !== []): ?>
+            <strong>Links</strong>
+            <ul class="attachments">
+              <?php foreach ($links as $link): ?>
+                <?php
+                  $linkUrl = trim((string) ($link['url'] ?? ''));
+                  $linkLabel = trim((string) ($link['label'] ?? ''));
+                ?>
+                <?php if ($linkUrl !== ''): ?>
+                  <li><?= e($linkLabel !== '' ? $linkLabel : $linkUrl) ?> (<?= e($linkUrl) ?>)</li>
+                <?php endif; ?>
               <?php endforeach; ?>
             </ul>
           <?php endif; ?>

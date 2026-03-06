@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Repositories\CostItemCatalogRepository;
 use App\Repositories\CostPlanRepository;
 
 final class CostPlanService
@@ -12,6 +13,7 @@ final class CostPlanService
 
     public function __construct(
         private CostPlanRepository $costs,
+        private CostItemCatalogRepository $catalogItems,
         private AuditService $audit,
         private EventService $events
     ) {
@@ -94,6 +96,12 @@ final class CostPlanService
             'previous_plan' => $previousPlan,
             'comparison' => $comparison,
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function catalogOptions(): array
+    {
+        return $this->catalogItems->activeList();
     }
 
     /**
@@ -190,21 +198,28 @@ final class CostPlanService
      */
     public function addItem(int $personId, array $input, int $userId, string $ip, string $userAgent): array
     {
-        $itemName = trim((string) ($input['item_name'] ?? ''));
-        $costType = mb_strtolower(trim((string) ($input['cost_type'] ?? 'mensal')));
+        $catalogId = max(0, (int) ($input['cost_item_catalog_id'] ?? 0));
         $amount = $this->parseMoney($input['amount'] ?? null);
         $startDateRaw = $this->clean($input['start_date'] ?? null);
         $endDateRaw = $this->clean($input['end_date'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
 
+        $catalogItem = $catalogId > 0 ? $this->catalogItems->findActiveById($catalogId) : null;
+        $itemName = trim((string) ($catalogItem['name'] ?? ''));
+        $costType = mb_strtolower(trim((string) ($catalogItem['payment_periodicity'] ?? '')));
+
         $errors = [];
 
-        if ($itemName === '' || mb_strlen($itemName) < 3) {
-            $errors[] = 'Nome do item é obrigatório (mínimo 3 caracteres).';
+        if ($catalogId <= 0) {
+            $errors[] = 'Selecione o item de custo no catálogo.';
+        }
+
+        if ($catalogItem === null) {
+            $errors[] = 'Item de custo inexistente ou inativo no catálogo.';
         }
 
         if (!in_array($costType, self::ALLOWED_COST_TYPES, true)) {
-            $errors[] = 'Tipo de custo inválido.';
+            $errors[] = 'Periodicidade do item selecionado e invalida.';
         }
 
         if ($amount === null || (float) $amount <= 0.0) {
@@ -246,6 +261,7 @@ final class CostPlanService
             $itemId = $this->costs->createItem(
                 planId: $planId,
                 personId: $personId,
+                costItemCatalogId: $catalogId > 0 ? $catalogId : null,
                 itemName: mb_substr($itemName, 0, 190),
                 costType: $costType,
                 amount: $amount,
@@ -263,6 +279,7 @@ final class CostPlanService
                 afterData: [
                     'cost_plan_id' => $planId,
                     'person_id' => $personId,
+                    'cost_item_catalog_id' => $catalogId,
                     'item_name' => mb_substr($itemName, 0, 190),
                     'cost_type' => $costType,
                     'amount' => $amount,
@@ -271,6 +288,9 @@ final class CostPlanService
                 ],
                 metadata: [
                     'notes' => $notes,
+                    'linkage_code' => (int) ($catalogItem['linkage_code'] ?? 0),
+                    'is_reimbursable' => (int) ($catalogItem['is_reimbursable'] ?? 0),
+                    'payment_periodicity' => (string) ($catalogItem['payment_periodicity'] ?? ''),
                 ],
                 userId: $userId,
                 ip: $ip,
@@ -283,6 +303,7 @@ final class CostPlanService
                 payload: [
                     'cost_plan_id' => $planId,
                     'item_id' => $itemId,
+                    'cost_item_catalog_id' => $catalogId,
                     'item_name' => mb_substr($itemName, 0, 190),
                     'cost_type' => $costType,
                     'amount' => $amount,

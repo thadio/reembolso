@@ -127,6 +127,7 @@ final class CostPlanRepository
                 i.id,
                 i.cost_plan_id,
                 i.person_id,
+                i.cost_item_catalog_id,
                 i.item_name,
                 i.cost_type,
                 i.amount,
@@ -135,8 +136,12 @@ final class CostPlanRepository
                 i.notes,
                 i.created_by,
                 i.created_at,
+                c.linkage_code AS catalog_linkage_code,
+                c.is_reimbursable AS catalog_is_reimbursable,
+                c.payment_periodicity AS catalog_payment_periodicity,
                 u.name AS created_by_name
              FROM cost_plan_items i
+             LEFT JOIN cost_item_catalog c ON c.id = i.cost_item_catalog_id
              LEFT JOIN users u ON u.id = i.created_by
              WHERE i.cost_plan_id = :cost_plan_id
                AND i.deleted_at IS NULL
@@ -196,6 +201,7 @@ final class CostPlanRepository
     public function createItem(
         int $planId,
         int $personId,
+        ?int $costItemCatalogId,
         string $itemName,
         string $costType,
         string $amount,
@@ -208,6 +214,7 @@ final class CostPlanRepository
             'INSERT INTO cost_plan_items (
                 cost_plan_id,
                 person_id,
+                cost_item_catalog_id,
                 item_name,
                 cost_type,
                 amount,
@@ -221,6 +228,7 @@ final class CostPlanRepository
              ) VALUES (
                 :cost_plan_id,
                 :person_id,
+                :cost_item_catalog_id,
                 :item_name,
                 :cost_type,
                 :amount,
@@ -237,6 +245,7 @@ final class CostPlanRepository
         $stmt->execute([
             'cost_plan_id' => $planId,
             'person_id' => $personId,
+            'cost_item_catalog_id' => $costItemCatalogId,
             'item_name' => $itemName,
             'cost_type' => $costType,
             'amount' => $amount,
@@ -255,6 +264,7 @@ final class CostPlanRepository
             'INSERT INTO cost_plan_items (
                 cost_plan_id,
                 person_id,
+                cost_item_catalog_id,
                 item_name,
                 cost_type,
                 amount,
@@ -269,6 +279,7 @@ final class CostPlanRepository
              SELECT
                 :target_plan_id,
                 :person_id,
+                cost_item_catalog_id,
                 item_name,
                 cost_type,
                 amount,

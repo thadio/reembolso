@@ -46,22 +46,29 @@ final class DashboardRepository
                         WHEN i.cost_type = "mensal"
                              AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
                              AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= LAST_DAY(CURDATE()))
+                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
                         THEN i.amount
                         WHEN i.cost_type = "anual"
                              AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
                              AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= LAST_DAY(CURDATE()))
+                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
                         THEN i.amount / 12
                         WHEN i.cost_type = "unico"
                              AND (
                                (i.start_date IS NOT NULL AND DATE_FORMAT(i.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
                                OR (i.start_date IS NULL AND DATE_FORMAT(i.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
                              )
+                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= LAST_DAY(CURDATE()))
+                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
                         THEN i.amount
                         ELSE 0
                     END
                  ), 0)
                  FROM cost_plans cp
                  INNER JOIN people p ON p.id = cp.person_id AND p.deleted_at IS NULL
+                 LEFT JOIN assignments a ON a.person_id = p.id AND a.deleted_at IS NULL
                  LEFT JOIN cost_plan_items i ON i.cost_plan_id = cp.id AND i.deleted_at IS NULL
                  WHERE cp.deleted_at IS NULL
                    AND cp.is_active = 1) AS expected_reimbursement_current_month,
@@ -124,6 +131,60 @@ final class DashboardRepository
              WHERE s.is_active = 1
              GROUP BY s.id, s.code, s.label, s.sort_order
              ORDER BY s.sort_order ASC'
+        );
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function projectedPeopleStackByMonth(int $year): array
+    {
+        $yearValue = max(2000, min(2100, $year));
+        $monthsSql = $this->monthsSql();
+        $monthStartExpr = 'STR_TO_DATE(CONCAT(' . $yearValue . ', "-", LPAD(m.month_number, 2, "0"), "-01"), "%Y-%m-%d")';
+        $monthEndExpr = 'LAST_DAY(' . $monthStartExpr . ')';
+        $windowCondition = '(
+            (
+                COALESCE(a.effective_start_date, a.target_start_date) IS NOT NULL
+                AND COALESCE(a.effective_start_date, a.target_start_date) <= ' . $monthEndExpr . '
+                AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')
+            )
+            OR (
+                COALESCE(a.effective_start_date, a.target_start_date) IS NULL
+                AND COALESCE(a.effective_end_date, a.requested_end_date) IS NULL
+                AND p.status = "ativo"
+            )
+        )';
+
+        $stmt = $this->db->query(
+            'SELECT
+                m.month_number,
+                SUM(
+                    CASE
+                        WHEN p.id IS NULL THEN 0
+                        WHEN ' . $windowCondition . ' AND p.status = "ativo" THEN 1
+                        ELSE 0
+                    END
+                ) AS active_people,
+                SUM(
+                    CASE
+                        WHEN p.id IS NULL THEN 0
+                        WHEN ' . $windowCondition . ' AND p.status <> "ativo" THEN 1
+                        ELSE 0
+                    END
+                ) AS pipeline_people,
+                SUM(
+                    CASE
+                        WHEN p.id IS NULL THEN 0
+                        WHEN ' . $windowCondition . ' THEN 1
+                        ELSE 0
+                    END
+                ) AS total_people
+             FROM (' . $monthsSql . ') m
+             LEFT JOIN people p ON p.deleted_at IS NULL
+             LEFT JOIN assignments a ON a.person_id = p.id AND a.deleted_at IS NULL
+             GROUP BY m.month_number
+             ORDER BY m.month_number ASC'
         );
 
         return $stmt->fetchAll();
@@ -244,5 +305,21 @@ final class DashboardRepository
             $this->daysInStatusExpression(),
             $this->daysInStatusExpression()
         );
+    }
+
+    private function monthsSql(): string
+    {
+        return 'SELECT 1 AS month_number
+                UNION ALL SELECT 2
+                UNION ALL SELECT 3
+                UNION ALL SELECT 4
+                UNION ALL SELECT 5
+                UNION ALL SELECT 6
+                UNION ALL SELECT 7
+                UNION ALL SELECT 8
+                UNION ALL SELECT 9
+                UNION ALL SELECT 10
+                UNION ALL SELECT 11
+                UNION ALL SELECT 12';
     }
 }

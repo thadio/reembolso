@@ -220,7 +220,9 @@ final class PipelineRepository
                 s.next_action_label,
                 s.event_type,
                 fs.node_kind,
-                fs.is_initial
+                fs.is_initial,
+                fs.requires_evidence_close,
+                fs.step_tags
              FROM assignment_flow_steps fs
              INNER JOIN assignment_statuses s ON s.id = fs.status_id
              WHERE fs.flow_id = :flow_id
@@ -231,6 +233,113 @@ final class PipelineRepository
         $stmt->execute(['flow_id' => $flowId]);
 
         return $stmt->fetchAll();
+    }
+
+    /** @return array<string, mixed>|null */
+    public function flowStepByStatus(int $flowId, int $statusId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                fs.id,
+                fs.flow_id,
+                fs.status_id,
+                fs.node_kind,
+                fs.sort_order,
+                fs.is_initial,
+                fs.is_active,
+                fs.requires_evidence_close,
+                fs.step_tags,
+                s.code AS status_code,
+                s.label AS status_label
+             FROM assignment_flow_steps fs
+             INNER JOIN assignment_statuses s ON s.id = fs.status_id
+             WHERE fs.flow_id = :flow_id
+               AND fs.status_id = :status_id
+               AND fs.is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'flow_id' => $flowId,
+            'status_id' => $statusId,
+        ]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    public function expectedDocumentTypesForFlowStatusCode(int $flowId, string $statusCode): array
+    {
+        $normalizedCode = trim($statusCode);
+        if ($flowId <= 0 || $normalizedCode === '') {
+            return [];
+        }
+
+        $stmt = $this->db->prepare(
+            'SELECT
+                dt.id,
+                dt.name,
+                dt.description,
+                m.is_required
+             FROM assignment_flow_steps fs
+             INNER JOIN assignment_statuses s ON s.id = fs.status_id
+             INNER JOIN assignment_flow_step_document_types m ON m.flow_step_id = fs.id
+             INNER JOIN document_types dt ON dt.id = m.document_type_id
+             WHERE fs.flow_id = :flow_id
+               AND s.code = :status_code
+               AND fs.is_active = 1
+               AND dt.is_active = 1
+             ORDER BY m.is_required DESC, dt.name ASC, dt.id ASC'
+        );
+        $stmt->execute([
+            'flow_id' => $flowId,
+            'status_code' => $normalizedCode,
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
+    public function hasEvidenceForStatus(int $personId, string $statusCode): bool
+    {
+        $normalizedCode = trim($statusCode);
+        if ($personId <= 0 || $normalizedCode === '') {
+            return false;
+        }
+
+        $escapedCode = str_replace(['\\', '"'], ['\\\\', '\\"'], $normalizedCode);
+        $pattern = '%"pipeline_status_code":"' . $escapedCode . '"%';
+
+        $stmt = $this->db->prepare(
+            'SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM timeline_events t
+                    LEFT JOIN (
+                        SELECT timeline_event_id, COUNT(*) AS total_attachments
+                        FROM timeline_event_attachments
+                        GROUP BY timeline_event_id
+                    ) ta ON ta.timeline_event_id = t.id
+                    LEFT JOIN (
+                        SELECT timeline_event_id, COUNT(*) AS total_links
+                        FROM timeline_event_links
+                        GROUP BY timeline_event_id
+                    ) tl ON tl.timeline_event_id = t.id
+                    WHERE t.person_id = :person_id
+                      AND t.metadata LIKE :status_pattern
+                      AND (
+                        IFNULL(ta.total_attachments, 0) > 0
+                        OR IFNULL(tl.total_links, 0) > 0
+                      )
+                    LIMIT 1
+                ) AS has_evidence'
+        );
+        $stmt->execute([
+            'person_id' => $personId,
+            'status_pattern' => $pattern,
+        ]);
+        $row = $stmt->fetch();
+
+        return (int) ($row['has_evidence'] ?? 0) === 1;
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -426,7 +535,9 @@ final class PipelineRepository
         ?int $counterpartyOrganId = null,
         ?int $originMteDestinationId = null,
         ?int $destinationMteDestinationId = null,
-        ?string $movementCode = null
+        ?string $movementCode = null,
+        ?string $targetStartDate = null,
+        ?string $requestedEndDate = null
     ): int
     {
         $stmt = $this->db->prepare(
@@ -444,6 +555,8 @@ final class PipelineRepository
                 mte_unit,
                 target_start_date,
                 effective_start_date,
+                requested_end_date,
+                effective_end_date,
                 current_status_id,
                 priority_level,
                 created_at,
@@ -460,7 +573,9 @@ final class PipelineRepository
                 :movement_code,
                 :assigned_user_id,
                 NULL,
+                :target_start_date,
                 NULL,
+                :requested_end_date,
                 NULL,
                 :current_status_id,
                 :priority_level,
@@ -480,11 +595,31 @@ final class PipelineRepository
             'destination_mte_destination_id' => $destinationMteDestinationId,
             'movement_code' => $movementCode,
             'assigned_user_id' => $assignedUserId,
+            'target_start_date' => $targetStartDate,
+            'requested_end_date' => $requestedEndDate,
             'current_status_id' => $statusId,
             'priority_level' => $priorityLevel,
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    public function updateAssignmentSchedule(int $assignmentId, ?string $targetStartDate, ?string $requestedEndDate): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE assignments
+             SET target_start_date = :target_start_date,
+                 requested_end_date = :requested_end_date,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $assignmentId,
+            'target_start_date' => $targetStartDate,
+            'requested_end_date' => $requestedEndDate,
+        ]);
     }
 
     public function updateAssignmentMovementContext(
@@ -531,12 +666,18 @@ final class PipelineRepository
         ]);
     }
 
-    public function updateAssignmentStatus(int $assignmentId, int $statusId, ?string $effectiveStartDate): bool
+    public function updateAssignmentStatus(
+        int $assignmentId,
+        int $statusId,
+        ?string $effectiveStartDate,
+        ?string $effectiveEndDate = null
+    ): bool
     {
         $stmt = $this->db->prepare(
             'UPDATE assignments
              SET current_status_id = :status_id,
                  effective_start_date = COALESCE(:effective_start_date, effective_start_date),
+                 effective_end_date = COALESCE(:effective_end_date, effective_end_date),
                  updated_at = NOW()
              WHERE id = :id AND deleted_at IS NULL'
         );
@@ -545,6 +686,7 @@ final class PipelineRepository
             'id' => $assignmentId,
             'status_id' => $statusId,
             'effective_start_date' => $effectiveStartDate,
+            'effective_end_date' => $effectiveEndDate,
         ]);
     }
 
@@ -622,6 +764,43 @@ final class PipelineRepository
         $stmt->execute(['id' => $organId]);
 
         return $stmt->fetch() !== false;
+    }
+
+    public function findMteOrganId(): ?int
+    {
+        $byAcronym = $this->db->query(
+            'SELECT id
+             FROM organs
+             WHERE deleted_at IS NULL
+               AND UPPER(TRIM(IFNULL(acronym, \'\'))) = \'MTE\'
+             ORDER BY id ASC
+             LIMIT 1'
+        );
+        $row = $byAcronym === false ? false : $byAcronym->fetch();
+        if ($row !== false) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id > 0) {
+                return $id;
+            }
+        }
+
+        $byName = $this->db->prepare(
+            'SELECT id
+             FROM organs
+             WHERE deleted_at IS NULL
+               AND LOWER(IFNULL(name, \'\')) LIKE :name_like
+             ORDER BY id ASC
+             LIMIT 1'
+        );
+        $byName->execute(['name_like' => '%trabalho%emprego%']);
+        $nameRow = $byName->fetch();
+        if ($nameRow === false) {
+            return null;
+        }
+
+        $id = (int) ($nameRow['id'] ?? 0);
+
+        return $id > 0 ? $id : null;
     }
 
     public function mteDestinationExistsById(int $destinationId): bool
@@ -928,10 +1107,12 @@ final class PipelineRepository
 
         $eventIds = array_map(static fn (array $row): int => (int) $row['id'], $items);
         $attachmentsByEvent = $this->attachmentsByEventIds($eventIds);
+        $linksByEvent = $this->linksByEventIds($eventIds);
 
         foreach ($items as &$item) {
             $eventId = (int) ($item['id'] ?? 0);
             $item['attachments'] = $attachmentsByEvent[$eventId] ?? [];
+            $item['links'] = $linksByEvent[$eventId] ?? [];
         }
         unset($item);
 
@@ -992,6 +1173,42 @@ final class PipelineRepository
         return (int) $this->db->lastInsertId();
     }
 
+    public function createEventLink(
+        int $eventId,
+        int $personId,
+        string $url,
+        ?string $label,
+        ?int $createdBy
+    ): int {
+        $stmt = $this->db->prepare(
+            'INSERT INTO timeline_event_links (
+                timeline_event_id,
+                person_id,
+                url,
+                label,
+                created_by,
+                created_at
+             ) VALUES (
+                :timeline_event_id,
+                :person_id,
+                :url,
+                :label,
+                :created_by,
+                NOW()
+             )'
+        );
+
+        $stmt->execute([
+            'timeline_event_id' => $eventId,
+            'person_id' => $personId,
+            'url' => $url,
+            'label' => $label,
+            'created_by' => $createdBy,
+        ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
     /**
      * @param array<int, int> $eventIds
      * @return array<int, array<int, array<string, mixed>>>
@@ -1016,6 +1233,51 @@ final class PipelineRepository
                 uploaded_by,
                 created_at
              FROM timeline_event_attachments
+             WHERE timeline_event_id IN ({$placeholders})
+             ORDER BY id ASC"
+        );
+
+        foreach ($eventIds as $index => $eventId) {
+            $stmt->bindValue($index + 1, $eventId, PDO::PARAM_INT);
+        }
+
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $eventId = (int) ($row['timeline_event_id'] ?? 0);
+            if (!isset($grouped[$eventId])) {
+                $grouped[$eventId] = [];
+            }
+
+            $grouped[$eventId][] = $row;
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * @param array<int, int> $eventIds
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    private function linksByEventIds(array $eventIds): array
+    {
+        if ($eventIds === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($eventIds), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT
+                id,
+                timeline_event_id,
+                person_id,
+                url,
+                label,
+                created_by,
+                created_at
+             FROM timeline_event_links
              WHERE timeline_event_id IN ({$placeholders})
              ORDER BY id ASC"
         );
@@ -1097,10 +1359,12 @@ final class PipelineRepository
 
         $eventIds = array_map(static fn (array $row): int => (int) $row['id'], $items);
         $attachmentsByEvent = $this->attachmentsByEventIds($eventIds);
+        $linksByEvent = $this->linksByEventIds($eventIds);
 
         foreach ($items as &$item) {
             $eventId = (int) ($item['id'] ?? 0);
             $item['attachments'] = $attachmentsByEvent[$eventId] ?? [];
+            $item['links'] = $linksByEvent[$eventId] ?? [];
         }
         unset($item);
 

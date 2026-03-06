@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Core\Request;
 use App\Core\Session;
+use App\Repositories\CostItemCatalogRepository;
 use App\Repositories\CostPlanRepository;
 use App\Repositories\DocumentRepository;
 use App\Repositories\LgpdRepository;
@@ -36,11 +37,17 @@ final class PeopleController extends Controller
     public function index(Request $request): void
     {
         $previewId = max(0, (int) $request->input('preview_id', '0'));
+        $movementBucket = mb_strtolower((string) $request->input('movement_bucket', ''));
+        if (!in_array($movementBucket, ['entrando', 'saindo'], true)) {
+            $movementBucket = '';
+        }
+
         $filters = [
             'q' => (string) $request->input('q', ''),
             'status' => (string) $request->input('status', ''),
             'organ_id' => max(0, (int) $request->input('organ_id', '0')),
             'modality_id' => max(0, (int) $request->input('modality_id', '0')),
+            'movement_bucket' => $movementBucket,
             'tag' => (string) $request->input('tag', ''),
             'queue_scope' => (string) $request->input('queue_scope', 'all'),
             'priority' => (string) $request->input('priority', ''),
@@ -48,6 +55,17 @@ final class PeopleController extends Controller
             'sort' => (string) $request->input('sort', 'name'),
             'dir' => (string) $request->input('dir', 'asc'),
         ];
+
+        $listTitle = match ($movementBucket) {
+            'entrando' => 'Pessoas entrando',
+            'saindo' => 'Pessoas saindo',
+            default => 'Pessoas',
+        };
+        $listSubtitle = match ($movementBucket) {
+            'entrando' => 'Movimentos de entrada por Cessão ou Composição de Força de Trabalho.',
+            'saindo' => 'Movimentos de saída por Cessão, Requisição ou Composição de Força de Trabalho.',
+            default => 'Filtros por status, modalidade, órgão, tipo de movimento e tags.',
+        };
 
         $page = max(1, (int) $request->input('page', '1'));
         $perPage = max(5, min(50, (int) $request->input('per_page', '10')));
@@ -98,7 +116,9 @@ final class PeopleController extends Controller
         }
 
         $this->view('people/index', [
-            'title' => 'Pessoas',
+            'title' => $listTitle,
+            'listTitle' => $listTitle,
+            'listSubtitle' => $listSubtitle,
             'people' => $result['items'],
             'filters' => $filters,
             'previewPerson' => $previewPerson,
@@ -122,6 +142,7 @@ final class PeopleController extends Controller
     public function create(Request $request): void
     {
         $assignmentFlows = $this->pipelineService()->activeFlows();
+        $organs = $this->service()->activeOrgans();
         $person = $this->emptyPerson();
         if ($assignmentFlows !== [] && trim((string) ($person['assignment_flow_id'] ?? '')) === '') {
             $person['assignment_flow_id'] = (string) ((int) ($assignmentFlows[0]['id'] ?? 0));
@@ -132,7 +153,8 @@ final class PeopleController extends Controller
             'person' => $person,
             'assignment' => null,
             'statuses' => $this->service()->statuses(),
-            'organs' => $this->service()->activeOrgans(),
+            'organs' => $organs,
+            'mteOrganId' => $this->resolveMteOrganId($organs),
             'modalities' => $this->service()->activeModalities(),
             'mteDestinations' => $this->service()->activeMteDestinations(),
             'assignmentFlows' => $assignmentFlows,
@@ -154,7 +176,23 @@ final class PeopleController extends Controller
             $this->redirect('/people/create');
         }
 
+        $scheduleValidation = $this->pipelineService()->validateScheduleContext($input);
+        if (!$scheduleValidation['ok']) {
+            flash('error', implode(' ', $scheduleValidation['errors']));
+            $this->redirect('/people/create');
+        }
+
         $movementContext = is_array($movementValidation['context'] ?? null) ? $movementValidation['context'] : [];
+        $scheduleContext = is_array($scheduleValidation['context'] ?? null) ? $scheduleValidation['context'] : [];
+        $movementReasonValidation = $this->validateMovementReason(
+            modalityId: max(0, (int) ($input['desired_modality_id'] ?? 0)),
+            movementDirection: (string) ($movementContext['movement_direction'] ?? 'entrada_mte')
+        );
+        if (!$movementReasonValidation['ok']) {
+            flash('error', (string) ($movementReasonValidation['message'] ?? 'Motivo de movimentacao invalido.'));
+            $this->redirect('/people/create');
+        }
+
         $movementDirection = (string) ($movementContext['movement_direction'] ?? 'entrada_mte');
         $referenceDestinationId = $movementDirection === 'saida_mte'
             ? (int) ($movementContext['origin_mte_destination_id'] ?? 0)
@@ -179,7 +217,8 @@ final class PeopleController extends Controller
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
             userAgent: $request->userAgent(),
-            movementContext: $movementContext
+            movementContext: $movementContext,
+            scheduleContext: $scheduleContext
         );
 
         flash('success', 'Pessoa cadastrada com sucesso.');
@@ -265,8 +304,15 @@ final class PeopleController extends Controller
         $canViewAudit = $this->app->auth()->hasPermission('audit.view');
         $canViewCpfFull = $this->app->auth()->hasPermission('people.cpf.full');
         $canViewSensitiveDocuments = $this->app->auth()->hasPermission('people.documents.sensitive');
+        $documentContextEventId = max(0, (int) $request->input('document_context_event_id', '0'));
+        $documentContext = $this->pipelineService()->documentTypeContext(
+            $id,
+            $documentContextEventId > 0 ? $documentContextEventId : null
+        );
         $documents = $this->documentService()->profileData($id, $documentsPage, 8, $canViewSensitiveDocuments);
+        $documents['context'] = $documentContext;
         $costs = $this->costService()->profileData($id);
+        $costItemCatalog = $this->costService()->catalogOptions();
         $conciliation = $this->conciliationService()->profileData($id, 8);
         $reimbursements = $this->reimbursementService()->profileData($id, 80);
         $processComments = $this->processCommentService()->profileData($id, 80);
@@ -339,12 +385,14 @@ final class PeopleController extends Controller
             'pipeline' => $pipeline,
             'documents' => $documents,
             'costs' => $costs,
+            'costItemCatalog' => $costItemCatalog,
             'conciliation' => $conciliation,
             'reimbursements' => $reimbursements,
             'processComments' => $processComments,
             'adminTimeline' => $adminTimeline,
             'audit' => $audit,
             'canManage' => $this->app->auth()->hasPermission('people.manage'),
+            'canManageCostItems' => $this->app->auth()->hasPermission('cost_item.manage'),
             'canViewCpfFull' => $canViewCpfFull,
             'canViewAudit' => $canViewAudit,
             'canViewSensitiveDocuments' => $canViewSensitiveDocuments,
@@ -368,12 +416,15 @@ final class PeopleController extends Controller
             $this->redirect('/people');
         }
 
+        $organs = $this->service()->activeOrgans();
+
         $this->view('people/edit', [
             'title' => 'Editar Pessoa',
             'person' => $person,
             'assignment' => $this->pipelineService()->profileData($id, 1, 1)['assignment'] ?? null,
             'statuses' => $this->service()->statuses(),
-            'organs' => $this->service()->activeOrgans(),
+            'organs' => $organs,
+            'mteOrganId' => $this->resolveMteOrganId($organs),
             'modalities' => $this->service()->activeModalities(),
             'mteDestinations' => $this->service()->activeMteDestinations(),
             'assignmentFlows' => $this->pipelineService()->activeFlows(),
@@ -401,7 +452,23 @@ final class PeopleController extends Controller
             $this->redirect('/people/edit?id=' . $id);
         }
 
+        $scheduleValidation = $this->pipelineService()->validateScheduleContext($input);
+        if (!$scheduleValidation['ok']) {
+            flash('error', implode(' ', $scheduleValidation['errors']));
+            $this->redirect('/people/edit?id=' . $id);
+        }
+
         $movementContext = is_array($movementValidation['context'] ?? null) ? $movementValidation['context'] : [];
+        $scheduleContext = is_array($scheduleValidation['context'] ?? null) ? $scheduleValidation['context'] : [];
+        $movementReasonValidation = $this->validateMovementReason(
+            modalityId: max(0, (int) ($input['desired_modality_id'] ?? 0)),
+            movementDirection: (string) ($movementContext['movement_direction'] ?? 'entrada_mte')
+        );
+        if (!$movementReasonValidation['ok']) {
+            flash('error', (string) ($movementReasonValidation['message'] ?? 'Motivo de movimentacao invalido.'));
+            $this->redirect('/people/edit?id=' . $id);
+        }
+
         $movementDirection = (string) ($movementContext['movement_direction'] ?? 'entrada_mte');
         $referenceDestinationId = $movementDirection === 'saida_mte'
             ? (int) ($movementContext['origin_mte_destination_id'] ?? 0)
@@ -427,7 +494,8 @@ final class PeopleController extends Controller
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
             userAgent: $request->userAgent(),
-            movementContext: $movementContext
+            movementContext: $movementContext,
+            scheduleContext: $scheduleContext
         );
 
         flash('success', 'Pessoa atualizada com sucesso.');
@@ -567,10 +635,11 @@ final class PeopleController extends Controller
             $assignmentId = null;
         }
 
+        $input = $request->all();
         $result = $this->pipelineService()->addManualEvent(
             personId: $personId,
             assignmentId: $assignmentId,
-            input: $request->all(),
+            input: $input,
             files: $_FILES,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
@@ -582,12 +651,30 @@ final class PeopleController extends Controller
             $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
         }
 
-        flash('success', $result['message']);
-        if ($result['warnings'] !== []) {
-            flash('error', implode(' ', $result['warnings']));
+        $warnings = is_array($result['warnings'] ?? null) ? $result['warnings'] : [];
+        $advanceAttempt = $this->advanceAfterTimelineEvidence($personId, $input, $request);
+
+        $successMessage = (string) ($result['message'] ?? 'Evento manual registrado com sucesso.');
+        if ($advanceAttempt['requested'] && $advanceAttempt['ok']) {
+            $successMessage .= ' Etapa encerrada com sucesso.';
         }
 
-        $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
+        if ($advanceAttempt['requested'] && !$advanceAttempt['ok']) {
+            $advanceMessage = trim((string) ($advanceAttempt['message'] ?? ''));
+            if ($advanceMessage === '') {
+                $advanceMessage = 'Escolha a transicao de destino e tente novamente.';
+            }
+
+            $warnings[] = 'Evidencia salva, mas nao foi possivel encerrar etapa: ' . $advanceMessage;
+        }
+
+        flash('success', $successMessage);
+        if ($warnings !== []) {
+            flash('error', implode(' ', array_values(array_unique($warnings))));
+        }
+
+        $focus = $advanceAttempt['requested'] && $advanceAttempt['ok'] ? '&focus=pipeline' : '';
+        $this->redirect('/people/show?id=' . $personId . '&tab=timeline' . $focus);
     }
 
     public function rectifyTimelineEvent(Request $request): void
@@ -595,6 +682,7 @@ final class PeopleController extends Controller
         $personId = (int) $request->input('person_id', '0');
         $sourceEventId = (int) $request->input('source_event_id', '0');
         $note = (string) $request->input('rectification_note', '');
+        $evidenceLinks = (string) $request->input('evidence_links', '');
 
         if ($personId <= 0 || $sourceEventId <= 0) {
             flash('error', 'Dados inválidos para retificação.');
@@ -608,11 +696,13 @@ final class PeopleController extends Controller
             $assignmentId = null;
         }
 
+        $input = $request->all();
         $result = $this->pipelineService()->rectifyEvent(
             personId: $personId,
             assignmentId: $assignmentId,
             sourceEventId: $sourceEventId,
             note: $note,
+            linksInput: $evidenceLinks,
             files: $_FILES,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
@@ -624,12 +714,30 @@ final class PeopleController extends Controller
             $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
         }
 
-        flash('success', $result['message']);
-        if ($result['warnings'] !== []) {
-            flash('error', implode(' ', $result['warnings']));
+        $warnings = is_array($result['warnings'] ?? null) ? $result['warnings'] : [];
+        $advanceAttempt = $this->advanceAfterTimelineEvidence($personId, $input, $request);
+
+        $successMessage = (string) ($result['message'] ?? 'Retificacao registrada com sucesso.');
+        if ($advanceAttempt['requested'] && $advanceAttempt['ok']) {
+            $successMessage .= ' Etapa encerrada com sucesso.';
         }
 
-        $this->redirect('/people/show?id=' . $personId . '&tab=timeline');
+        if ($advanceAttempt['requested'] && !$advanceAttempt['ok']) {
+            $advanceMessage = trim((string) ($advanceAttempt['message'] ?? ''));
+            if ($advanceMessage === '') {
+                $advanceMessage = 'Escolha a transicao de destino e tente novamente.';
+            }
+
+            $warnings[] = 'Retificacao salva, mas nao foi possivel encerrar etapa: ' . $advanceMessage;
+        }
+
+        flash('success', $successMessage);
+        if ($warnings !== []) {
+            flash('error', implode(' ', array_values(array_unique($warnings))));
+        }
+
+        $focus = $advanceAttempt['requested'] && $advanceAttempt['ok'] ? '&focus=pipeline' : '';
+        $this->redirect('/people/show?id=' . $personId . '&tab=timeline' . $focus);
     }
 
     public function downloadTimelineAttachment(Request $request): void
@@ -718,9 +826,26 @@ final class PeopleController extends Controller
             $this->redirect('/people');
         }
 
+        $input = $request->all();
+        $contextEventId = max(0, (int) ($input['context_event_id'] ?? 0));
+        $documentsTabUrl = '/people/show?id=' . $personId . '&tab=documents';
+        if ($contextEventId > 0) {
+            $documentsTabUrl .= '&document_context_event_id=' . $contextEventId;
+        }
+        $requestedDocumentTypeId = max(0, (int) ($input['document_type_id'] ?? 0));
+        $documentTypeResolution = $this->pipelineService()->resolveDocumentTypeForUpload(
+            personId: $personId,
+            contextEventId: $contextEventId > 0 ? $contextEventId : null,
+            requestedDocumentTypeId: $requestedDocumentTypeId > 0 ? $requestedDocumentTypeId : null
+        );
+        $resolvedDocumentTypeId = max(0, (int) ($documentTypeResolution['resolved_document_type_id'] ?? 0));
+        if ($resolvedDocumentTypeId > 0) {
+            $input['document_type_id'] = (string) $resolvedDocumentTypeId;
+        }
+
         $result = $this->documentService()->uploadDocuments(
             personId: $personId,
-            input: $request->all(),
+            input: $input,
             files: $_FILES,
             userId: (int) ($this->app->auth()->id() ?? 0),
             ip: $request->ip(),
@@ -731,15 +856,20 @@ final class PeopleController extends Controller
         if (!$result['ok']) {
             $messages = array_merge($result['errors'], $result['warnings']);
             flash('error', implode(' ', $messages));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect($documentsTabUrl);
         }
 
-        flash('success', $result['message']);
+        $contextWarning = trim((string) ($documentTypeResolution['warning'] ?? ''));
+        $successMessage = (string) ($result['message'] ?? 'Documentos enviados com sucesso.');
+        if ($contextWarning !== '') {
+            $successMessage .= ' ' . $contextWarning;
+        }
+        flash('success', $successMessage);
         if ($result['warnings'] !== []) {
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect($documentsTabUrl);
     }
 
     public function downloadDocument(Request $request): void
@@ -802,7 +932,7 @@ final class PeopleController extends Controller
         if (!$result['ok']) {
             $messages = array_merge($result['errors'], $result['warnings']);
             flash('error', implode(' ', $messages));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=documents');
         }
 
         flash('success', $result['message']);
@@ -810,7 +940,7 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=documents');
     }
 
     public function downloadDocumentVersion(Request $request): void
@@ -870,7 +1000,7 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=costs');
         }
 
         flash('success', $result['message']);
@@ -878,7 +1008,7 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=costs');
     }
 
     public function storeCostItem(Request $request): void
@@ -905,7 +1035,7 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=costs');
         }
 
         flash('success', $result['message']);
@@ -913,7 +1043,7 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=costs');
     }
 
     public function storeReimbursement(Request $request): void
@@ -1353,10 +1483,12 @@ final class PeopleController extends Controller
             'organ_id' => '',
             'desired_modality_id' => '',
             'assignment_flow_id' => '',
-            'movement_direction' => 'entrada_mte',
-            'financial_nature' => 'despesa_reembolso',
+            'movement_direction' => '',
+            'financial_nature' => '',
             'origin_mte_destination_id' => '',
             'destination_mte_destination_id' => '',
+            'target_start_date' => '',
+            'requested_end_date' => '',
             'name' => '',
             'cpf' => '',
             'birth_date' => '',
@@ -1371,18 +1503,165 @@ final class PeopleController extends Controller
     }
 
     /**
+     * @return array{ok: bool, message: string}
+     */
+    private function validateMovementReason(int $modalityId, string $movementDirection): array
+    {
+        if ($modalityId <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Selecione o motivo da movimentacao da pessoa.',
+            ];
+        }
+
+        $modality = $this->findActiveModalityById($modalityId);
+        if ($modality === null) {
+            return [
+                'ok' => false,
+                'message' => 'Motivo da movimentacao invalido.',
+            ];
+        }
+
+        $reasonType = $this->movementReasonType((string) ($modality['name'] ?? ''));
+        if ($reasonType === null) {
+            return [
+                'ok' => false,
+                'message' => 'Use os motivos Cessao, Requisicao ou Composicao de Forca de Trabalho.',
+            ];
+        }
+
+        $direction = $movementDirection === 'saida_mte' ? 'saida_mte' : 'entrada_mte';
+        $allowedByDirection = $direction === 'saida_mte'
+            ? ['cessao', 'requisicao', 'cft']
+            : ['cessao', 'cft'];
+
+        if (!in_array($reasonType, $allowedByDirection, true)) {
+            $directionLabel = $direction === 'saida_mte' ? 'saida' : 'entrada';
+            $allowedLabel = $direction === 'saida_mte'
+                ? 'Cessao, Requisicao ou Composicao de Forca de Trabalho'
+                : 'Cessao ou Composicao de Forca de Trabalho';
+
+            return [
+                'ok' => false,
+                'message' => sprintf('Para movimento de %s, selecione motivo: %s.', $directionLabel, $allowedLabel),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'message' => '',
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function findActiveModalityById(int $modalityId): ?array
+    {
+        if ($modalityId <= 0) {
+            return null;
+        }
+
+        foreach ($this->service()->activeModalities() as $modality) {
+            if ((int) ($modality['id'] ?? 0) === $modalityId) {
+                return $modality;
+            }
+        }
+
+        return null;
+    }
+
+    private function movementReasonType(string $modalityName): ?string
+    {
+        $normalized = $this->normalizeLookup($modalityName);
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (str_contains($normalized, 'cess')) {
+            return 'cessao';
+        }
+
+        if (str_contains($normalized, 'requis')) {
+            return 'requisicao';
+        }
+
+        if (str_contains($normalized, 'forca') || str_contains($normalized, 'cft')) {
+            return 'cft';
+        }
+
+        return null;
+    }
+
+    private function normalizeLookup(string $value): string
+    {
+        $normalized = mb_strtolower(trim($value));
+        if ($normalized === '') {
+            return '';
+        }
+
+        return strtr($normalized, [
+            'ã' => 'a',
+            'á' => 'a',
+            'à' => 'a',
+            'â' => 'a',
+            'é' => 'e',
+            'ê' => 'e',
+            'í' => 'i',
+            'õ' => 'o',
+            'ó' => 'o',
+            'ô' => 'o',
+            'ú' => 'u',
+            'ç' => 'c',
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
     private function movementContextPayload(array $input): array
     {
         return [
-            'movement_direction' => (string) ($input['movement_direction'] ?? 'entrada_mte'),
+            'movement_direction' => (string) ($input['movement_direction'] ?? ''),
             'financial_nature' => (string) ($input['financial_nature'] ?? ''),
             'counterparty_organ_id' => max(0, (int) ($input['organ_id'] ?? 0)),
             'origin_mte_destination_id' => max(0, (int) ($input['origin_mte_destination_id'] ?? 0)),
             'destination_mte_destination_id' => max(0, (int) ($input['destination_mte_destination_id'] ?? 0)),
         ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $organs
+     */
+    private function resolveMteOrganId(array $organs): ?int
+    {
+        foreach ($organs as $organ) {
+            $id = (int) ($organ['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $acronym = $this->normalizeLookup((string) ($organ['acronym'] ?? ''));
+            if ($acronym === 'mte') {
+                return $id;
+            }
+        }
+
+        foreach ($organs as $organ) {
+            $id = (int) ($organ['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $name = $this->normalizeLookup((string) ($organ['name'] ?? ''));
+            if (
+                $name === 'ministerio do trabalho e emprego'
+                || (str_contains($name, 'ministerio') && str_contains($name, 'trabalho') && str_contains($name, 'emprego'))
+            ) {
+                return $id;
+            }
+        }
+
+        return null;
     }
 
     private function resolveMteDestinationName(int $destinationId): ?string
@@ -1404,6 +1683,38 @@ final class PeopleController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{requested: bool, ok: bool, message: string}
+     */
+    private function advanceAfterTimelineEvidence(int $personId, array $input, Request $request): array
+    {
+        $shouldAdvance = (int) ($input['close_step'] ?? 0) === 1;
+        if (!$shouldAdvance) {
+            return [
+                'requested' => false,
+                'ok' => false,
+                'message' => '',
+            ];
+        }
+
+        $transitionId = max(0, (int) ($input['close_transition_id'] ?? 0));
+
+        $result = $this->pipelineService()->advance(
+            personId: $personId,
+            transitionId: $transitionId > 0 ? $transitionId : null,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        return [
+            'requested' => true,
+            'ok' => (bool) ($result['ok'] ?? false),
+            'message' => trim((string) ($result['message'] ?? '')),
+        ];
     }
 
     private function service(): PeopleService
@@ -1443,6 +1754,7 @@ final class PeopleController extends Controller
     {
         return new CostPlanService(
             new CostPlanRepository($this->app->db()),
+            new CostItemCatalogRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
         );

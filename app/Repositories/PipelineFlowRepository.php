@@ -321,6 +321,61 @@ final class PipelineFlowRepository
         return $stmt->fetchAll();
     }
 
+    /** @return array<int, array<string, mixed>> */
+    public function documentTypeCatalog(): array
+    {
+        $stmt = $this->db->query(
+            'SELECT
+                id,
+                name,
+                description,
+                is_active
+             FROM document_types
+             ORDER BY is_active DESC, name ASC, id ASC'
+        );
+
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * @param array<int, int> $documentTypeIds
+     * @return array<int, int>
+     */
+    public function existingDocumentTypeIds(array $documentTypeIds): array
+    {
+        $documentTypeIds = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $id): int => (int) $id,
+            $documentTypeIds
+        ), static fn (int $id): bool => $id > 0)));
+
+        if ($documentTypeIds === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($documentTypeIds as $index => $id) {
+            $key = ':type_' . $index;
+            $placeholders[] = $key;
+            $params[$key] = $id;
+        }
+
+        $sql = 'SELECT id
+                FROM document_types
+                WHERE id IN (' . implode(', ', $placeholders) . ')';
+        $stmt = $this->db->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        return array_values(array_map(
+            static fn (array $row): int => (int) ($row['id'] ?? 0),
+            $rows
+        ));
+    }
+
     /** @return array<string, mixed>|null */
     public function statusById(int $statusId): ?array
     {
@@ -443,6 +498,8 @@ final class PipelineFlowRepository
                 fs.sort_order,
                 fs.is_initial,
                 fs.is_active,
+                fs.requires_evidence_close,
+                fs.step_tags,
                 fs.created_at,
                 fs.updated_at,
                 s.code AS status_code,
@@ -471,7 +528,9 @@ final class PipelineFlowRepository
                 node_kind,
                 sort_order,
                 is_initial,
-                is_active
+                is_active,
+                requires_evidence_close,
+                step_tags
              FROM assignment_flow_steps
              WHERE flow_id = :flow_id
                AND status_id = :status_id
@@ -508,7 +567,9 @@ final class PipelineFlowRepository
         string $nodeKind,
         int $sortOrder,
         bool $isInitial,
-        bool $isActive
+        bool $isActive,
+        bool $requiresEvidenceClose,
+        ?string $stepTags
     ): bool {
         $stmt = $this->db->prepare(
             'INSERT INTO assignment_flow_steps (
@@ -518,6 +579,8 @@ final class PipelineFlowRepository
                 sort_order,
                 is_initial,
                 is_active,
+                requires_evidence_close,
+                step_tags,
                 created_at,
                 updated_at
              ) VALUES (
@@ -527,6 +590,8 @@ final class PipelineFlowRepository
                 :sort_order,
                 :is_initial,
                 :is_active,
+                :requires_evidence_close,
+                :step_tags,
                 NOW(),
                 NOW()
              )
@@ -535,6 +600,8 @@ final class PipelineFlowRepository
                 sort_order = VALUES(sort_order),
                 is_initial = VALUES(is_initial),
                 is_active = VALUES(is_active),
+                requires_evidence_close = VALUES(requires_evidence_close),
+                step_tags = VALUES(step_tags),
                 updated_at = NOW()'
         );
 
@@ -545,6 +612,8 @@ final class PipelineFlowRepository
             'sort_order' => $sortOrder,
             'is_initial' => $isInitial ? 1 : 0,
             'is_active' => $isActive ? 1 : 0,
+            'requires_evidence_close' => $requiresEvidenceClose ? 1 : 0,
+            'step_tags' => $stepTags,
         ]);
     }
 
@@ -572,6 +641,94 @@ final class PipelineFlowRepository
             'flow_id' => $flowId,
             'status_id' => $statusId,
         ]);
+    }
+
+    /**
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    public function flowStepDocumentTypesMap(int $flowId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                m.flow_step_id,
+                m.document_type_id,
+                m.is_required,
+                dt.name AS document_type_name,
+                dt.is_active AS document_type_is_active
+             FROM assignment_flow_step_document_types m
+             INNER JOIN assignment_flow_steps fs ON fs.id = m.flow_step_id
+             INNER JOIN document_types dt ON dt.id = m.document_type_id
+             WHERE fs.flow_id = :flow_id
+             ORDER BY m.flow_step_id ASC, m.is_required DESC, dt.name ASC, dt.id ASC'
+        );
+        $stmt->execute(['flow_id' => $flowId]);
+        $rows = $stmt->fetchAll();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $stepId = (int) ($row['flow_step_id'] ?? 0);
+            if ($stepId <= 0) {
+                continue;
+            }
+
+            if (!isset($map[$stepId]) || !is_array($map[$stepId])) {
+                $map[$stepId] = [];
+            }
+
+            $map[$stepId][] = [
+                'document_type_id' => (int) ($row['document_type_id'] ?? 0),
+                'is_required' => (int) ($row['is_required'] ?? 0),
+                'document_type_name' => (string) ($row['document_type_name'] ?? ''),
+                'document_type_is_active' => (int) ($row['document_type_is_active'] ?? 0),
+            ];
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<int, int> $documentTypeIds
+     */
+    public function replaceFlowStepDocumentTypes(int $flowStepId, array $documentTypeIds): void
+    {
+        $deleteStmt = $this->db->prepare(
+            'DELETE
+             FROM assignment_flow_step_document_types
+             WHERE flow_step_id = :flow_step_id'
+        );
+        $deleteStmt->execute(['flow_step_id' => $flowStepId]);
+
+        $documentTypeIds = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $id): int => (int) $id,
+            $documentTypeIds
+        ), static fn (int $id): bool => $id > 0)));
+
+        if ($documentTypeIds === []) {
+            return;
+        }
+
+        $insertStmt = $this->db->prepare(
+            'INSERT INTO assignment_flow_step_document_types (
+                flow_step_id,
+                document_type_id,
+                is_required,
+                created_at,
+                updated_at
+             ) VALUES (
+                :flow_step_id,
+                :document_type_id,
+                0,
+                NOW(),
+                NOW()
+             )'
+        );
+
+        foreach ($documentTypeIds as $documentTypeId) {
+            $insertStmt->execute([
+                'flow_step_id' => $flowStepId,
+                'document_type_id' => $documentTypeId,
+            ]);
+        }
     }
 
     /** @return array<int, array<string, mixed>> */

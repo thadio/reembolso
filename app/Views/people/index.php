@@ -7,6 +7,7 @@ $filters = $filters ?? [
     'status' => '',
     'organ_id' => 0,
     'modality_id' => 0,
+    'movement_bucket' => '',
     'tag' => '',
     'queue_scope' => 'all',
     'priority' => '',
@@ -22,6 +23,11 @@ $modalities = $modalities ?? [];
 $queuePriorities = $queuePriorities ?? [];
 $queueUsers = $queueUsers ?? [];
 $authUserId = (int) ($authUserId ?? 0);
+$listTitle = trim((string) ($listTitle ?? 'Pessoas'));
+if ($listTitle === '') {
+    $listTitle = 'Pessoas';
+}
+$listSubtitle = trim((string) ($listSubtitle ?? 'Filtros por status, modalidade, órgão, tipo de movimento e tags.'));
 
 $sort = (string) ($filters['sort'] ?? 'name');
 $dir = (string) ($filters['dir'] ?? 'asc');
@@ -32,6 +38,7 @@ $buildUrl = static function (array $replace = []) use ($filters, $pagination): s
         'status' => (string) ($filters['status'] ?? ''),
         'organ_id' => (string) ($filters['organ_id'] ?? 0),
         'modality_id' => (string) ($filters['modality_id'] ?? 0),
+        'movement_bucket' => (string) ($filters['movement_bucket'] ?? ''),
         'tag' => (string) ($filters['tag'] ?? ''),
         'queue_scope' => (string) ($filters['queue_scope'] ?? 'all'),
         'priority' => (string) ($filters['priority'] ?? ''),
@@ -111,8 +118,8 @@ $formatMoney = static function (float $value): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Pessoas</h2>
-      <p class="muted">Filtros por status, modalidade, órgão e tags.</p>
+      <h2><?= e($listTitle) ?></h2>
+      <p class="muted"><?= e($listSubtitle) ?></p>
     </div>
     <div class="actions-inline">
       <?php if ($authUserId > 0): ?>
@@ -160,6 +167,13 @@ $formatMoney = static function (float $value): string {
       <?php foreach ($modalities as $modality): ?>
         <option value="<?= e((string) $modality['id']) ?>" <?= (int) ($filters['modality_id'] ?? 0) === (int) $modality['id'] ? 'selected' : '' ?>><?= e((string) $modality['name']) ?></option>
       <?php endforeach; ?>
+    </select>
+
+    <select name="movement_bucket">
+      <?php $movementBucket = (string) ($filters['movement_bucket'] ?? ''); ?>
+      <option value="" <?= $movementBucket === '' ? 'selected' : '' ?>>Movimentação (todas)</option>
+      <option value="entrando" <?= $movementBucket === 'entrando' ? 'selected' : '' ?>>Somente entrando</option>
+      <option value="saindo" <?= $movementBucket === 'saindo' ? 'selected' : '' ?>>Somente saindo</option>
     </select>
 
     <input type="text" name="tag" value="<?= e((string) ($filters['tag'] ?? '')) ?>" placeholder="Tag">

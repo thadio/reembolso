@@ -37,19 +37,36 @@ final class PipelineFlowService
      *   steps: array<int, array<string, mixed>>,
      *   transitions: array<int, array<string, mixed>>,
      *   status_catalog: array<int, array<string, mixed>>,
-     *   node_kind_options: array<int, array{value: string, label: string}>
+     *   node_kind_options: array<int, array{value: string, label: string}>,
+     *   document_type_catalog: array<int, array<string, mixed>>
      * }
      */
     public function detailData(int $flowId): array
     {
         $flow = $this->flows->findFlowById($flowId);
+        $steps = $flow !== null ? $this->flows->flowSteps($flowId) : [];
+        $stepDocumentTypeMap = $flow !== null ? $this->flows->flowStepDocumentTypesMap($flowId) : [];
+
+        foreach ($steps as $index => $step) {
+            $stepId = (int) ($step['id'] ?? 0);
+            $documentTypes = $stepId > 0 && is_array($stepDocumentTypeMap[$stepId] ?? null)
+                ? $stepDocumentTypeMap[$stepId]
+                : [];
+
+            $steps[$index]['expected_document_types'] = $documentTypes;
+            $steps[$index]['expected_document_type_ids'] = array_values(array_map(
+                static fn (array $row): int => (int) ($row['document_type_id'] ?? 0),
+                $documentTypes
+            ));
+        }
 
         return [
             'flow' => $flow,
-            'steps' => $flow !== null ? $this->flows->flowSteps($flowId) : [],
+            'steps' => $steps,
             'transitions' => $flow !== null ? $this->flows->flowTransitions($flowId) : [],
             'status_catalog' => $this->flows->statusCatalog(),
             'node_kind_options' => $this->nodeKindOptions(),
+            'document_type_catalog' => $this->flows->documentTypeCatalog(),
         ];
     }
 
@@ -363,10 +380,24 @@ final class PipelineFlowService
         $sortOrder = max(1, (int) ($input['step_sort_order'] ?? 10));
         $isInitial = $this->normalizeBool($input['step_is_initial'] ?? '0', false);
         $stepIsActive = $this->normalizeBool($input['step_is_active'] ?? '1', true);
+        $requiresEvidenceClose = $this->normalizeBool($input['step_requires_evidence_close'] ?? '0', false);
+        $stepTags = $this->normalizeTagList($input['step_tags'] ?? null);
+        $stepDocumentTypeIds = $this->normalizeIdList($input['step_document_type_ids'] ?? []);
 
         $errors = [];
         if ($nodeKind === null) {
             $errors[] = 'Tipo da etapa invalido.';
+        }
+
+        if ($stepDocumentTypeIds !== []) {
+            $existingTypeIds = $this->flows->existingDocumentTypeIds($stepDocumentTypeIds);
+            sort($existingTypeIds);
+            $requestedTypeIds = $stepDocumentTypeIds;
+            sort($requestedTypeIds);
+
+            if ($existingTypeIds !== $requestedTypeIds) {
+                $errors[] = 'Um ou mais tipos de documento esperados sao invalidos.';
+            }
         }
 
         $status = null;
@@ -436,8 +467,16 @@ final class PipelineFlowService
             nodeKind: $nodeKind,
             sortOrder: $sortOrder,
             isInitial: $isInitial,
-            isActive: $stepIsActive
+            isActive: $stepIsActive,
+            requiresEvidenceClose: $requiresEvidenceClose,
+            stepTags: $stepTags
         );
+
+        $step = $this->flows->flowStepByStatus($flowId, $statusId);
+        $flowStepId = (int) ($step['id'] ?? 0);
+        if ($flowStepId > 0) {
+            $this->flows->replaceFlowStepDocumentTypes($flowStepId, $stepDocumentTypeIds);
+        }
 
         $this->ensureFlowHasInitialStep($flowId);
 
@@ -454,6 +493,9 @@ final class PipelineFlowService
                 'sort_order' => $sortOrder,
                 'is_initial' => $isInitial ? 1 : 0,
                 'is_active' => $stepIsActive ? 1 : 0,
+                'requires_evidence_close' => $requiresEvidenceClose ? 1 : 0,
+                'step_tags' => $stepTags,
+                'expected_document_type_ids' => $stepDocumentTypeIds,
             ],
             metadata: null,
             userId: $userId,
@@ -776,7 +818,9 @@ final class PipelineFlowService
             nodeKind: (string) ($first['node_kind'] ?? 'activity'),
             sortOrder: max(1, (int) ($first['sort_order'] ?? 10)),
             isInitial: true,
-            isActive: true
+            isActive: true,
+            requiresEvidenceClose: (int) ($first['requires_evidence_close'] ?? 0) === 1,
+            stepTags: $this->normalizeTagList($first['step_tags'] ?? null)
         );
     }
 
@@ -818,6 +862,41 @@ final class PipelineFlowService
         return $normalized;
     }
 
+    private function normalizeTagList(mixed $value): ?string
+    {
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $parts = preg_split('/[,\n;]+/', $raw);
+        if (!is_array($parts)) {
+            return null;
+        }
+
+        $normalized = [];
+        foreach ($parts as $part) {
+            $candidate = mb_strtolower(trim((string) $part));
+            if ($candidate === '') {
+                continue;
+            }
+
+            $candidate = preg_replace('/[^a-z0-9_\\-]+/u', '_', $candidate);
+            $candidate = is_string($candidate) ? trim($candidate, '_-') : '';
+            if ($candidate === '') {
+                continue;
+            }
+
+            $normalized[$candidate] = true;
+        }
+
+        if ($normalized === []) {
+            return null;
+        }
+
+        return implode(',', array_keys($normalized));
+    }
+
     private function normalizeNodeKind(string $value): ?string
     {
         $normalized = mb_strtolower(trim($value));
@@ -827,5 +906,21 @@ final class PipelineFlowService
         }
 
         return $normalized;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function normalizeIdList(mixed $value): array
+    {
+        $items = is_array($value) ? $value : [$value];
+        $ids = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $item): int => (int) $item,
+            $items
+        ), static fn (int $id): bool => $id > 0)));
+
+        sort($ids);
+
+        return $ids;
     }
 }
