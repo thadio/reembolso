@@ -33,7 +33,7 @@ $formatDate = static function (?string $value): string {
     <div><strong>Assunto:</strong> <?= e((string) ($document['rendered_subject'] ?? '-')) ?></div>
     <div><strong>Pessoa:</strong> <?= e((string) ($document['person_name'] ?? '-')) ?></div>
     <div><strong>Orgao:</strong> <?= e((string) ($document['organ_name'] ?? '-')) ?></div>
-    <div><strong>Gerado por:</strong> <?= e((string) ($document['generated_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Gerado por:</strong> <?= e((string) ($document['generated_by_name'] ?? 'Nao informado')) ?></div>
     <div><strong>Gerado em:</strong> <?= e($formatDate((string) ($document['created_at'] ?? ''))) ?></div>
     <div><strong>Chave template:</strong> <code><?= e((string) ($document['template_key'] ?? '-')) ?></code></div>
   </div>

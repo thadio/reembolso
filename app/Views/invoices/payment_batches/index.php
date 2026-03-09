@@ -280,7 +280,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
               </td>
               <td>
                 <?= e($formatDateTime((string) ($batch['created_at'] ?? ''))) ?>
-                <div class="muted">por <?= e((string) ($batch['created_by_name'] ?? 'N/I')) ?></div>
+                <div class="muted">por <?= e((string) ($batch['created_by_name'] ?? 'Nao informado')) ?></div>
               </td>
               <td class="actions-cell">
                 <a class="btn btn-ghost" href="<?= e(url('/invoices/payment-batches/show?id=' . $batchId)) ?>">Ver</a>

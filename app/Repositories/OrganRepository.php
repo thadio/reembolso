@@ -43,6 +43,8 @@ final class OrganRepository
             'acronym' => 'acronym',
             'cnpj' => 'cnpj',
             'organ_type' => 'organ_type',
+            'company_dependency_type' => 'company_dependency_type',
+            'federative_entity' => 'federative_entity',
             'government_level' => 'government_level',
             'government_branch' => 'government_branch',
             'created_at' => 'created_at',
@@ -60,6 +62,9 @@ final class OrganRepository
                 OR acronym LIKE :query_acronym
                 OR cnpj LIKE :query_cnpj
                 OR organ_type LIKE :query_organ_type
+                OR company_nire LIKE :query_company_nire
+                OR company_dependency_type LIKE :query_company_dependency_type
+                OR federative_entity LIKE :query_federative_entity
                 OR government_level LIKE :query_government_level
                 OR government_branch LIKE :query_government_branch
                 OR supervising_organ LIKE :query_supervising_organ
@@ -69,6 +74,9 @@ final class OrganRepository
             $params['query_acronym'] = $search;
             $params['query_cnpj'] = $search;
             $params['query_organ_type'] = $search;
+            $params['query_company_nire'] = $search;
+            $params['query_company_dependency_type'] = $search;
+            $params['query_federative_entity'] = $search;
             $params['query_government_level'] = $search;
             $params['query_government_branch'] = $search;
             $params['query_supervising_organ'] = $search;
@@ -90,9 +98,11 @@ final class OrganRepository
                 acronym,
                 cnpj,
                 organ_type,
+                company_dependency_type,
                 government_level,
                 government_branch,
                 supervising_organ,
+                federative_entity,
                 contact_email,
                 contact_phone,
                 city,
@@ -130,10 +140,13 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                company_nire,
                 organ_type,
+                company_dependency_type,
                 government_level,
                 government_branch,
                 supervising_organ,
+                federative_entity,
                 contact_name,
                 contact_email,
                 contact_phone,
@@ -144,6 +157,12 @@ final class OrganRepository
                 notes,
                 source_name,
                 source_url,
+                company_objective,
+                capital_information,
+                creation_act,
+                internal_regulations,
+                subsidiaries,
+                official_website,
                 created_at,
                 updated_at
              FROM organs
@@ -164,10 +183,13 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                company_nire,
                 organ_type,
+                company_dependency_type,
                 government_level,
                 government_branch,
                 supervising_organ,
+                federative_entity,
                 contact_name,
                 contact_email,
                 contact_phone,
@@ -178,16 +200,25 @@ final class OrganRepository
                 notes,
                 source_name,
                 source_url,
+                company_objective,
+                capital_information,
+                creation_act,
+                internal_regulations,
+                subsidiaries,
+                official_website,
                 created_at,
                 updated_at
             ) VALUES (
                 :name,
                 :acronym,
                 :cnpj,
+                :company_nire,
                 :organ_type,
+                :company_dependency_type,
                 :government_level,
                 :government_branch,
                 :supervising_organ,
+                :federative_entity,
                 :contact_name,
                 :contact_email,
                 :contact_phone,
@@ -198,6 +229,12 @@ final class OrganRepository
                 :notes,
                 :source_name,
                 :source_url,
+                :company_objective,
+                :capital_information,
+                :creation_act,
+                :internal_regulations,
+                :subsidiaries,
+                :official_website,
                 NOW(),
                 NOW()
             )'
@@ -207,10 +244,13 @@ final class OrganRepository
             'name' => $data['name'],
             'acronym' => $data['acronym'],
             'cnpj' => $data['cnpj'],
+            'company_nire' => $data['company_nire'],
             'organ_type' => $data['organ_type'],
+            'company_dependency_type' => $data['company_dependency_type'],
             'government_level' => $data['government_level'],
             'government_branch' => $data['government_branch'],
             'supervising_organ' => $data['supervising_organ'],
+            'federative_entity' => $data['federative_entity'],
             'contact_name' => $data['contact_name'],
             'contact_email' => $data['contact_email'],
             'contact_phone' => $data['contact_phone'],
@@ -221,6 +261,12 @@ final class OrganRepository
             'notes' => $data['notes'],
             'source_name' => $data['source_name'],
             'source_url' => $data['source_url'],
+            'company_objective' => $data['company_objective'],
+            'capital_information' => $data['capital_information'],
+            'creation_act' => $data['creation_act'],
+            'internal_regulations' => $data['internal_regulations'],
+            'subsidiaries' => $data['subsidiaries'],
+            'official_website' => $data['official_website'],
         ]);
 
         return (int) $this->db->lastInsertId();
@@ -235,10 +281,13 @@ final class OrganRepository
                 name = :name,
                 acronym = :acronym,
                 cnpj = :cnpj,
+                company_nire = :company_nire,
                 organ_type = :organ_type,
+                company_dependency_type = :company_dependency_type,
                 government_level = :government_level,
                 government_branch = :government_branch,
                 supervising_organ = :supervising_organ,
+                federative_entity = :federative_entity,
                 contact_name = :contact_name,
                 contact_email = :contact_email,
                 contact_phone = :contact_phone,
@@ -249,6 +298,12 @@ final class OrganRepository
                 notes = :notes,
                 source_name = :source_name,
                 source_url = :source_url,
+                company_objective = :company_objective,
+                capital_information = :capital_information,
+                creation_act = :creation_act,
+                internal_regulations = :internal_regulations,
+                subsidiaries = :subsidiaries,
+                official_website = :official_website,
                 updated_at = NOW()
              WHERE id = :id AND deleted_at IS NULL'
         );
@@ -258,10 +313,13 @@ final class OrganRepository
             'name' => $data['name'],
             'acronym' => $data['acronym'],
             'cnpj' => $data['cnpj'],
+            'company_nire' => $data['company_nire'],
             'organ_type' => $data['organ_type'],
+            'company_dependency_type' => $data['company_dependency_type'],
             'government_level' => $data['government_level'],
             'government_branch' => $data['government_branch'],
             'supervising_organ' => $data['supervising_organ'],
+            'federative_entity' => $data['federative_entity'],
             'contact_name' => $data['contact_name'],
             'contact_email' => $data['contact_email'],
             'contact_phone' => $data['contact_phone'],
@@ -272,6 +330,12 @@ final class OrganRepository
             'notes' => $data['notes'],
             'source_name' => $data['source_name'],
             'source_url' => $data['source_url'],
+            'company_objective' => $data['company_objective'],
+            'capital_information' => $data['capital_information'],
+            'creation_act' => $data['creation_act'],
+            'internal_regulations' => $data['internal_regulations'],
+            'subsidiaries' => $data['subsidiaries'],
+            'official_website' => $data['official_website'],
         ]);
     }
 

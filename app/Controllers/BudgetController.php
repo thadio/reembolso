@@ -156,35 +156,6 @@ final class BudgetController extends Controller
         $this->redirect($this->budgetUrl($year, $redirectNature));
     }
 
-    public function upsertParameter(Request $request): void
-    {
-        $year = $this->normalizeYear((int) $request->input('year', (string) date('Y')));
-        $financialNature = $this->normalizeFinancialNature((string) $request->input('financial_nature', 'despesa_reembolso'));
-        $input = [
-            'organ_id' => (string) $request->input('parameter_organ_id', '0'),
-            'cargo' => (string) $request->input('parameter_cargo', ''),
-            'setor' => (string) $request->input('parameter_setor', ''),
-            'avg_monthly_cost' => (string) $request->input('parameter_avg_monthly_cost', ''),
-            'notes' => (string) $request->input('parameter_notes', ''),
-        ];
-
-        $result = $this->service()->upsertOrgParameter(
-            input: $input,
-            userId: (int) ($this->app->auth()->id() ?? 0),
-            ip: $request->ip(),
-            userAgent: $request->userAgent()
-        );
-
-        if (!$result['ok']) {
-            Session::flashInput($request->all());
-            flash('error', implode(' ', $result['errors']));
-            $this->redirect($this->budgetUrl($year, $financialNature));
-        }
-
-        flash('success', $result['message']);
-        $this->redirect($this->budgetUrl($year, $financialNature));
-    }
-
     public function upsertScenarioParameter(Request $request): void
     {
         $year = $this->normalizeYear((int) $request->input('year', (string) date('Y')));

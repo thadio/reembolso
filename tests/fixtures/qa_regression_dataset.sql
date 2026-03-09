@@ -8,13 +8,13 @@ INSERT INTO organs (
 );
 
 INSERT INTO people (
-  id, organ_id, desired_modality_id, name, cpf, birth_date, email, phone, status, sei_process_number, mte_destination, tags, notes, created_at, updated_at, deleted_at
+  id, organ_id, desired_modality_id, name, cpf, birth_date, email, phone, status, sei_process_number, tags, notes, created_at, updated_at, deleted_at
 ) VALUES
 (
-  990101, 990001, NULL, 'Pessoa QA Ativa', '99010100011', '1990-01-01', 'qa.ativa@example.com', '61990000001', 'ativo', 'SEI-QA-990101', 'Unidade QA', 'qa,regressao', 'Pessoa de validacao ativa', NOW(), NOW(), NULL
+  990101, 990001, NULL, 'Pessoa QA Ativa', '99010100011', '1990-01-01', 'qa.ativa@example.com', '61990000001', 'ativo', 'SEI-QA-990101', 'qa,regressao', 'Pessoa de validacao ativa', NOW(), NOW(), NULL
 ),
 (
-  990102, 990001, NULL, 'Pessoa QA Triagem', '99010200022', '1991-02-02', 'qa.triagem@example.com', '61990000002', 'triagem', 'SEI-QA-990102', 'Unidade QA', 'qa,regressao', 'Pessoa de validacao em triagem', NOW(), NOW(), NULL
+  990102, 990001, NULL, 'Pessoa QA Triagem', '99010200022', '1991-02-02', 'qa.triagem@example.com', '61990000002', 'triagem', 'SEI-QA-990102', 'qa,regressao', 'Pessoa de validacao em triagem', NOW(), NOW(), NULL
 );
 
 INSERT INTO cost_plans (

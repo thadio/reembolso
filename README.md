@@ -22,6 +22,11 @@ php -S localhost:8000 -t public
 ```
 5. Acesse `http://localhost:8000/login`.
 
+Opcional - importar unidades organizacionais MTE (UORG):
+```bash
+php scripts/import-mte-uorg-csv.php --csv /caminho/para/arquivo-uorg.csv
+```
+
 ## Rotas de Pessoas (resumo)
 - `GET /people`
 - `GET /people/show?id={id}`
@@ -53,6 +58,10 @@ php -S localhost:8000 -t public
 - `POST /people/process-admin-timeline/update`
 - `POST /people/process-admin-timeline/delete`
 - `GET /people/audit/export?person_id={personId}&audit_*={filtros}`
+
+## Rotas de Dashboard (resumo)
+- `GET /dashboard` (novo dashboard inicial executivo-orcamentario)
+- `GET /dashboard2` (dashboard operacional legado)
 
 ## Busca Global (resumo)
 - `GET /global-search?q={termo}&scope={all|people|organs|process_meta|documents}`

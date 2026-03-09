@@ -11,24 +11,68 @@ $linkageLabel = static function (int $code): string {
         : 'Remuneracao (309)';
 };
 
-$reimbursableLabel = static function (int $flag): string {
-    return $flag === 1 ? 'Parcela reembolsavel' : 'Parcela nao-reembolsavel';
-};
-
 $periodicityLabel = static function (string $value): string {
     return match ($value) {
         'mensal' => 'Mensal',
         'anual' => 'Anual',
-        'unico' => 'Unico',
+        'eventual' => 'Eventual',
+        'unico' => 'Unico (legado)',
         default => ucfirst($value),
+    };
+};
+
+$macroLabel = static function (string $value): string {
+    return match ($value) {
+        'remuneracao_direta' => 'Remuneracao direta',
+        'encargos_obrigacoes_legais' => 'Encargos e obrigacoes legais',
+        'beneficios_provisoes_indiretos' => 'Beneficios, provisoes e custos indiretos',
+        default => ucfirst(str_replace('_', ' ', $value)),
+    };
+};
+
+$expenseNatureLabel = static function (string $value): string {
+    return match ($value) {
+        'remuneratoria' => 'Remuneratoria',
+        'indenizatoria' => 'Indenizatoria',
+        'encargos' => 'Encargos',
+        'provisoes' => 'Provisoes',
+        default => ucfirst(str_replace('_', ' ', $value)),
+    };
+};
+
+$reimbursabilityLabel = static function (string $value): string {
+    return match ($value) {
+        'reembolsavel' => 'Reembolsavel',
+        'parcialmente_reembolsavel' => 'Parcialmente reembolsavel',
+        'nao_reembolsavel' => 'Nao reembolsavel',
+        default => ucfirst(str_replace('_', ' ', $value)),
+    };
+};
+
+$predictabilityLabel = static function (string $value): string {
+    return match ($value) {
+        'fixa' => 'Fixa',
+        'variavel' => 'Variavel',
+        'eventual' => 'Eventual',
+        default => ucfirst($value),
+    };
+};
+
+$calculationBaseLabel = static function (string $value): string {
+    return match ($value) {
+        'salario_base' => 'Salario base',
+        'total_folha' => 'Total da folha',
+        'valor_fixo' => 'Valor fixo',
+        'total' => 'Total',
+        default => ucfirst(str_replace('_', ' ', $value)),
     };
 };
 ?>
 <div class="card">
   <div class="header-row">
     <div>
-      <h2><?= e((string) ($item['name'] ?? 'Item de custo')) ?></h2>
-      <p class="muted">Dados do catalogo de item de custo utilizado no planejamento financeiro.</p>
+      <h2><?= e((string) ($item['name'] ?? 'Tipo de custo')) ?></h2>
+      <p class="muted">Dados completos da tipologia de custos de pessoal usada no planejamento financeiro.</p>
     </div>
     <div class="actions-inline">
       <a class="btn btn-outline" href="<?= e(url('/cost-items')) ?>">Voltar</a>
@@ -39,18 +83,27 @@ $periodicityLabel = static function (string $value): string {
   </div>
 
   <div class="details-grid">
+    <div><strong>Codigo:</strong> <?= e((string) ($item['cost_code'] ?? '-')) ?></div>
+    <div><strong>Categoria macro:</strong> <?= e($macroLabel((string) ($item['macro_category'] ?? ''))) ?></div>
+    <div><strong>Subcategoria:</strong> <?= e((string) ($item['subcategory'] ?? '-')) ?></div>
+    <div><strong>Tipo de verba:</strong> <?= e((string) ($item['name'] ?? '-')) ?></div>
+    <div><strong>Descricao:</strong> <?= e((string) ($item['type_description'] ?? '-')) ?></div>
+    <div><strong>Natureza da despesa:</strong> <?= e($expenseNatureLabel((string) ($item['expense_nature'] ?? ''))) ?></div>
+    <div><strong>Base de calculo:</strong> <?= e($calculationBaseLabel((string) ($item['calculation_base'] ?? ''))) ?></div>
+    <div><strong>Incide encargo:</strong> <?= (int) ($item['charge_incidence'] ?? 0) === 1 ? 'Sim' : 'Nao' ?></div>
+    <div><strong>Reembolsabilidade:</strong> <?= e($reimbursabilityLabel((string) ($item['reimbursability'] ?? ''))) ?></div>
+    <div><strong>Previsibilidade:</strong> <?= e($predictabilityLabel((string) ($item['predictability'] ?? ''))) ?></div>
     <div><strong>Vinculo:</strong> <?= e($linkageLabel((int) ($item['linkage_code'] ?? 309))) ?></div>
-    <div><strong>Parcela:</strong> <?= e($reimbursableLabel((int) ($item['is_reimbursable'] ?? 0))) ?></div>
     <div><strong>Periodicidade:</strong> <?= e($periodicityLabel((string) ($item['payment_periodicity'] ?? ''))) ?></div>
     <div><strong>Cadastro:</strong> <?= e((string) ($item['created_at'] ?? '-')) ?></div>
     <div><strong>Atualizacao:</strong> <?= e((string) ($item['updated_at'] ?? '-')) ?></div>
   </div>
 
   <?php if (($canManage ?? false) === true): ?>
-    <form method="post" action="<?= e(url('/cost-items/delete')) ?>" class="actions-inline" onsubmit="return confirm('Confirmar remocao deste item de custo?');">
+    <form method="post" action="<?= e(url('/cost-items/delete')) ?>" class="actions-inline" onsubmit="return confirm('Confirmar remocao deste tipo de custo?');">
       <?= csrf_field() ?>
       <input type="hidden" name="id" value="<?= e((string) $itemId) ?>">
-      <button type="submit" class="btn btn-danger">Excluir item</button>
+      <button type="submit" class="btn btn-danger">Excluir tipo</button>
     </form>
   <?php endif; ?>
 </div>

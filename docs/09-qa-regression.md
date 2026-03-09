@@ -12,6 +12,7 @@ Guia da regressao minima com dataset fixo (fase 7.3), executada sem interface we
 - Runner de regressao: `scripts/qa-regression.php`
 - Suite unitaria financeira: `scripts/financial-unit-tests.php`
 - Suite de integracao financeira: `scripts/financial-integration-tests.php`
+- Homologacao automatizada melhorias1 fase 4: `scripts/homologate-phase12-melhorias1.php`
 - Runner consolidado da etapa 7.3: `scripts/phase7-3-tests.php`
 
 ## Execucao
@@ -40,7 +41,7 @@ Saida estruturada (JSON):
 ```
 
 ## Suite completa da etapa 7.3
-Executar todos os checks (unitario + integracao + regressao fixa):
+Executar todos os checks (unitario + integracao + regressao fixa + homologacao fase 12):
 
 ```bash
 ./scripts/phase7-3-tests.php
@@ -50,6 +51,12 @@ Executar em JSON para pipeline:
 
 ```bash
 ./scripts/phase7-3-tests.php --output json
+```
+
+Executar sem homologacao da fase 12 (modo rapido):
+
+```bash
+./scripts/phase7-3-tests.php --skip-homolog-phase12
 ```
 
 ## Resultado esperado (delta da fixture)

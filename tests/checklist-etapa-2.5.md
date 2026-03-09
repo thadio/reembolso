@@ -2,7 +2,7 @@
 
 ## Pre-condicoes
 - [ ] `php db/migrate.php` aplicado
-- [ ] Existe pessoa com versão ativa em `cost_plans` e itens em `cost_plan_items`
+- [ ] Existe pessoa com versao ativa em `cost_plans` e itens em `cost_plan_items` (gerados pelo salvamento em lote da tabela de custos)
 - [ ] Existem lançamentos em `reimbursement_entries` para ao menos 2 competências
 
 ## Perfil 360 — conciliação por pessoa

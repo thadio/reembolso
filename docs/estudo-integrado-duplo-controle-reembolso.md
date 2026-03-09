@@ -671,7 +671,7 @@ Criterios de aceite:
 
 1. movimentos atuais mapeados para `entrada_mte`;
 2. `people.organ_id` legado vira `counterparty_organ_id` dos movimentos de entrada;
-3. `people.mte_destination` legado vira `destination_mte_destination_id` (por lookup);
+3. lotacao destino dos movimentos de entrada e migrada para `destination_mte_destination_id` (por lookup);
 4. `invoices/payments/reimbursement_entries` legados recebem `despesa_reembolso`.
 
 ## 15.2 Validacoes de migracao

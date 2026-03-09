@@ -14,8 +14,10 @@
 ## Perfil 360 — secao Reembolsos reais
 - [ ] Secao exibe cards de resumo (pendente, pago, vencido, total)
 - [ ] Valores dos cards refletem os lancamentos cadastrados
+- [ ] Tabela e exibida como visao principal (mesmo padrao de leitura da aba de custos)
 - [ ] Tabela lista tipo, titulo, competencia, valor, status, vencimento, pagamento e responsavel
 - [ ] Lancamento pendente vencido e marcado visualmente como `Vencido`
+- [ ] Formulario de inclusao/ajuste fica recolhido por padrao e abre por acao explicita
 
 ## Baixa financeira
 - [ ] `POST /people/reimbursements/mark-paid` muda status para `pago`

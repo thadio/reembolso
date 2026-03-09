@@ -147,9 +147,9 @@ $simulationNotes = is_array($activeFinalSimulation['risk_notes'] ?? null) ? $act
     <div><strong>Orgaos impactados:</strong> <?= e((string) (int) ($batch['organs_count'] ?? 0)) ?></div>
     <div><strong>Periodo das baixas:</strong> <?= e($formatDate((string) ($batch['payment_date_from'] ?? ''))) ?> ate <?= e($formatDate((string) ($batch['payment_date_to'] ?? ''))) ?></div>
     <div><strong>Criado em:</strong> <?= e($formatDateTime((string) ($batch['created_at'] ?? ''))) ?></div>
-    <div><strong>Criado por:</strong> <?= e((string) ($batch['created_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Criado por:</strong> <?= e((string) ($batch['created_by_name'] ?? 'Nao informado')) ?></div>
     <div><strong>Fechado em:</strong> <?= e($formatDateTime((string) ($batch['closed_at'] ?? ''))) ?></div>
-    <div><strong>Fechado por:</strong> <?= e((string) ($batch['closed_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Fechado por:</strong> <?= e((string) ($batch['closed_by_name'] ?? 'Nao informado')) ?></div>
     <div class="details-wide"><strong>Observacoes:</strong> <?= nl2br(e((string) ($batch['notes'] ?? '-'))) ?></div>
   </div>
 </div>

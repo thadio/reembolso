@@ -322,10 +322,13 @@ final class OrgansController extends Controller
             'name' => '',
             'acronym' => '',
             'cnpj' => '',
+            'company_nire' => '',
             'organ_type' => '',
+            'company_dependency_type' => '',
             'government_level' => '',
             'government_branch' => '',
             'supervising_organ' => '',
+            'federative_entity' => '',
             'contact_name' => '',
             'contact_email' => '',
             'contact_phone' => '',
@@ -336,6 +339,12 @@ final class OrgansController extends Controller
             'notes' => '',
             'source_name' => '',
             'source_url' => '',
+            'company_objective' => '',
+            'capital_information' => '',
+            'creation_act' => '',
+            'internal_regulations' => '',
+            'subsidiaries' => '',
+            'official_website' => '',
         ];
     }
 

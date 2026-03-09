@@ -827,7 +827,7 @@ final class ReportRepository
                                  AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
                                  AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
                             THEN cpi.amount / 12
-                            WHEN cpi.cost_type = "unico"
+                            WHEN cpi.cost_type IN ("eventual", "unico")
                                  AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"), "%Y-%m")
                             THEN cpi.amount
                             ELSE 0

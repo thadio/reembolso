@@ -155,7 +155,7 @@ final class ReconciliationService
                 continue;
             }
 
-            if ($type === 'unico') {
+            if ($type === 'eventual' || $type === 'unico') {
                 $effectiveDate = $this->singleItemEffectiveDate($item);
                 if ($effectiveDate === null) {
                     continue;

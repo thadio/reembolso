@@ -67,7 +67,7 @@ $channelLabel = static function (?string $channel): string {
       <?php endif; ?>
     </div>
     <div><strong>Entrada oficial MTE:</strong> <?= e($formatDate((string) ($meta['mte_entry_date'] ?? ''))) ?></div>
-    <div><strong>Criado por:</strong> <?= e((string) ($meta['created_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Criado por:</strong> <?= e((string) ($meta['created_by_name'] ?? 'Nao informado')) ?></div>
     <div><strong>Criado em:</strong> <?= e($formatDateTime((string) ($meta['created_at'] ?? ''))) ?></div>
     <div><strong>Atualizado em:</strong> <?= e($formatDateTime((string) ($meta['updated_at'] ?? ''))) ?></div>
     <div class="details-wide"><strong>Observacoes:</strong> <?= nl2br(e((string) ($meta['notes'] ?? '-'))) ?></div>

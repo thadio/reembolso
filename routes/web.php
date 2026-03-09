@@ -65,7 +65,6 @@ $router->post('/budget/simulate', [BudgetController::class, 'simulate'], ['auth'
 $router->post('/budget/cycles/store', [BudgetController::class, 'storeCycle'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->post('/budget/cycles/update', [BudgetController::class, 'updateCycle'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->post('/budget/cycles/delete', [BudgetController::class, 'destroyCycle'], ['auth', 'permission:budget.manage', 'csrf']);
-$router->post('/budget/parameters/upsert', [BudgetController::class, 'upsertParameter'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->post('/budget/scenario-parameters/upsert', [BudgetController::class, 'upsertScenarioParameter'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->get('/cdos', [CdosController::class, 'index'], ['auth', 'permission:cdo.view']);
 $router->get('/cdos/create', [CdosController::class, 'create'], ['auth', 'permission:cdo.manage']);

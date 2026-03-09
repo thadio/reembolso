@@ -13,7 +13,7 @@
 
 ## Cabecalho e parsing
 - [ ] Cabecalho minimo `name,cpf,organ` e aceito
-- [ ] Cabecalhos alias (`nome`, `orgao`, `modalidade`, `lotacao_mte`) sao mapeados corretamente
+- [ ] Cabecalhos alias (`nome`, `orgao`, `modalidade`) sao mapeados corretamente
 - [ ] CSV com delimitador `;` e aceito
 - [ ] CSV com delimitador `,` e aceito
 - [ ] CSV com cabecalho faltante (ex.: sem `cpf`) e rejeitado
@@ -22,7 +22,6 @@
 - [ ] Linha com CPF invalido e rejeitada com numero da linha no erro
 - [ ] Linha com orgao inexistente e rejeitada com numero da linha no erro
 - [ ] Linha com modalidade invalida e rejeitada
-- [ ] Linha com lotacao MTE invalida e rejeitada
 - [ ] CPF duplicado no mesmo arquivo e rejeitado
 - [ ] CPF ja existente no banco e rejeitado
 

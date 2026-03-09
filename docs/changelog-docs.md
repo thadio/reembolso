@@ -1,5 +1,19 @@
 # Changelog da Documentacao
 
+## 2026-03-09
+- Adicionado `docs/16-chart-pattern.md` com padrao visual/interativo para novos graficos (responsividade, eixo Y com valores, tooltip e clique para detalhamento)
+- Atualizacao de `public/assets/css/app.css` com aliases genericos `chart-pattern-*` para reutilizacao do mesmo estilo fora do dashboard
+- Atualizacao de `app/Views/dashboard/index.php` para tornar a distribuicao do pipeline interativa (hover com tooltip, clique para detalhamento e link filtrado para `/people?status=...`)
+
+## 2026-03-06
+- Atualizacao de `docs/melhorias1.md` com fechamento da fase 4 (datas previstas/efetivas e novo dashboard inicial com preservacao do legado em `dashboard2`)
+- Atualizacao de `README.md` com rotas de dashboard (`GET /dashboard` e `GET /dashboard2`)
+- Adicionado checklist `tests/checklist-etapa-12.1-melhorias1-fase4.md`
+- Correcao de `scripts/homologate-phase12-melhorias1.php` para montagem completa de dependencias (`LgpdService` e `SecuritySettingsService`)
+- Integracao da homologacao da fase 12 no runner consolidado `scripts/phase7-3-tests.php` (check `homologation_phase12_melhorias1` + opcao `--skip-homolog-phase12`)
+- Atualizacao de `docs/09-qa-regression.md` com a nova composicao da suite consolidada
+- Atualizacao do checklist `tests/checklist-etapa-12.1-melhorias1-fase4.md` com evidencias executadas via script automatizado
+
 ## 2026-03-05
 - Reestruturado `docs/orgaos_estatais_autarquias_etc.md` como fonte operacional (escopo de campos, plano de importacao e dataset CSV embutido)
 - Atualizacao de `README.md` com status da entrega 9.20 (classificacao institucional de orgaos + importacao baseada em markdown)

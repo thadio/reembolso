@@ -66,10 +66,11 @@ final class PeopleRepository
 
         $query = trim((string) ($filters['q'] ?? ''));
         if ($query !== '') {
-            $where .= ' AND (p.name LIKE :q_name OR p.cpf LIKE :q_cpf OR o.name LIKE :q_organ OR p.sei_process_number LIKE :q_sei)';
+            $where .= ' AND (p.name LIKE :q_name OR p.cpf LIKE :q_cpf OR p.matricula_siape LIKE :q_siape OR o.name LIKE :q_organ OR p.sei_process_number LIKE :q_sei)';
             $search = '%' . $query . '%';
             $params['q_name'] = $search;
             $params['q_cpf'] = $search;
+            $params['q_siape'] = $search;
             $params['q_organ'] = $search;
             $params['q_sei'] = $search;
         }
@@ -151,7 +152,7 @@ final class PeopleRepository
                  AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
                  AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
             THEN i.amount / 12
-            WHEN i.cost_type = "unico"
+            WHEN i.cost_type IN ("eventual", "unico")
                  AND (
                     (i.start_date IS NOT NULL AND DATE_FORMAT(i.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
                     OR (i.start_date IS NULL AND DATE_FORMAT(i.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
@@ -185,9 +186,9 @@ final class PeopleRepository
                 p.id,
                 p.name,
                 p.cpf,
+                p.matricula_siape,
                 p.status,
                 p.sei_process_number,
-                p.mte_destination,
                 p.tags,
                 p.created_at,
                 o.id AS organ_id,
@@ -253,12 +254,12 @@ final class PeopleRepository
                 p.assignment_flow_id,
                 p.name,
                 p.cpf,
+                p.matricula_siape,
                 p.birth_date,
                 p.email,
                 p.phone,
                 p.status,
                 p.sei_process_number,
-                p.mte_destination,
                 p.tags,
                 p.notes,
                 p.created_at,
@@ -289,12 +290,12 @@ final class PeopleRepository
                 assignment_flow_id,
                 name,
                 cpf,
+                matricula_siape,
                 birth_date,
                 email,
                 phone,
                 status,
                 sei_process_number,
-                mte_destination,
                 tags,
                 notes,
                 created_at,
@@ -305,12 +306,12 @@ final class PeopleRepository
                 :assignment_flow_id,
                 :name,
                 :cpf,
+                :matricula_siape,
                 :birth_date,
                 :email,
                 :phone,
                 :status,
                 :sei_process_number,
-                :mte_destination,
                 :tags,
                 :notes,
                 NOW(),
@@ -324,12 +325,12 @@ final class PeopleRepository
             'assignment_flow_id' => $data['assignment_flow_id'],
             'name' => $data['name'],
             'cpf' => $data['cpf'],
+            'matricula_siape' => $data['matricula_siape'],
             'birth_date' => $data['birth_date'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'status' => $data['status'],
             'sei_process_number' => $data['sei_process_number'],
-            'mte_destination' => $data['mte_destination'],
             'tags' => $data['tags'],
             'notes' => $data['notes'],
         ]);
@@ -348,12 +349,12 @@ final class PeopleRepository
                 assignment_flow_id = :assignment_flow_id,
                 name = :name,
                 cpf = :cpf,
+                matricula_siape = :matricula_siape,
                 birth_date = :birth_date,
                 email = :email,
                 phone = :phone,
                 status = :status,
                 sei_process_number = :sei_process_number,
-                mte_destination = :mte_destination,
                 tags = :tags,
                 notes = :notes,
                 updated_at = NOW()
@@ -367,12 +368,12 @@ final class PeopleRepository
             'assignment_flow_id' => $data['assignment_flow_id'],
             'name' => $data['name'],
             'cpf' => $data['cpf'],
+            'matricula_siape' => $data['matricula_siape'],
             'birth_date' => $data['birth_date'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'status' => $data['status'],
             'sei_process_number' => $data['sei_process_number'],
-            'mte_destination' => $data['mte_destination'],
             'tags' => $data['tags'],
             'notes' => $data['notes'],
         ]);
@@ -389,6 +390,24 @@ final class PeopleRepository
     {
         $sql = 'SELECT id FROM people WHERE cpf = :cpf AND deleted_at IS NULL';
         $params = ['cpf' => $cpf];
+
+        if ($ignoreId !== null) {
+            $sql .= ' AND id <> :id';
+            $params['id'] = $ignoreId;
+        }
+
+        $sql .= ' LIMIT 1';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetch() !== false;
+    }
+
+    public function siapeExists(string $siape, ?int $ignoreId = null): bool
+    {
+        $sql = 'SELECT id FROM people WHERE matricula_siape = :matricula_siape';
+        $params = ['matricula_siape' => $siape];
 
         if ($ignoreId !== null) {
             $sql .= ' AND id <> :id';
@@ -439,7 +458,7 @@ final class PeopleRepository
     public function activeMteDestinations(): array
     {
         $stmt = $this->db->query(
-            'SELECT id, name, code
+            'SELECT id, name, code, acronym, uf
              FROM mte_destinations
              WHERE deleted_at IS NULL
              ORDER BY name ASC'

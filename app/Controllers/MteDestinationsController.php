@@ -22,7 +22,7 @@ final class MteDestinationsController extends Controller
         $result = $this->service()->paginate($query, $sort, $dir, $page, $perPage);
 
         $this->view('mte_destinations/index', [
-            'title' => 'Lotações MTE',
+            'title' => 'Unidades organizacionais MTE',
             'destinations' => $result['items'],
             'pagination' => [
                 'total' => $result['total'],
@@ -43,7 +43,7 @@ final class MteDestinationsController extends Controller
     public function create(Request $request): void
     {
         $this->view('mte_destinations/create', [
-            'title' => 'Nova Lotação MTE',
+            'title' => 'Nova unidade organizacional MTE',
             'destination' => $this->emptyDestination(),
         ]);
     }
@@ -65,7 +65,7 @@ final class MteDestinationsController extends Controller
             $this->redirect('/mte-destinations/create');
         }
 
-        flash('success', 'Lotação cadastrada com sucesso.');
+        flash('success', 'Unidade organizacional cadastrada com sucesso.');
         $this->redirect('/mte-destinations/show?id=' . (int) $result['id']);
     }
 
@@ -73,18 +73,18 @@ final class MteDestinationsController extends Controller
     {
         $id = (int) $request->input('id', '0');
         if ($id <= 0) {
-            flash('error', 'Lotação inválida.');
+            flash('error', 'Unidade organizacional inválida.');
             $this->redirect('/mte-destinations');
         }
 
         $destination = $this->service()->find($id);
         if ($destination === null) {
-            flash('error', 'Lotação não encontrada.');
+            flash('error', 'Unidade organizacional não encontrada.');
             $this->redirect('/mte-destinations');
         }
 
         $this->view('mte_destinations/show', [
-            'title' => 'Detalhe da Lotação MTE',
+            'title' => 'Detalhe da unidade organizacional MTE',
             'destination' => $destination,
             'canManage' => $this->app->auth()->hasPermission('mte_destinations.manage'),
         ]);
@@ -94,18 +94,18 @@ final class MteDestinationsController extends Controller
     {
         $id = (int) $request->input('id', '0');
         if ($id <= 0) {
-            flash('error', 'Lotação inválida.');
+            flash('error', 'Unidade organizacional inválida.');
             $this->redirect('/mte-destinations');
         }
 
         $destination = $this->service()->find($id);
         if ($destination === null) {
-            flash('error', 'Lotação não encontrada.');
+            flash('error', 'Unidade organizacional não encontrada.');
             $this->redirect('/mte-destinations');
         }
 
         $this->view('mte_destinations/edit', [
-            'title' => 'Editar Lotação MTE',
+            'title' => 'Editar unidade organizacional MTE',
             'destination' => $destination,
         ]);
     }
@@ -114,7 +114,7 @@ final class MteDestinationsController extends Controller
     {
         $id = (int) $request->input('id', '0');
         if ($id <= 0) {
-            flash('error', 'Lotação inválida.');
+            flash('error', 'Unidade organizacional inválida.');
             $this->redirect('/mte-destinations');
         }
 
@@ -134,7 +134,7 @@ final class MteDestinationsController extends Controller
             $this->redirect('/mte-destinations/edit?id=' . $id);
         }
 
-        flash('success', 'Lotação atualizada com sucesso.');
+        flash('success', 'Unidade organizacional atualizada com sucesso.');
         $this->redirect('/mte-destinations/show?id=' . $id);
     }
 
@@ -142,7 +142,7 @@ final class MteDestinationsController extends Controller
     {
         $id = (int) $request->input('id', '0');
         if ($id <= 0) {
-            flash('error', 'Lotação inválida.');
+            flash('error', 'Unidade organizacional inválida.');
             $this->redirect('/mte-destinations');
         }
 
@@ -154,11 +154,11 @@ final class MteDestinationsController extends Controller
         );
 
         if (!$deleted) {
-            flash('error', 'Lotação não encontrada ou já removida.');
+            flash('error', 'Unidade organizacional não encontrada ou já removida.');
             $this->redirect('/mte-destinations');
         }
 
-        flash('success', 'Lotação removida com sucesso.');
+        flash('success', 'Unidade organizacional removida com sucesso.');
         $this->redirect('/mte-destinations');
     }
 
@@ -168,6 +168,10 @@ final class MteDestinationsController extends Controller
         return [
             'name' => '',
             'code' => '',
+            'acronym' => '',
+            'uf' => '',
+            'upag_code' => '',
+            'parent_uorg_code' => '',
             'notes' => '',
         ];
     }

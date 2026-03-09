@@ -48,6 +48,14 @@ function main(array $argv): void
         );
     }
 
+    if ((bool) $options['skip_homolog_phase12'] === false) {
+        $checks[] = runCheck(
+            'homologation_phase12_melhorias1',
+            $basePath . '/scripts/homologate-phase12-melhorias1.php',
+            ['--output', 'json']
+        );
+    }
+
     $failedChecks = array_values(array_filter($checks, static fn (array $check): bool => (bool) ($check['ok'] ?? false) === false));
 
     $report = [
@@ -76,7 +84,7 @@ function main(array $argv): void
 
 /**
  * @param array<int, string> $argv
- * @return array{skip_unit: bool, skip_integration: bool, skip_qa: bool, output: string, help: bool}
+ * @return array{skip_unit: bool, skip_integration: bool, skip_qa: bool, skip_homolog_phase12: bool, output: string, help: bool}
  */
 function parseOptions(array $argv): array
 {
@@ -84,6 +92,7 @@ function parseOptions(array $argv): array
         'skip_unit' => false,
         'skip_integration' => false,
         'skip_qa' => false,
+        'skip_homolog_phase12' => false,
         'output' => 'table',
         'help' => false,
     ];
@@ -100,6 +109,9 @@ function parseOptions(array $argv): array
                 break;
             case '--skip-qa':
                 $options['skip_qa'] = true;
+                break;
+            case '--skip-homolog-phase12':
+                $options['skip_homolog_phase12'] = true;
                 break;
             case '--output':
                 $output = strtolower(readOptionValue($argv, $i, '--output'));
@@ -287,6 +299,7 @@ Options:
   --skip-unit             Nao executa financial-unit-tests
   --skip-integration      Nao executa financial-integration-tests
   --skip-qa               Nao executa qa-regression
+  --skip-homolog-phase12  Nao executa homologate-phase12-melhorias1
   --output <table|json>   Formato de saida (default: table)
   --help                  Mostra esta ajuda
 

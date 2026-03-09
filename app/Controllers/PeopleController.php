@@ -193,12 +193,6 @@ final class PeopleController extends Controller
             $this->redirect('/people/create');
         }
 
-        $movementDirection = (string) ($movementContext['movement_direction'] ?? 'entrada_mte');
-        $referenceDestinationId = $movementDirection === 'saida_mte'
-            ? (int) ($movementContext['origin_mte_destination_id'] ?? 0)
-            : (int) ($movementContext['destination_mte_destination_id'] ?? 0);
-        $input['mte_destination'] = $this->resolveMteDestinationName($referenceDestinationId) ?? '';
-
         $result = $this->service()->create(
             $input,
             (int) ($this->app->auth()->id() ?? 0),
@@ -468,12 +462,6 @@ final class PeopleController extends Controller
             flash('error', (string) ($movementReasonValidation['message'] ?? 'Motivo de movimentacao invalido.'));
             $this->redirect('/people/edit?id=' . $id);
         }
-
-        $movementDirection = (string) ($movementContext['movement_direction'] ?? 'entrada_mte');
-        $referenceDestinationId = $movementDirection === 'saida_mte'
-            ? (int) ($movementContext['origin_mte_destination_id'] ?? 0)
-            : (int) ($movementContext['destination_mte_destination_id'] ?? 0);
-        $input['mte_destination'] = $this->resolveMteDestinationName($referenceDestinationId) ?? '';
 
         $result = $this->service()->update(
             $id,
@@ -1025,7 +1013,7 @@ final class PeopleController extends Controller
             $this->redirect('/people');
         }
 
-        $result = $this->costService()->addItem(
+        $result = $this->costService()->saveTable(
             personId: $personId,
             input: $request->all(),
             userId: (int) ($this->app->auth()->id() ?? 0),
@@ -1491,12 +1479,12 @@ final class PeopleController extends Controller
             'requested_end_date' => '',
             'name' => '',
             'cpf' => '',
+            'matricula_siape' => '',
             'birth_date' => '',
             'email' => '',
             'phone' => '',
             'status' => 'interessado',
             'sei_process_number' => '',
-            'mte_destination' => '',
             'tags' => '',
             'notes' => '',
         ];
@@ -1658,27 +1646,6 @@ final class PeopleController extends Controller
                 || (str_contains($name, 'ministerio') && str_contains($name, 'trabalho') && str_contains($name, 'emprego'))
             ) {
                 return $id;
-            }
-        }
-
-        return null;
-    }
-
-    private function resolveMteDestinationName(int $destinationId): ?string
-    {
-        if ($destinationId <= 0) {
-            return null;
-        }
-
-        foreach ($this->service()->activeMteDestinations() as $destination) {
-            $id = (int) ($destination['id'] ?? 0);
-            if ($id !== $destinationId) {
-                continue;
-            }
-
-            $name = trim((string) ($destination['name'] ?? ''));
-            if ($name !== '') {
-                return $name;
             }
         }
 
