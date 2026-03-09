@@ -53,7 +53,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
         Apenas validar (sem gravar)
       </label>
       <button type="submit" class="btn btn-outline">Importar CSV</button>
-      <span class="muted">Cabecalho minimo: <code>name</code>. Tambem aceita <code>organ_type, government_level, government_branch, supervising_organ, source_name, source_url</code>.</span>
+      <span class="muted">Cabecalho minimo: <code>name</code>. Tambem aceita <code>company_nire, company_dependency_type, federative_entity, company_objective, capital_information, creation_act, internal_regulations, subsidiaries, official_website</code>, alem dos campos ja existentes.</span>
     </form>
   <?php endif; ?>
 

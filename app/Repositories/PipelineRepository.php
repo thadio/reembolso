@@ -93,7 +93,6 @@ final class PipelineRepository
             'SELECT
                 p.id,
                 p.organ_id,
-                p.mte_destination,
                 p.assignment_flow_id
              FROM people p
              WHERE p.id = :id

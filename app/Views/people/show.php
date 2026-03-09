@@ -110,6 +110,8 @@ $costs = $costs ?? [
         'annualized_delta' => null,
         'previous_version_number' => null,
     ],
+    'suggested_version_label' => 'V1 - ' . date('d/m/Y'),
+    'next_version_number' => 1,
 ];
 $costItemCatalog = is_array($costItemCatalog ?? null) ? $costItemCatalog : [];
 $canManageCostItems = ($canManageCostItems ?? false) === true;
@@ -119,6 +121,39 @@ $costSummary = $costs['summary'] ?? ['monthly_total' => 0, 'annualized_total' =>
 $costVersions = $costs['versions'] ?? [];
 $costVersionItems = is_array($costs['version_items'] ?? null) ? $costs['version_items'] : [];
 $costComparison = $costs['comparison'] ?? ['monthly_delta' => null, 'annualized_delta' => null, 'previous_version_number' => null];
+$costSuggestedVersionLabel = trim((string) ($costs['suggested_version_label'] ?? ''));
+if ($costSuggestedVersionLabel === '') {
+    $costSuggestedVersionLabel = 'V1 - ' . date('d/m/Y');
+}
+$costActiveItemsByCatalog = [];
+foreach ($costItems as $costItemRow) {
+    $catalogId = (int) ($costItemRow['cost_item_catalog_id'] ?? 0);
+    if ($catalogId <= 0 || isset($costActiveItemsByCatalog[$catalogId])) {
+        continue;
+    }
+
+    $costActiveItemsByCatalog[$catalogId] = $costItemRow;
+}
+
+$costProjectionStartDate = trim((string) ($assignment['effective_start_date'] ?? ''));
+if ($costProjectionStartDate === '' || strtotime($costProjectionStartDate) === false) {
+    $costProjectionStartDate = trim((string) ($assignment['target_start_date'] ?? ''));
+}
+if ($costProjectionStartDate === '' || strtotime($costProjectionStartDate) === false) {
+    $costProjectionStartDate = '';
+}
+
+$costProjectionCurrentYear = (int) date('Y');
+$costCurrentVersionLabel = trim((string) ($activeCostPlan['label'] ?? ''));
+if ($costCurrentVersionLabel === '') {
+    $costCurrentVersionLabel = 'Sem versão ativa';
+}
+$costPeriodicityOptions = [
+    'mensal' => 'Mensal',
+    'anual' => 'Anual',
+    'eventual' => 'Eventual',
+    'unico' => 'Unico (legado)',
+];
 $conciliation = $conciliation ?? [
     'active_plan' => null,
     'summary' => [
@@ -441,9 +476,63 @@ $costTypeLabel = static function (string $type): string {
     return match ($type) {
         'mensal' => 'Mensal',
         'anual' => 'Anual',
-        'unico' => 'Único',
+        'eventual' => 'Eventual',
+        'unico' => 'Unico (legado)',
         default => ucfirst($type),
     };
+};
+
+$costAnnualizedAmount = static function (float $amount, string $type): float {
+    return match ($type) {
+        'mensal' => $amount * 12,
+        'anual', 'eventual', 'unico' => $amount,
+        default => 0.0,
+    };
+};
+
+$costYearEndAmount = static function (float $amount, string $type, ?string $startDateRaw): float {
+    if ($amount <= 0.0) {
+        return 0.0;
+    }
+
+    $year = (int) date('Y');
+    $yearStart = strtotime(sprintf('%04d-01-01', $year));
+    $yearEnd = strtotime(sprintf('%04d-12-31', $year));
+    if ($yearStart === false || $yearEnd === false) {
+        return 0.0;
+    }
+
+    $startTs = strtotime((string) $startDateRaw);
+    if ($startTs === false || $startTs < $yearStart) {
+        $startTs = $yearStart;
+    }
+
+    if ($startTs > $yearEnd) {
+        return 0.0;
+    }
+
+    if ($type === 'eventual' || $type === 'unico') {
+        return $amount;
+    }
+
+    $startYear = (int) date('Y', $startTs);
+    $startMonth = (int) date('n', $startTs);
+    $endYear = (int) date('Y', $yearEnd);
+    $endMonth = (int) date('n', $yearEnd);
+    $months = (($endYear - $startYear) * 12) + ($endMonth - $startMonth) + 1;
+    if ($months < 0) {
+        $months = 0;
+    }
+
+    if ($type === 'anual') {
+        return ($amount / 12) * $months;
+    }
+
+    if ($type === 'mensal') {
+        return $amount * $months;
+    }
+
+    return 0.0;
 };
 
 $costLinkageLabel = static function (int|string|null $code, string $itemName = ''): string {
@@ -479,6 +568,57 @@ $costReimbursableLabel = static function (int|string|null $flag, string $itemNam
     }
 
     return 'Nao-reembolsavel (inferido)';
+};
+
+$costMacroCategoryLabel = static function (?string $value): string {
+    $normalized = mb_strtolower(trim((string) $value));
+
+    return match ($normalized) {
+        'remuneracao_direta' => 'Remuneracao direta',
+        'encargos_obrigacoes_legais' => 'Encargos e obrigacoes legais',
+        'beneficios_provisoes_indiretos' => 'Beneficios, provisoes e custos indiretos',
+        default => '-',
+    };
+};
+
+$costExpenseNatureLabel = static function (?string $value): string {
+    $normalized = mb_strtolower(trim((string) $value));
+
+    return match ($normalized) {
+        'remuneratoria' => 'Remuneratoria',
+        'indenizatoria' => 'Indenizatoria',
+        'encargos' => 'Encargos',
+        'provisoes' => 'Provisoes',
+        default => '-',
+    };
+};
+
+$costReimbursabilityLabel = static function (?string $value, int|string|null $legacyFlag = null, string $itemName = '') use ($costReimbursableLabel): string {
+    $normalized = mb_strtolower(trim((string) $value));
+    if ($normalized === 'reembolsavel') {
+        return 'Reembolsavel';
+    }
+
+    if ($normalized === 'parcialmente_reembolsavel') {
+        return 'Parcialmente reembolsavel';
+    }
+
+    if ($normalized === 'nao_reembolsavel') {
+        return 'Nao reembolsavel';
+    }
+
+    return $costReimbursableLabel($legacyFlag, $itemName);
+};
+
+$costPredictabilityLabel = static function (?string $value): string {
+    $normalized = mb_strtolower(trim((string) $value));
+
+    return match ($normalized) {
+        'fixa' => 'Fixa',
+        'variavel' => 'Variavel',
+        'eventual' => 'Eventual',
+        default => '-',
+    };
 };
 
 $reimbursementTypeLabel = static function (string $type): string {
@@ -753,11 +893,11 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         <?= e(mask_cpf((string) ($person['cpf'] ?? ''))) ?>
       <?php endif; ?>
     </div>
+    <div><strong>Matrícula SIAPE:</strong> <?= e((string) ($person['matricula_siape'] ?? '-')) ?></div>
     <div><strong>Nascimento:</strong> <?= e((string) ($person['birth_date'] ?? '-')) ?></div>
     <div><strong>E-mail:</strong> <?= e((string) ($person['email'] ?? '-')) ?></div>
     <div><strong>Telefone:</strong> <?= e((string) ($person['phone'] ?? '-')) ?></div>
     <div><strong>Nº processo SEI:</strong> <?= e((string) ($person['sei_process_number'] ?? '-')) ?></div>
-    <div><strong>Lotação MTE (referência legado):</strong> <?= e((string) ($person['mte_destination'] ?? '-')) ?></div>
     <div><strong>Tags:</strong> <?= e((string) ($person['tags'] ?? '-')) ?></div>
     <div class="details-wide"><strong>Observações:</strong> <?= nl2br(e((string) ($person['notes'] ?? '-'))) ?></div>
   </div>
@@ -898,6 +1038,308 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     if (toggle) {
       toggle.addEventListener('change', recalc);
     }
+
+    recalc();
+  });
+</script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var form = document.querySelector('[data-cost-batch-form]');
+    if (!form) {
+      return;
+    }
+
+    var rows = Array.prototype.slice.call(form.querySelectorAll('[data-cost-row]'));
+    if (rows.length === 0) {
+      return;
+    }
+
+    var currentYearRaw = Number(form.getAttribute('data-current-year') || '');
+    var currentYear = Number.isFinite(currentYearRaw) && currentYearRaw > 2000
+      ? currentYearRaw
+      : new Date().getFullYear();
+
+    var parseDate = function (value) {
+      var normalized = String(value || '').trim();
+      if (!normalized) {
+        return null;
+      }
+
+      var parts = normalized.split('-');
+      if (parts.length !== 3) {
+        return null;
+      }
+
+      var year = Number(parts[0]);
+      var month = Number(parts[1]);
+      var day = Number(parts[2]);
+      if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+        return null;
+      }
+
+      var date = new Date(year, month - 1, day);
+      if (Number.isNaN(date.getTime())) {
+        return null;
+      }
+
+      return date;
+    };
+
+    var parseMoney = function (value) {
+      var normalized = String(value || '').replace(',', '.').replace(/[^0-9.-]/g, '');
+      var numeric = Number(normalized);
+      return Number.isFinite(numeric) ? numeric : 0;
+    };
+
+    var formatMoney = function (value) {
+      return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    };
+
+    var plannedStart = parseDate(form.getAttribute('data-planned-start') || '');
+    var yearStart = new Date(currentYear, 0, 1);
+    var yearEnd = new Date(currentYear, 11, 31);
+
+    var maxDate = function (left, right) {
+      if (!left) {
+        return right;
+      }
+
+      if (!right) {
+        return left;
+      }
+
+      return left.getTime() >= right.getTime() ? left : right;
+    };
+
+    var monthsInRange = function (startDate, endDate) {
+      if (!startDate || !endDate || endDate.getTime() < startDate.getTime()) {
+        return 0;
+      }
+
+      return ((endDate.getFullYear() - startDate.getFullYear()) * 12)
+        + (endDate.getMonth() - startDate.getMonth())
+        + 1;
+    };
+
+    var annualizedValue = function (amount, periodicity) {
+      if (periodicity === 'mensal') {
+        return amount * 12;
+      }
+
+      if (periodicity === 'anual' || periodicity === 'eventual' || periodicity === 'unico') {
+        return amount;
+      }
+
+      return 0;
+    };
+
+    var valueUntilYearEnd = function (amount, periodicity, startDate) {
+      if (amount <= 0) {
+        return 0;
+      }
+
+      var effectiveStart = maxDate(startDate, plannedStart);
+      effectiveStart = maxDate(effectiveStart, yearStart);
+      if (!effectiveStart) {
+        effectiveStart = yearStart;
+      }
+
+      var effectiveEnd = yearEnd;
+
+      if (effectiveEnd.getTime() < effectiveStart.getTime()) {
+        return 0;
+      }
+
+      if (periodicity === 'mensal') {
+        return amount * monthsInRange(effectiveStart, effectiveEnd);
+      }
+
+      if (periodicity === 'anual') {
+        return (amount / 12) * monthsInRange(effectiveStart, effectiveEnd);
+      }
+
+      if (periodicity === 'eventual' || periodicity === 'unico') {
+        var singleDate = startDate || plannedStart || yearStart;
+        if (!singleDate) {
+          return 0;
+        }
+
+        if (singleDate.getTime() < yearStart.getTime() || singleDate.getTime() > effectiveEnd.getTime()) {
+          return 0;
+        }
+
+        return amount;
+      }
+
+      return 0;
+    };
+
+    var totalPeriodNode = form.querySelector('[data-cost-total-period]');
+    var totalAnnualizedNode = form.querySelector('[data-cost-total-annualized]');
+    var totalYearEndNode = form.querySelector('[data-cost-total-year-end]');
+    var totalItemsNode = form.querySelector('[data-cost-total-items]');
+    var editableInputs = Array.prototype.slice.call(form.querySelectorAll('[data-cost-editable]'));
+
+    var recalc = function () {
+      var totalPeriod = 0;
+      var totalAnnualized = 0;
+      var totalYearEnd = 0;
+      var totalItems = 0;
+
+      rows.forEach(function (row) {
+        var periodicityInput = row.querySelector('[data-cost-type]');
+        var periodicity = String(periodicityInput ? periodicityInput.value : 'mensal').toLowerCase();
+        var amountInput = row.querySelector('[data-cost-amount]');
+        var startInput = row.querySelector('[data-cost-start-date]');
+        var annualizedNode = row.querySelector('[data-cost-annualized]');
+        var yearEndNode = row.querySelector('[data-cost-year-end]');
+
+        var amount = parseMoney(amountInput ? amountInput.value : '');
+        var startDate = parseDate(startInput ? startInput.value : '');
+        var annualized = annualizedValue(amount, periodicity);
+        var projectedYearEnd = valueUntilYearEnd(amount, periodicity, startDate);
+
+        if (annualizedNode) {
+          annualizedNode.textContent = formatMoney(annualized);
+        }
+
+        if (yearEndNode) {
+          yearEndNode.textContent = formatMoney(projectedYearEnd);
+        }
+
+        totalPeriod += amount;
+        totalAnnualized += annualized;
+        totalYearEnd += projectedYearEnd;
+        if (amount > 0) {
+          totalItems += 1;
+        }
+      });
+
+      if (totalPeriodNode) {
+        totalPeriodNode.textContent = formatMoney(totalPeriod);
+      }
+
+      if (totalAnnualizedNode) {
+        totalAnnualizedNode.textContent = formatMoney(totalAnnualized);
+      }
+
+      if (totalYearEndNode) {
+        totalYearEndNode.textContent = formatMoney(totalYearEnd);
+      }
+
+      if (totalItemsNode) {
+        totalItemsNode.textContent = totalItems + ' item(ns)';
+      }
+    };
+
+    var focusEditableByOffset = function (currentInput, offset) {
+      var currentIndex = editableInputs.indexOf(currentInput);
+      if (currentIndex < 0) {
+        return;
+      }
+
+      var nextIndex = currentIndex + offset;
+      if (nextIndex < 0 || nextIndex >= editableInputs.length) {
+        return;
+      }
+
+      var nextInput = editableInputs[nextIndex];
+      if (!nextInput) {
+        return;
+      }
+
+      nextInput.focus();
+      if (nextInput.select && nextInput.type !== 'date') {
+        nextInput.select();
+      }
+    };
+
+    var normalizeAmountInput = function (input) {
+      if (!input || !input.hasAttribute('data-cost-amount')) {
+        return;
+      }
+
+      var amount = parseMoney(input.value);
+      input.value = amount > 0 ? amount.toFixed(2) : '';
+    };
+
+    var amountPlaceholderByPeriodicity = function (periodicity) {
+      if (periodicity === 'anual') {
+        return 'Ex.: 18000,00/ano';
+      }
+
+      if (periodicity === 'eventual') {
+        return 'Ex.: 5000,00 (eventual)';
+      }
+
+      if (periodicity === 'unico') {
+        return 'Ex.: 5000,00 (unico legado)';
+      }
+
+      return 'Ex.: 1500,00/mes';
+    };
+
+    var updateAmountPlaceholder = function (row) {
+      var periodicityInput = row.querySelector('[data-cost-type]');
+      var amountInput = row.querySelector('[data-cost-amount]');
+      if (!periodicityInput || !amountInput) {
+        return;
+      }
+
+      amountInput.placeholder = amountPlaceholderByPeriodicity(String(periodicityInput.value || '').toLowerCase());
+    };
+
+    rows.forEach(function (row) {
+      var inputs = Array.prototype.slice.call(row.querySelectorAll('[data-cost-editable]'));
+      inputs.forEach(function (input) {
+        input.addEventListener('input', recalc);
+        input.addEventListener('change', recalc);
+
+        input.addEventListener('keydown', function (event) {
+          if (event.key !== 'Enter') {
+            return;
+          }
+
+          event.preventDefault();
+          normalizeAmountInput(input);
+          focusEditableByOffset(input, event.shiftKey ? -1 : 1);
+          recalc();
+        });
+
+        if (input.hasAttribute('data-cost-amount')) {
+          input.addEventListener('blur', function () {
+            normalizeAmountInput(input);
+            recalc();
+          });
+        }
+      });
+
+      var periodicityInput = row.querySelector('[data-cost-type]');
+      if (periodicityInput) {
+        periodicityInput.addEventListener('change', function () {
+          updateAmountPlaceholder(row);
+          recalc();
+        });
+      }
+
+      updateAmountPlaceholder(row);
+    });
+
+    form.addEventListener('keydown', function (event) {
+      var key = String(event.key || '').toLowerCase();
+      if (!(event.ctrlKey || event.metaKey) || key !== 's') {
+        return;
+      }
+
+      event.preventDefault();
+      if (typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+        return;
+      }
+
+      form.submit();
+    });
 
     recalc();
   });
@@ -1739,7 +2181,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
   <div class="header-row">
     <div>
       <h3>Custos previstos</h3>
-      <p class="muted">Planejamento financeiro por versão com histórico e comparação.</p>
+      <p class="muted">Conforme <?= e($costCurrentVersionLabel) ?></p>
     </div>
     <div class="actions-inline">
       <?php if ($activeCostPlan !== null): ?>
@@ -1773,129 +2215,242 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     </p>
   <?php endif; ?>
 
-  <?php if (($canManage ?? false) === true): ?>
-    <form method="post" action="<?= e(url('/people/costs/version/create')) ?>" class="cost-version-form">
-      <?= csrf_field() ?>
-      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
-      <div class="form-grid">
-        <div class="field">
-          <label for="cost_version_label">Rótulo da nova versão</label>
-          <input id="cost_version_label" name="label" type="text" maxlength="190" placeholder="Ex.: Revisão abril/2026">
-        </div>
-        <div class="field">
-          <label for="cost_clone_current">Clonar itens atuais</label>
-          <select id="cost_clone_current" name="clone_current">
-            <option value="1">Sim</option>
-            <option value="0">Não</option>
-          </select>
-        </div>
+  <?php if ($costItemCatalog === []): ?>
+    <p class="muted">Nenhum item de custo ativo no catálogo. Cadastre ao menos um item para lançar custos.</p>
+    <?php if ($canManageCostItems): ?>
+      <div class="actions-inline">
+        <a class="btn btn-ghost" href="<?= e(url('/cost-items')) ?>">Gerenciar catálogo de itens de custo</a>
       </div>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-outline">Criar nova versão</button>
-      </div>
-    </form>
-
-    <form method="post" action="<?= e(url('/people/costs/item/store')) ?>" class="cost-item-form">
-      <?= csrf_field() ?>
-      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
-      <div class="form-grid">
-        <div class="field field-wide">
-          <label for="cost_item_catalog_id">Item de custo</label>
-          <select id="cost_item_catalog_id" name="cost_item_catalog_id" required>
-            <option value="">Selecione...</option>
-            <?php foreach ($costItemCatalog as $catalogItem): ?>
-              <?php
-                $catalogId = (int) ($catalogItem['id'] ?? 0);
-                if ($catalogId <= 0) {
-                    continue;
-                }
-                $catalogName = (string) ($catalogItem['name'] ?? '');
-                $catalogLinkage = $costLinkageLabel((int) ($catalogItem['linkage_code'] ?? 0), $catalogName);
-                $catalogParcel = $costReimbursableLabel((int) ($catalogItem['is_reimbursable'] ?? 0), $catalogName);
-                $catalogPeriodicity = $costTypeLabel((string) ($catalogItem['payment_periodicity'] ?? ''));
-              ?>
-              <option value="<?= e((string) $catalogId) ?>">
-                <?= e($catalogName . ' - ' . $catalogLinkage . ' - ' . $catalogParcel . ' - ' . $catalogPeriodicity) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <?php if ($costItemCatalog === []): ?>
-            <small class="muted">Nenhum item de custo cadastrado no catalogo. Cadastre ao menos um item para lancar custos.</small>
-          <?php else: ?>
-            <small class="muted">Vinculo, parcela e periodicidade sao herdados do item selecionado.</small>
-          <?php endif; ?>
-          <?php if ($canManageCostItems): ?>
-            <div class="actions-inline" style="margin-top: 6px;">
-              <a class="btn btn-ghost" href="<?= e(url('/cost-items')) ?>">Gerenciar catalogo de itens de custo</a>
-            </div>
-          <?php endif; ?>
-        </div>
-        <div class="field">
-          <label for="cost_amount">Valor</label>
-          <input id="cost_amount" name="amount" type="number" min="0" step="0.01" required>
-        </div>
-        <div class="field">
-          <label for="cost_start_date">Início da vigência</label>
-          <input id="cost_start_date" name="start_date" type="date">
-        </div>
-        <div class="field">
-          <label for="cost_end_date">Fim da vigência</label>
-          <input id="cost_end_date" name="end_date" type="date">
-        </div>
-        <div class="field field-wide">
-          <label for="cost_notes">Observações</label>
-          <textarea id="cost_notes" name="notes" rows="3"></textarea>
-        </div>
-      </div>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary" <?= $costItemCatalog === [] ? 'disabled' : '' ?>>Adicionar item</button>
-      </div>
-    </form>
-  <?php endif; ?>
-
-  <?php if ($costItems === []): ?>
-    <p class="muted">Nenhum item de custo registrado na versão ativa.</p>
+    <?php endif; ?>
   <?php else: ?>
     <div class="table-wrap">
-      <table>
+      <table class="cost-current-table">
         <thead>
           <tr>
-            <th>Item</th>
-            <th>Vinculo</th>
-            <th>Parcela</th>
-            <th>Tipo</th>
-            <th>Valor informado</th>
-            <th>Início</th>
-            <th>Fim</th>
-            <th>Responsável</th>
+            <th>Item de custo</th>
+            <th>Periodicidade</th>
+            <th>Valor no período</th>
+            <th>Início da vigência</th>
+            <th>Valor anualizado</th>
+            <th>Valor até fim do ano</th>
+            <th>Observações</th>
           </tr>
         </thead>
         <tbody>
-          <?php foreach ($costItems as $item): ?>
+          <?php foreach ($costItemCatalog as $catalogItem): ?>
             <?php
-              $itemName = (string) ($item['item_name'] ?? '');
-              $itemLinkage = $costLinkageLabel($item['catalog_linkage_code'] ?? null, $itemName);
-              $itemParcel = $costReimbursableLabel($item['catalog_is_reimbursable'] ?? null, $itemName);
+              $catalogId = (int) ($catalogItem['id'] ?? 0);
+              if ($catalogId <= 0) {
+                  continue;
+              }
+              $catalogName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
+              $catalogLinkage = $costLinkageLabel((int) ($catalogItem['linkage_code'] ?? 0), $catalogName);
+              $catalogParcel = $costReimbursabilityLabel(
+                  (string) ($catalogItem['reimbursability'] ?? ''),
+                  (int) ($catalogItem['is_reimbursable'] ?? 0),
+                  $catalogName
+              );
+              $catalogMacroCategory = $costMacroCategoryLabel((string) ($catalogItem['macro_category'] ?? ''));
+              $catalogSubcategory = trim((string) ($catalogItem['subcategory'] ?? ''));
+              $catalogExpenseNature = $costExpenseNatureLabel((string) ($catalogItem['expense_nature'] ?? ''));
+              $catalogPredictability = $costPredictabilityLabel((string) ($catalogItem['predictability'] ?? ''));
+              $catalogPeriodicityRaw = trim((string) ($catalogItem['payment_periodicity'] ?? 'mensal'));
+              $activeRow = is_array($costActiveItemsByCatalog[$catalogId] ?? null) ? $costActiveItemsByCatalog[$catalogId] : [];
+              $rowAmountFloat = is_numeric((string) ($activeRow['amount'] ?? null))
+                  ? (float) ($activeRow['amount'] ?? 0)
+                  : 0.0;
+              $rowStartDate = trim((string) ($activeRow['start_date'] ?? ''));
+              if ($rowStartDate === '' || strtotime($rowStartDate) === false) {
+                  $rowStartDate = $costProjectionStartDate;
+              }
+              $selectedType = trim((string) ($activeRow['cost_type'] ?? $catalogPeriodicityRaw));
+              if (!isset($costPeriodicityOptions[$selectedType])) {
+                  $selectedType = isset($costPeriodicityOptions[$catalogPeriodicityRaw]) ? $catalogPeriodicityRaw : 'mensal';
+              }
+              $rowNotes = trim((string) ($activeRow['notes'] ?? ''));
+              $rowAnnualized = $costAnnualizedAmount($rowAmountFloat, $selectedType);
+              $rowYearEnd = $costYearEndAmount($rowAmountFloat, $selectedType, $rowStartDate);
             ?>
             <tr>
               <td>
-                <strong><?= e($itemName !== '' ? $itemName : '-') ?></strong>
-                <?php if (trim((string) ($item['notes'] ?? '')) !== ''): ?>
-                  <div class="muted"><?= e((string) $item['notes']) ?></div>
-                <?php endif; ?>
+                <strong><?= e($catalogName) ?></strong>
+                <div class="muted"><?= e($catalogMacroCategory) ?> · <?= e($catalogSubcategory !== '' ? $catalogSubcategory : '-') ?></div>
+                <div class="muted"><?= e($catalogExpenseNature) ?> · <?= e($catalogParcel) ?> · <?= e($catalogPredictability) ?> · <?= e($catalogLinkage) ?></div>
               </td>
-              <td><?= e($itemLinkage) ?></td>
-              <td><?= e($itemParcel) ?></td>
-              <td><?= e($costTypeLabel((string) ($item['cost_type'] ?? ''))) ?></td>
-              <td><?= e($formatMoney((float) ($item['amount'] ?? 0))) ?></td>
-              <td><?= e($formatDate((string) ($item['start_date'] ?? ''))) ?></td>
-              <td><?= e($formatDate((string) ($item['end_date'] ?? ''))) ?></td>
-              <td><?= e((string) ($item['created_by_name'] ?? 'Sistema')) ?></td>
+              <td><?= e($costTypeLabel($selectedType)) ?></td>
+              <td class="is-numeric"><?= e($rowAmountFloat > 0.0 ? $formatMoney($rowAmountFloat) : '-') ?></td>
+              <td><?= e($rowStartDate !== '' ? $formatDate($rowStartDate) : '-') ?></td>
+              <td class="is-numeric"><?= e($rowAmountFloat > 0.0 ? $formatMoney($rowAnnualized) : '-') ?></td>
+              <td class="is-numeric"><?= e($rowAmountFloat > 0.0 ? $formatMoney($rowYearEnd) : '-') ?></td>
+              <td><?= e($rowNotes !== '' ? $rowNotes : '-') ?></td>
             </tr>
           <?php endforeach; ?>
         </tbody>
       </table>
     </div>
+  <?php endif; ?>
+
+  <?php if (($canManage ?? false) === true && $costItemCatalog !== []): ?>
+    <details class="cost-edit-mode">
+      <summary class="btn btn-outline">Ajustar/alterar e gerar nova versão de custos</summary>
+      <form
+        method="post"
+        action="<?= e(url('/people/costs/item/store')) ?>"
+        class="cost-batch-form"
+        data-cost-batch-form
+        data-current-year="<?= e((string) $costProjectionCurrentYear) ?>"
+        data-planned-start="<?= e($costProjectionStartDate) ?>"
+      >
+        <?= csrf_field() ?>
+        <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+
+        <div class="cost-batch-meta">
+          <div class="field cost-readonly-field">
+            <label for="cost_next_version_label">Rótulo automático da nova versão</label>
+            <input id="cost_next_version_label" type="text" value="<?= e($costSuggestedVersionLabel) ?>" readonly>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="cost-batch-table">
+            <colgroup>
+              <col class="cost-col-item">
+              <col class="cost-col-periodicity">
+              <col class="cost-col-amount">
+              <col class="cost-col-start">
+              <col class="cost-col-annualized">
+              <col class="cost-col-year-end">
+              <col class="cost-col-notes">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Item de custo</th>
+                <th>Periodicidade</th>
+                <th>Valor no período</th>
+                <th>Início da vigência</th>
+                <th>Valor anualizado</th>
+                <th>Valor até fim do ano</th>
+                <th>Observações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($costItemCatalog as $catalogItem): ?>
+                <?php
+                  $catalogId = (int) ($catalogItem['id'] ?? 0);
+                  if ($catalogId <= 0) {
+                      continue;
+                  }
+                  $catalogName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
+                  $catalogLinkage = $costLinkageLabel((int) ($catalogItem['linkage_code'] ?? 0), $catalogName);
+                  $catalogParcel = $costReimbursabilityLabel(
+                      (string) ($catalogItem['reimbursability'] ?? ''),
+                      (int) ($catalogItem['is_reimbursable'] ?? 0),
+                      $catalogName
+                  );
+                  $catalogMacroCategory = $costMacroCategoryLabel((string) ($catalogItem['macro_category'] ?? ''));
+                  $catalogSubcategory = trim((string) ($catalogItem['subcategory'] ?? ''));
+                  $catalogExpenseNature = $costExpenseNatureLabel((string) ($catalogItem['expense_nature'] ?? ''));
+                  $catalogPredictability = $costPredictabilityLabel((string) ($catalogItem['predictability'] ?? ''));
+                  $catalogPeriodicityRaw = trim((string) ($catalogItem['payment_periodicity'] ?? 'mensal'));
+                  $activeRow = is_array($costActiveItemsByCatalog[$catalogId] ?? null) ? $costActiveItemsByCatalog[$catalogId] : [];
+                  $rawAmount = $activeRow['amount'] ?? null;
+                  $rowAmount = (is_numeric((string) $rawAmount) && (float) $rawAmount > 0.0)
+                      ? number_format((float) $rawAmount, 2, '.', '')
+                      : '';
+                  $rowStartDate = trim((string) ($activeRow['start_date'] ?? ''));
+                  if ($rowStartDate === '' || strtotime($rowStartDate) === false) {
+                      $rowStartDate = $costProjectionStartDate;
+                  }
+                  $rowNotes = trim((string) ($activeRow['notes'] ?? ''));
+                  $selectedType = trim((string) ($activeRow['cost_type'] ?? $catalogPeriodicityRaw));
+                  if (!isset($costPeriodicityOptions[$selectedType])) {
+                      $selectedType = isset($costPeriodicityOptions[$catalogPeriodicityRaw]) ? $catalogPeriodicityRaw : 'mensal';
+                  }
+                ?>
+                <tr data-cost-row>
+                  <td>
+                    <strong><?= e($catalogName) ?></strong>
+                    <div class="muted"><?= e($catalogMacroCategory) ?> · <?= e($catalogSubcategory !== '' ? $catalogSubcategory : '-') ?></div>
+                    <div class="muted"><?= e($catalogExpenseNature) ?> · <?= e($catalogParcel) ?> · <?= e($catalogPredictability) ?> · <?= e($catalogLinkage) ?></div>
+                  </td>
+                  <td>
+                    <select name="items[<?= e((string) $catalogId) ?>][cost_type]" data-cost-type data-cost-editable>
+                      <?php foreach ($costPeriodicityOptions as $optionValue => $optionLabel): ?>
+                        <option value="<?= e($optionValue) ?>" <?= $optionValue === $selectedType ? 'selected' : '' ?>><?= e($optionLabel) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="items[<?= e((string) $catalogId) ?>][amount]"
+                      value="<?= e($rowAmount) ?>"
+                      placeholder="<?= e(match ($selectedType) {
+                          'anual' => 'Ex.: 18000,00/ano',
+                          'eventual' => 'Ex.: 5000,00 (eventual)',
+                          'unico' => 'Ex.: 5000,00 (unico legado)',
+                          default => 'Ex.: 1500,00/mes',
+                      }) ?>"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      data-cost-amount
+                      data-cost-editable
+                    >
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      name="items[<?= e((string) $catalogId) ?>][start_date]"
+                      value="<?= e($rowStartDate) ?>"
+                      title="Data inicial de vigencia do custo"
+                      autocomplete="off"
+                      data-cost-start-date
+                      data-cost-editable
+                    >
+                  </td>
+                  <td class="is-numeric" data-cost-annualized>R$ 0,00</td>
+                  <td class="is-numeric" data-cost-year-end>R$ 0,00</td>
+                  <td>
+                    <input
+                      type="text"
+                      maxlength="500"
+                      name="items[<?= e((string) $catalogId) ?>][notes]"
+                      value="<?= e($rowNotes) ?>"
+                      placeholder="Ex.: reajuste previsto para o periodo"
+                      autocomplete="off"
+                      data-cost-notes
+                      data-cost-editable
+                    >
+                  </td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2"><strong>Totais da nova versão</strong></td>
+                <td class="is-numeric" data-cost-total-period>R$ 0,00</td>
+                <td></td>
+                <td class="is-numeric" data-cost-total-annualized>R$ 0,00</td>
+                <td class="is-numeric" data-cost-total-year-end>R$ 0,00</td>
+                <td class="is-numeric" data-cost-total-items>0 item(ns)</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="cost-batch-actions">
+          <?php if ($canManageCostItems): ?>
+            <a class="btn btn-ghost" href="<?= e(url('/cost-items')) ?>">Gerenciar catálogo</a>
+          <?php endif; ?>
+          <button type="submit" class="btn btn-primary">Salvar nova versão</button>
+        </div>
+        <p class="muted cost-batch-shortcuts">
+          Atalhos: <strong>Ctrl/Cmd + S</strong> salva a nova versão, <strong>Enter</strong> vai para o próximo campo, <strong>Shift + Enter</strong> volta para o campo anterior.
+        </p>
+      </form>
+    </details>
   <?php endif; ?>
 
   <?php if ($costVersions !== []): ?>
@@ -1961,12 +2516,11 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                             <thead>
                               <tr>
                                 <th>Item</th>
-                                <th>Vinculo</th>
+                                <th>Vínculo</th>
                                 <th>Parcela</th>
                                 <th>Tipo</th>
                                 <th>Valor informado</th>
                                 <th>Início</th>
-                                <th>Fim</th>
                                 <th>Responsável</th>
                               </tr>
                             </thead>
@@ -1975,11 +2529,21 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                                 <?php
                                   $versionItemName = (string) ($versionItem['item_name'] ?? '');
                                   $versionItemLinkage = $costLinkageLabel($versionItem['catalog_linkage_code'] ?? null, $versionItemName);
-                                  $versionItemParcel = $costReimbursableLabel($versionItem['catalog_is_reimbursable'] ?? null, $versionItemName);
+                                  $versionItemParcel = $costReimbursabilityLabel(
+                                      (string) ($versionItem['catalog_reimbursability'] ?? ''),
+                                      $versionItem['catalog_is_reimbursable'] ?? null,
+                                      $versionItemName
+                                  );
+                                  $versionItemMacro = $costMacroCategoryLabel((string) ($versionItem['catalog_macro_category'] ?? ''));
+                                  $versionItemSubcategory = trim((string) ($versionItem['catalog_subcategory'] ?? ''));
+                                  $versionItemExpenseNature = $costExpenseNatureLabel((string) ($versionItem['catalog_expense_nature'] ?? ''));
+                                  $versionItemPredictability = $costPredictabilityLabel((string) ($versionItem['catalog_predictability'] ?? ''));
                                 ?>
                                 <tr>
                                   <td>
                                     <strong><?= e($versionItemName !== '' ? $versionItemName : '-') ?></strong>
+                                    <div class="muted"><?= e($versionItemMacro) ?> · <?= e($versionItemSubcategory !== '' ? $versionItemSubcategory : '-') ?></div>
+                                    <div class="muted"><?= e($versionItemExpenseNature) ?> · <?= e($versionItemPredictability) ?></div>
                                     <?php if (trim((string) ($versionItem['notes'] ?? '')) !== ''): ?>
                                       <div class="muted"><?= e((string) ($versionItem['notes'] ?? '')) ?></div>
                                     <?php endif; ?>
@@ -1989,7 +2553,6 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                                   <td><?= e($costTypeLabel((string) ($versionItem['cost_type'] ?? ''))) ?></td>
                                   <td><?= e($formatMoney((float) ($versionItem['amount'] ?? 0))) ?></td>
                                   <td><?= e($formatDate((string) ($versionItem['start_date'] ?? ''))) ?></td>
-                                  <td><?= e($formatDate((string) ($versionItem['end_date'] ?? ''))) ?></td>
                                   <td><?= e((string) ($versionItem['created_by_name'] ?? 'Sistema')) ?></td>
                                 </tr>
                               <?php endforeach; ?>
@@ -2108,96 +2671,6 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     </article>
   </div>
 
-  <?php if (($canManage ?? false) === true): ?>
-    <form method="post" action="<?= e(url('/people/reimbursements/store')) ?>" class="reimbursement-form">
-      <?= csrf_field() ?>
-      <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
-      <div class="form-grid">
-        <div class="field">
-          <label for="reimbursement_entry_type">Tipo</label>
-          <select id="reimbursement_entry_type" name="entry_type">
-            <option value="boleto">Boleto</option>
-            <option value="pagamento">Pagamento</option>
-            <option value="ajuste">Ajuste</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="reimbursement_status">Status</label>
-          <select id="reimbursement_status" name="status">
-            <option value="pendente">Pendente</option>
-            <option value="pago">Pago</option>
-            <option value="cancelado">Cancelado</option>
-          </select>
-        </div>
-        <div class="field field-wide">
-          <label for="reimbursement_title">Título do lançamento</label>
-          <input id="reimbursement_title" name="title" type="text" minlength="3" maxlength="190" required placeholder="Ex.: Boleto órgão de origem - março/2026">
-        </div>
-        <div class="field field-wide">
-          <label for="reimbursement_use_calculator" style="display:flex; align-items:center; gap:8px;">
-            <input id="reimbursement_use_calculator" name="use_calculator" type="checkbox" value="1">
-            Usar calculadora automática com memória de cálculo
-          </label>
-          <p class="muted">Fórmula: (Base + Transporte + Hospedagem + Alimentação + Outros) + Ajuste - Desconto.</p>
-        </div>
-        <div class="field">
-          <label for="reimbursement_calc_base">Base</label>
-          <input id="reimbursement_calc_base" name="calc_base_amount" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field">
-          <label for="reimbursement_calc_transport">Transporte</label>
-          <input id="reimbursement_calc_transport" name="calc_transport_amount" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field">
-          <label for="reimbursement_calc_lodging">Hospedagem</label>
-          <input id="reimbursement_calc_lodging" name="calc_lodging_amount" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field">
-          <label for="reimbursement_calc_food">Alimentação</label>
-          <input id="reimbursement_calc_food" name="calc_food_amount" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field">
-          <label for="reimbursement_calc_other">Outros</label>
-          <input id="reimbursement_calc_other" name="calc_other_amount" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field">
-          <label for="reimbursement_calc_adjustment">Ajuste (%)</label>
-          <input id="reimbursement_calc_adjustment" name="calc_adjustment_percent" type="number" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field">
-          <label for="reimbursement_calc_discount">Desconto</label>
-          <input id="reimbursement_calc_discount" name="calc_discount_amount" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field field-wide">
-          <p class="muted">Total calculado: <strong id="reimbursement_calc_total_preview">R$ 0,00</strong></p>
-        </div>
-        <div class="field">
-          <label for="reimbursement_amount">Valor</label>
-          <input id="reimbursement_amount" name="amount" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field">
-          <label for="reimbursement_reference_month">Competência</label>
-          <input id="reimbursement_reference_month" name="reference_month" type="month">
-        </div>
-        <div class="field">
-          <label for="reimbursement_due_date">Vencimento</label>
-          <input id="reimbursement_due_date" name="due_date" type="date">
-        </div>
-        <div class="field">
-          <label for="reimbursement_paid_at">Data do pagamento</label>
-          <input id="reimbursement_paid_at" name="paid_at" type="date">
-        </div>
-        <div class="field field-wide">
-          <label for="reimbursement_notes">Observações</label>
-          <textarea id="reimbursement_notes" name="notes" rows="3"></textarea>
-        </div>
-      </div>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Registrar lançamento</button>
-      </div>
-    </form>
-  <?php endif; ?>
-
   <?php if ($reimbursementItems === []): ?>
     <p class="muted">Nenhum lançamento financeiro registrado para esta pessoa.</p>
   <?php else: ?>
@@ -2294,6 +2767,99 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         </tbody>
       </table>
     </div>
+  <?php endif; ?>
+
+  <?php if (($canManage ?? false) === true): ?>
+    <details class="reimbursement-edit-mode">
+      <summary class="btn btn-outline">Adicionar/ajustar lançamentos reais</summary>
+      <form method="post" action="<?= e(url('/people/reimbursements/store')) ?>" class="reimbursement-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+        <div class="form-grid">
+          <div class="field">
+            <label for="reimbursement_entry_type">Tipo</label>
+            <select id="reimbursement_entry_type" name="entry_type">
+              <option value="boleto">Boleto</option>
+              <option value="pagamento">Pagamento</option>
+              <option value="ajuste">Ajuste</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="reimbursement_status">Status</label>
+            <select id="reimbursement_status" name="status">
+              <option value="pendente">Pendente</option>
+              <option value="pago">Pago</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div class="field field-wide">
+            <label for="reimbursement_title">Título do lançamento</label>
+            <input id="reimbursement_title" name="title" type="text" minlength="3" maxlength="190" required placeholder="Ex.: Boleto órgão de origem - março/2026">
+          </div>
+          <div class="field field-wide">
+            <label for="reimbursement_use_calculator" style="display:flex; align-items:center; gap:8px;">
+              <input id="reimbursement_use_calculator" name="use_calculator" type="checkbox" value="1">
+              Usar calculadora automática com memória de cálculo
+            </label>
+            <p class="muted">Fórmula: (Base + Transporte + Hospedagem + Alimentação + Outros) + Ajuste - Desconto.</p>
+          </div>
+          <div class="field">
+            <label for="reimbursement_calc_base">Base</label>
+            <input id="reimbursement_calc_base" name="calc_base_amount" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label for="reimbursement_calc_transport">Transporte</label>
+            <input id="reimbursement_calc_transport" name="calc_transport_amount" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label for="reimbursement_calc_lodging">Hospedagem</label>
+            <input id="reimbursement_calc_lodging" name="calc_lodging_amount" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label for="reimbursement_calc_food">Alimentação</label>
+            <input id="reimbursement_calc_food" name="calc_food_amount" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label for="reimbursement_calc_other">Outros</label>
+            <input id="reimbursement_calc_other" name="calc_other_amount" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label for="reimbursement_calc_adjustment">Ajuste (%)</label>
+            <input id="reimbursement_calc_adjustment" name="calc_adjustment_percent" type="number" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label for="reimbursement_calc_discount">Desconto</label>
+            <input id="reimbursement_calc_discount" name="calc_discount_amount" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field field-wide">
+            <p class="muted">Total calculado: <strong id="reimbursement_calc_total_preview">R$ 0,00</strong></p>
+          </div>
+          <div class="field">
+            <label for="reimbursement_amount">Valor</label>
+            <input id="reimbursement_amount" name="amount" type="number" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label for="reimbursement_reference_month">Competência</label>
+            <input id="reimbursement_reference_month" name="reference_month" type="month">
+          </div>
+          <div class="field">
+            <label for="reimbursement_due_date">Vencimento</label>
+            <input id="reimbursement_due_date" name="due_date" type="date">
+          </div>
+          <div class="field">
+            <label for="reimbursement_paid_at">Data do pagamento</label>
+            <input id="reimbursement_paid_at" name="paid_at" type="date">
+          </div>
+          <div class="field field-wide">
+            <label for="reimbursement_notes">Observações</label>
+            <textarea id="reimbursement_notes" name="notes" rows="3"></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Registrar lançamento</button>
+        </div>
+      </form>
+    </details>
   <?php endif; ?>
 
   <div style="margin-top: 14px;">

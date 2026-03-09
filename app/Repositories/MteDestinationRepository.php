@@ -20,6 +20,8 @@ final class MteDestinationRepository
         $sortMap = [
             'name' => 'name',
             'code' => 'code',
+            'acronym' => 'acronym',
+            'uf' => 'uf',
             'created_at' => 'created_at',
         ];
 
@@ -30,10 +32,12 @@ final class MteDestinationRepository
         $params = [];
 
         if ($query !== '') {
-            $where .= ' AND (name LIKE :query_name OR code LIKE :query_code)';
+            $where .= ' AND (name LIKE :query_name OR code LIKE :query_code OR acronym LIKE :query_acronym OR uf LIKE :query_uf)';
             $search = '%' . $query . '%';
             $params['query_name'] = $search;
             $params['query_code'] = $search;
+            $params['query_acronym'] = $search;
+            $params['query_uf'] = $search;
         }
 
         $countSql = "SELECT COUNT(*) AS total FROM mte_destinations {$where}";
@@ -50,6 +54,8 @@ final class MteDestinationRepository
                 id,
                 name,
                 code,
+                acronym,
+                uf,
                 created_at
             FROM mte_destinations
             {$where}
@@ -82,6 +88,10 @@ final class MteDestinationRepository
                 id,
                 name,
                 code,
+                acronym,
+                uf,
+                upag_code,
+                parent_uorg_code,
                 notes,
                 created_at,
                 updated_at
@@ -102,12 +112,20 @@ final class MteDestinationRepository
             'INSERT INTO mte_destinations (
                 name,
                 code,
+                acronym,
+                uf,
+                upag_code,
+                parent_uorg_code,
                 notes,
                 created_at,
                 updated_at
             ) VALUES (
                 :name,
                 :code,
+                :acronym,
+                :uf,
+                :upag_code,
+                :parent_uorg_code,
                 :notes,
                 NOW(),
                 NOW()
@@ -117,6 +135,10 @@ final class MteDestinationRepository
         $stmt->execute([
             'name' => $data['name'],
             'code' => $data['code'],
+            'acronym' => $data['acronym'],
+            'uf' => $data['uf'],
+            'upag_code' => $data['upag_code'],
+            'parent_uorg_code' => $data['parent_uorg_code'],
             'notes' => $data['notes'],
         ]);
 
@@ -131,6 +153,10 @@ final class MteDestinationRepository
              SET
                 name = :name,
                 code = :code,
+                acronym = :acronym,
+                uf = :uf,
+                upag_code = :upag_code,
+                parent_uorg_code = :parent_uorg_code,
                 notes = :notes,
                 updated_at = NOW()
              WHERE id = :id AND deleted_at IS NULL'
@@ -140,6 +166,10 @@ final class MteDestinationRepository
             'id' => $id,
             'name' => $data['name'],
             'code' => $data['code'],
+            'acronym' => $data['acronym'],
+            'uf' => $data['uf'],
+            'upag_code' => $data['upag_code'],
+            'parent_uorg_code' => $data['parent_uorg_code'],
             'notes' => $data['notes'],
         ]);
     }
@@ -196,9 +226,10 @@ final class MteDestinationRepository
     {
         $stmt = $this->db->query(
             'SELECT id, name, code
+             , acronym, uf
              FROM mte_destinations
              WHERE deleted_at IS NULL
-             ORDER BY name ASC'
+             ORDER BY name ASC, acronym ASC, id ASC'
         );
 
         return $stmt->fetchAll();

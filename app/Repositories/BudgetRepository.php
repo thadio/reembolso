@@ -317,6 +317,18 @@ final class BudgetRepository
         return $stmt->rowCount();
     }
 
+    public function deleteScenariosByCycle(int $cycleId): int
+    {
+        $stmt = $this->db->prepare(
+            'DELETE FROM hiring_scenarios
+             WHERE budget_cycle_id = :budget_cycle_id
+               AND deleted_at IS NULL'
+        );
+        $stmt->execute(['budget_cycle_id' => $cycleId]);
+
+        return $stmt->rowCount();
+    }
+
     public function deleteCycle(int $cycleId): bool
     {
         $stmt = $this->db->prepare(
@@ -375,64 +387,80 @@ final class BudgetRepository
     {
         $stmt = $this->db->query(
             'SELECT
-                p.id,
-                p.organ_id,
-                p.cargo,
-                p.setor,
-                p.avg_monthly_cost,
-                p.notes,
-                p.updated_by,
-                p.created_at,
-                p.updated_at,
+                o.id AS organ_id,
                 o.name AS organ_name,
-                u.name AS updated_by_name
-             FROM org_cost_parameters p
-             INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
-             LEFT JOIN users u ON u.id = p.updated_by
-             WHERE p.deleted_at IS NULL
-             ORDER BY o.name ASC, p.cargo ASC, p.setor ASC'
+                "" AS cargo,
+                "" AS setor,
+                ROUND(COALESCE(mirror.avg_monthly_cost, planning.avg_monthly_cost, 0), 2) AS avg_monthly_cost,
+                CASE
+                    WHEN mirror.avg_monthly_cost IS NOT NULL THEN "Historico de espelhos de custo"
+                    WHEN planning.avg_monthly_cost IS NOT NULL THEN "Historico de custos planejados"
+                    ELSE "Sem base historica"
+                END AS notes,
+                NULL AS updated_by,
+                NULL AS created_at,
+                NULL AS updated_at,
+                "Sistema" AS updated_by_name,
+                COALESCE(mirror.historical_records, planning.historical_records, 0) AS historical_records,
+                mirror.first_reference_month,
+                mirror.last_reference_month
+             FROM organs o
+             LEFT JOIN (
+                SELECT
+                    cm.organ_id,
+                    AVG(cm.total_amount) AS avg_monthly_cost,
+                    COUNT(*) AS historical_records,
+                    MIN(cm.reference_month) AS first_reference_month,
+                    MAX(cm.reference_month) AS last_reference_month
+                 FROM cost_mirrors cm
+                 WHERE cm.deleted_at IS NULL
+                   AND cm.total_amount > 0
+                 GROUP BY cm.organ_id
+             ) mirror ON mirror.organ_id = o.id
+             LEFT JOIN (
+                SELECT
+                    src.organ_id,
+                    AVG(src.person_monthly) AS avg_monthly_cost,
+                    COUNT(*) AS historical_records
+                 FROM (
+                    SELECT
+                        p.organ_id,
+                        cp.person_id,
+                        SUM(
+                            CASE
+                                WHEN cpi.cost_type = "mensal"
+                                     AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
+                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                THEN cpi.amount
+                                WHEN cpi.cost_type = "anual"
+                                     AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
+                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                THEN cpi.amount / 12
+                                WHEN cpi.cost_type IN ("eventual", "unico")
+                                     AND (
+                                        (cpi.start_date IS NOT NULL AND DATE_FORMAT(cpi.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                                        OR (cpi.start_date IS NULL AND DATE_FORMAT(cpi.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                                     )
+                                THEN cpi.amount
+                                ELSE 0
+                            END
+                        ) AS person_monthly
+                    FROM cost_plans cp
+                    INNER JOIN people p ON p.id = cp.person_id AND p.deleted_at IS NULL
+                    INNER JOIN cost_plan_items cpi ON cpi.cost_plan_id = cp.id AND cpi.deleted_at IS NULL
+                    WHERE cp.deleted_at IS NULL
+                      AND cp.is_active = 1
+                    GROUP BY p.organ_id, cp.person_id
+                 ) src
+                 WHERE src.person_monthly > 0
+                 GROUP BY src.organ_id
+             ) planning ON planning.organ_id = o.id
+             WHERE o.deleted_at IS NULL
+               AND COALESCE(mirror.avg_monthly_cost, planning.avg_monthly_cost, 0) > 0
+             ORDER BY o.name ASC'
         );
 
         return $stmt->fetchAll();
-    }
-
-    /** @return array<string, mixed>|null */
-    public function findOrgParameterByOrgan(int $organId): ?array
-    {
-        return $this->findOrgParameterExact($organId, '', '');
-    }
-
-    /** @return array<string, mixed>|null */
-    public function findOrgParameterExact(int $organId, string $cargo, string $setor): ?array
-    {
-        $stmt = $this->db->prepare(
-            'SELECT
-                p.id,
-                p.organ_id,
-                p.cargo,
-                p.setor,
-                p.avg_monthly_cost,
-                p.notes,
-                p.updated_by,
-                p.created_at,
-                p.updated_at,
-                o.name AS organ_name
-             FROM org_cost_parameters p
-             INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
-             WHERE p.organ_id = :organ_id
-               AND p.cargo = :cargo
-               AND p.setor = :setor
-               AND p.deleted_at IS NULL
-             LIMIT 1'
-        );
-        $stmt->execute([
-            'organ_id' => $organId,
-            'cargo' => $cargo,
-            'setor' => $setor,
-        ]);
-        $row = $stmt->fetch();
-
-        return $row === false ? null : $row;
     }
 
     /** @return array<string, mixed>|null */
@@ -443,101 +471,94 @@ final class BudgetRepository
 
         $stmt = $this->db->prepare(
             'SELECT
-                p.id,
-                p.organ_id,
-                p.cargo,
-                p.setor,
-                p.avg_monthly_cost,
-                p.notes,
-                p.updated_by,
-                p.created_at,
-                p.updated_at,
-                o.name AS organ_name
-             FROM org_cost_parameters p
-             INNER JOIN organs o ON o.id = p.organ_id AND o.deleted_at IS NULL
-             WHERE p.organ_id = :organ_id
-               AND p.deleted_at IS NULL
-               AND (
-                    (p.cargo = :cargo_exact AND p.setor = :setor_exact)
-                    OR (p.cargo = :cargo_fallback AND p.setor = "")
-                    OR (p.cargo = "" AND p.setor = :setor_fallback)
-                    OR (p.cargo = "" AND p.setor = "")
-               )
-             ORDER BY
+                o.id AS organ_id,
+                o.name AS organ_name,
+                :cargo_value AS cargo,
+                :setor_value AS setor,
+                ROUND(COALESCE(mirror.avg_monthly_cost, planning.avg_monthly_cost, 0), 2) AS avg_monthly_cost,
                 CASE
-                    WHEN p.cargo = :cargo_rank AND p.setor = :setor_rank THEN 0
-                    WHEN p.cargo = :cargo_rank AND p.setor = "" THEN 1
-                    WHEN p.cargo = "" AND p.setor = :setor_rank THEN 2
-                    ELSE 3
-                END,
-                p.id DESC
+                    WHEN mirror.avg_monthly_cost IS NOT NULL THEN "Historico de espelhos de custo"
+                    WHEN planning.avg_monthly_cost IS NOT NULL THEN "Historico de custos planejados"
+                    ELSE "Sem base historica"
+                END AS notes,
+                NULL AS updated_by,
+                NULL AS created_at,
+                NULL AS updated_at,
+                COALESCE(mirror.historical_records, planning.historical_records, 0) AS historical_records,
+                mirror.first_reference_month,
+                mirror.last_reference_month
+             FROM organs o
+             LEFT JOIN (
+                SELECT
+                    cm.organ_id,
+                    AVG(cm.total_amount) AS avg_monthly_cost,
+                    COUNT(*) AS historical_records,
+                    MIN(cm.reference_month) AS first_reference_month,
+                    MAX(cm.reference_month) AS last_reference_month
+                 FROM cost_mirrors cm
+                 WHERE cm.deleted_at IS NULL
+                   AND cm.total_amount > 0
+                 GROUP BY cm.organ_id
+             ) mirror ON mirror.organ_id = o.id
+             LEFT JOIN (
+                SELECT
+                    src.organ_id,
+                    AVG(src.person_monthly) AS avg_monthly_cost,
+                    COUNT(*) AS historical_records
+                 FROM (
+                    SELECT
+                        p.organ_id,
+                        cp.person_id,
+                        SUM(
+                            CASE
+                                WHEN cpi.cost_type = "mensal"
+                                     AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
+                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                THEN cpi.amount
+                                WHEN cpi.cost_type = "anual"
+                                     AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
+                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                THEN cpi.amount / 12
+                                WHEN cpi.cost_type IN ("eventual", "unico")
+                                     AND (
+                                        (cpi.start_date IS NOT NULL AND DATE_FORMAT(cpi.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                                        OR (cpi.start_date IS NULL AND DATE_FORMAT(cpi.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                                     )
+                                THEN cpi.amount
+                                ELSE 0
+                            END
+                        ) AS person_monthly
+                    FROM cost_plans cp
+                    INNER JOIN people p ON p.id = cp.person_id AND p.deleted_at IS NULL
+                    INNER JOIN cost_plan_items cpi ON cpi.cost_plan_id = cp.id AND cpi.deleted_at IS NULL
+                    WHERE cp.deleted_at IS NULL
+                      AND cp.is_active = 1
+                    GROUP BY p.organ_id, cp.person_id
+                 ) src
+                 WHERE src.person_monthly > 0
+                 GROUP BY src.organ_id
+             ) planning ON planning.organ_id = o.id
+             WHERE o.id = :organ_id
+               AND o.deleted_at IS NULL
              LIMIT 1'
         );
         $stmt->execute([
             'organ_id' => $organId,
-            'cargo_exact' => $cargoScope,
-            'setor_exact' => $setorScope,
-            'cargo_fallback' => $cargoScope,
-            'setor_fallback' => $setorScope,
-            'cargo_rank' => $cargoScope,
-            'setor_rank' => $setorScope,
+            'cargo_value' => $cargoScope,
+            'setor_value' => $setorScope,
         ]);
         $row = $stmt->fetch();
 
-        return $row === false ? null : $row;
-    }
+        if ($row === false) {
+            return null;
+        }
 
-    public function upsertOrgParameter(
-        int $organId,
-        string $cargo,
-        string $setor,
-        string $avgMonthlyCost,
-        ?string $notes,
-        ?int $updatedBy
-    ): int
-    {
-        $stmt = $this->db->prepare(
-            'INSERT INTO org_cost_parameters (
-                organ_id,
-                cargo,
-                setor,
-                avg_monthly_cost,
-                notes,
-                updated_by,
-                created_at,
-                updated_at,
-                deleted_at
-            ) VALUES (
-                :organ_id,
-                :cargo,
-                :setor,
-                :avg_monthly_cost,
-                :notes,
-                :updated_by,
-                NOW(),
-                NOW(),
-                NULL
-            )
-            ON DUPLICATE KEY UPDATE
-                avg_monthly_cost = VALUES(avg_monthly_cost),
-                notes = VALUES(notes),
-                updated_by = VALUES(updated_by),
-                updated_at = NOW(),
-                deleted_at = NULL'
-        );
+        $avgMonthly = (float) ($row['avg_monthly_cost'] ?? 0.0);
+        if ($avgMonthly <= 0.0) {
+            return null;
+        }
 
-        $stmt->execute([
-            'organ_id' => $organId,
-            'cargo' => $cargo,
-            'setor' => $setor,
-            'avg_monthly_cost' => $avgMonthlyCost,
-            'notes' => $notes,
-            'updated_by' => $updatedBy,
-        ]);
-
-        $row = $this->findOrgParameterExact($organId, $cargo, $setor);
-
-        return (int) ($row['id'] ?? 0);
+        return $row;
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -736,6 +757,17 @@ final class BudgetRepository
 
     public function globalAverageMonthlyCost(): float
     {
+        $historicalStmt = $this->db->query(
+            'SELECT IFNULL(AVG(cm.total_amount), 0) AS avg_monthly
+             FROM cost_mirrors cm
+             WHERE cm.deleted_at IS NULL
+               AND cm.total_amount > 0'
+        );
+        $historicalAverage = (float) ($historicalStmt->fetch()['avg_monthly'] ?? 0.0);
+        if ($historicalAverage > 0.0) {
+            return round($historicalAverage, 2);
+        }
+
         $stmt = $this->db->query(
             'SELECT IFNULL(AVG(src.person_monthly), 0) AS avg_monthly
              FROM (
@@ -751,7 +783,7 @@ final class BudgetRepository
                                  AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
                                  AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
                             THEN cpi.amount / 12
-                            WHEN cpi.cost_type = "unico"
+                            WHEN cpi.cost_type IN ("eventual", "unico")
                                  AND (
                                     (cpi.start_date IS NOT NULL AND DATE_FORMAT(cpi.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
                                     OR (cpi.start_date IS NULL AND DATE_FORMAT(cpi.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
@@ -813,16 +845,16 @@ final class BudgetRepository
                 (SELECT IFNULL(SUM(
                     CASE
                         WHEN cpi.cost_type = "mensal"
-                             AND (cpi.start_date IS NULL OR cpi.start_date <= :next_year_end_mensal)
-                             AND (cpi.end_date IS NULL OR cpi.end_date >= :next_year_start_mensal)
-                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= :next_year_end_mensal)
-                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= :next_year_start_mensal)
+                             AND (cpi.start_date IS NULL OR cpi.start_date <= :next_year_end_mensal_cost)
+                             AND (cpi.end_date IS NULL OR cpi.end_date >= :next_year_start_mensal_cost)
+                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= :next_year_end_mensal_assignment)
+                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= :next_year_start_mensal_assignment)
                         THEN cpi.amount
                         WHEN cpi.cost_type = "anual"
-                             AND (cpi.start_date IS NULL OR cpi.start_date <= :next_year_end_anual)
-                             AND (cpi.end_date IS NULL OR cpi.end_date >= :next_year_start_anual)
-                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= :next_year_end_anual)
-                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= :next_year_start_anual)
+                             AND (cpi.start_date IS NULL OR cpi.start_date <= :next_year_end_anual_cost)
+                             AND (cpi.end_date IS NULL OR cpi.end_date >= :next_year_start_anual_cost)
+                             AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= :next_year_end_anual_assignment)
+                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= :next_year_start_anual_assignment)
                         THEN cpi.amount / 12
                         ELSE 0
                     END
@@ -844,10 +876,14 @@ final class BudgetRepository
             'year_committed_invoices' => $year,
             'financial_nature_committed_reimbursements' => $normalizedNature,
             'year_committed_reimbursements' => $year,
-            'next_year_start_mensal' => $nextYearStart,
-            'next_year_end_mensal' => $nextYearEnd,
-            'next_year_start_anual' => $nextYearStart,
-            'next_year_end_anual' => $nextYearEnd,
+            'next_year_start_mensal_cost' => $nextYearStart,
+            'next_year_end_mensal_cost' => $nextYearEnd,
+            'next_year_start_mensal_assignment' => $nextYearStart,
+            'next_year_end_mensal_assignment' => $nextYearEnd,
+            'next_year_start_anual_cost' => $nextYearStart,
+            'next_year_end_anual_cost' => $nextYearEnd,
+            'next_year_start_anual_assignment' => $nextYearStart,
+            'next_year_end_anual_assignment' => $nextYearEnd,
         ]);
 
         $row = $stmt->fetch();
@@ -937,7 +973,7 @@ final class BudgetRepository
                                  AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= ' . $monthEndExpr . ')
                                  AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')
                             THEN cpi.amount / 12
-                            WHEN cpi.cost_type = "unico"
+                            WHEN cpi.cost_type IN ("eventual", "unico")
                                  AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(' . $monthStartExpr . ', "%Y-%m")
                                  AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= ' . $monthEndExpr . ')
                                  AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')

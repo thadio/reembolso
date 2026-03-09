@@ -55,7 +55,7 @@ final class DashboardRepository
                              AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= LAST_DAY(CURDATE()))
                              AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
                         THEN i.amount / 12
-                        WHEN i.cost_type = "unico"
+                        WHEN i.cost_type IN ("eventual", "unico")
                              AND (
                                (i.start_date IS NOT NULL AND DATE_FORMAT(i.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
                                OR (i.start_date IS NULL AND DATE_FORMAT(i.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
@@ -120,17 +120,45 @@ final class DashboardRepository
     {
         $stmt = $this->db->query(
             'SELECT
+                f.id AS flow_id,
+                f.name AS flow_name,
+                f.is_default AS flow_is_default,
+                fs.sort_order AS flow_sort_order,
                 s.code,
                 s.label,
-                s.sort_order,
+                s.sort_order AS status_sort_order,
                 COUNT(p.id) AS total
-             FROM assignment_statuses s
+             FROM assignment_flows f
+             INNER JOIN assignment_flow_steps fs
+               ON fs.flow_id = f.id
+              AND fs.is_active = 1
+             INNER JOIN assignment_statuses s
+               ON s.id = fs.status_id
+              AND s.is_active = 1
+             LEFT JOIN assignments a
+               ON a.flow_id = f.id
+              AND a.current_status_id = s.id
+              AND a.deleted_at IS NULL
              LEFT JOIN people p
-               ON p.status = s.code
+               ON p.id = a.person_id
               AND p.deleted_at IS NULL
-             WHERE s.is_active = 1
-             GROUP BY s.id, s.code, s.label, s.sort_order
-             ORDER BY s.sort_order ASC'
+             WHERE f.deleted_at IS NULL
+               AND f.is_active = 1
+             GROUP BY
+                f.id,
+                f.name,
+                f.is_default,
+                fs.sort_order,
+                s.id,
+                s.code,
+                s.label,
+                s.sort_order
+             ORDER BY
+                f.is_default DESC,
+                f.name ASC,
+                fs.sort_order ASC,
+                s.sort_order ASC,
+                s.id ASC'
         );
 
         return $stmt->fetchAll();

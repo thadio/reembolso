@@ -217,7 +217,7 @@ if ($canViewBudget) {
 }
 if ($canViewMteDestinations) {
     $primaryMenuItems[] = [
-        'label' => 'Lotações MTE',
+        'label' => 'UORG MTE',
         'href' => '/mte-destinations',
         'icon' => 'mte_destination',
         'active' => str_starts_with($path, '/mte-destinations'),
@@ -425,7 +425,7 @@ if ($canManageLgpd) {
 }
 if ($canManageMteDestinations) {
     $quickMenuItems[] = [
-        'label' => 'Nova lotação MTE',
+        'label' => 'Nova UORG MTE',
         'href' => '/mte-destinations/create',
         'icon' => 'plus',
         'active' => $path === '/mte-destinations/create',

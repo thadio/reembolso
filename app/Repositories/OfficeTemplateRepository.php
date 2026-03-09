@@ -621,7 +621,7 @@ final class OfficeTemplateRepository
                     CASE
                         WHEN i.cost_type = "mensal" THEN i.amount
                         WHEN i.cost_type = "anual" THEN (i.amount / 12)
-                        WHEN i.cost_type = "unico" THEN i.amount
+                        WHEN i.cost_type IN ("eventual", "unico") THEN i.amount
                         ELSE 0
                     END
                 ), 0) AS monthly_total,
@@ -629,7 +629,7 @@ final class OfficeTemplateRepository
                     CASE
                         WHEN i.cost_type = "mensal" THEN (i.amount * 12)
                         WHEN i.cost_type = "anual" THEN i.amount
-                        WHEN i.cost_type = "unico" THEN i.amount
+                        WHEN i.cost_type IN ("eventual", "unico") THEN i.amount
                         ELSE 0
                     END
                 ), 0) AS annualized_total

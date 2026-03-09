@@ -6,10 +6,11 @@ namespace App\Services;
 
 use App\Repositories\CostItemCatalogRepository;
 use App\Repositories\CostPlanRepository;
+use DateTimeImmutable;
 
 final class CostPlanService
 {
-    private const ALLOWED_COST_TYPES = ['mensal', 'anual', 'unico'];
+    private const ALLOWED_COST_TYPES = ['mensal', 'anual', 'eventual', 'unico'];
 
     public function __construct(
         private CostPlanRepository $costs,
@@ -20,11 +21,14 @@ final class CostPlanService
     }
 
     /**
-     * @return array{active_plan: array<string, mixed>|null, items: array<int, array<string, mixed>>, summary: array<string, mixed>, versions: array<int, array<string, mixed>>, version_items: array<int, array<int, array<string, mixed>>>, previous_plan: array<string, mixed>|null, comparison: array<string, float|int|null>}
+     * @return array{active_plan: array<string, mixed>|null, items: array<int, array<string, mixed>>, summary: array<string, mixed>, versions: array<int, array<string, mixed>>, version_items: array<int, array<int, array<string, mixed>>>, previous_plan: array<string, mixed>|null, comparison: array<string, float|int|null>, suggested_version_label: string, next_version_number: int}
      */
     public function profileData(int $personId): array
     {
         $versions = $this->costs->plansByPerson($personId, 12);
+        $latestVersion = $versions[0] ?? null;
+        $nextVersion = $latestVersion !== null ? ((int) ($latestVersion['version_number'] ?? 0) + 1) : 1;
+        $suggestedVersionLabel = $this->buildAutoVersionLabel($nextVersion);
 
         $activePlan = null;
         foreach ($versions as $version) {
@@ -95,6 +99,8 @@ final class CostPlanService
             'version_items' => $versionItems,
             'previous_plan' => $previousPlan,
             'comparison' => $comparison,
+            'suggested_version_label' => $suggestedVersionLabel,
+            'next_version_number' => $nextVersion,
         ];
     }
 
@@ -110,7 +116,6 @@ final class CostPlanService
      */
     public function createVersion(int $personId, array $input, int $userId, string $ip, string $userAgent): array
     {
-        $label = $this->clean($input['label'] ?? null);
         $cloneCurrent = ((string) ($input['clone_current'] ?? '1')) !== '0';
 
         try {
@@ -121,7 +126,7 @@ final class CostPlanService
 
             $this->costs->deactivateActivePlans($personId);
 
-            $finalLabel = $label !== null ? mb_substr($label, 0, 190) : 'Versão ' . $nextVersion;
+            $finalLabel = $this->buildAutoVersionLabel($nextVersion);
             $newPlanId = $this->costs->createPlan(
                 personId: $personId,
                 versionNumber: $nextVersion,
@@ -288,6 +293,14 @@ final class CostPlanService
                 ],
                 metadata: [
                     'notes' => $notes,
+                    'cost_code' => (int) ($catalogItem['cost_code'] ?? 0),
+                    'macro_category' => (string) ($catalogItem['macro_category'] ?? ''),
+                    'subcategory' => (string) ($catalogItem['subcategory'] ?? ''),
+                    'expense_nature' => (string) ($catalogItem['expense_nature'] ?? ''),
+                    'calculation_base' => (string) ($catalogItem['calculation_base'] ?? ''),
+                    'charge_incidence' => (int) ($catalogItem['charge_incidence'] ?? 0),
+                    'reimbursability' => (string) ($catalogItem['reimbursability'] ?? ''),
+                    'predictability' => (string) ($catalogItem['predictability'] ?? ''),
                     'linkage_code' => (int) ($catalogItem['linkage_code'] ?? 0),
                     'is_reimbursable' => (int) ($catalogItem['is_reimbursable'] ?? 0),
                     'payment_periodicity' => (string) ($catalogItem['payment_periodicity'] ?? ''),
@@ -332,16 +345,190 @@ final class CostPlanService
         ];
     }
 
+    /**
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, warnings: array<int, string>}
+     */
+    public function saveTable(int $personId, array $input, int $userId, string $ip, string $userAgent): array
+    {
+        $parsed = $this->parseTableRows($input);
+        if ($parsed['errors'] !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Não foi possível salvar os custos da tabela.',
+                'errors' => $parsed['errors'],
+                'warnings' => [],
+            ];
+        }
+
+        $rows = $parsed['rows'];
+        if ($rows === []) {
+            return [
+                'ok' => false,
+                'message' => 'Não foi possível salvar os custos da tabela.',
+                'errors' => ['Informe ao menos um custo maior que zero para salvar a versão.'],
+                'warnings' => [],
+            ];
+        }
+
+        try {
+            $this->costs->beginTransaction();
+
+            $latest = $this->costs->latestPlanByPerson($personId);
+            $nextVersion = $latest !== null ? ((int) ($latest['version_number'] ?? 0) + 1) : 1;
+            $finalLabel = $this->buildAutoVersionLabel($nextVersion);
+
+            $this->costs->deactivateActivePlans($personId);
+            $newPlanId = $this->costs->createPlan(
+                personId: $personId,
+                versionNumber: $nextVersion,
+                label: $finalLabel,
+                createdBy: $userId,
+                isActive: true
+            );
+
+            $itemsCount = 0;
+            $monthlyTotal = 0.0;
+            $annualizedTotal = 0.0;
+
+            foreach ($rows as $row) {
+                $amount = (string) ($row['amount'] ?? '0.00');
+                $costType = (string) ($row['cost_type'] ?? 'mensal');
+                $itemName = mb_substr((string) ($row['item_name'] ?? ''), 0, 190);
+                $catalogId = (int) ($row['catalog_id'] ?? 0);
+                $startDate = isset($row['start_date']) ? (string) $row['start_date'] : null;
+                if ($startDate === '') {
+                    $startDate = null;
+                }
+                $endDate = isset($row['end_date']) ? (string) $row['end_date'] : null;
+                if ($endDate === '') {
+                    $endDate = null;
+                }
+                $notes = isset($row['notes']) ? (string) $row['notes'] : null;
+                if ($notes !== null && trim($notes) === '') {
+                    $notes = null;
+                }
+
+                $itemId = $this->costs->createItem(
+                    planId: $newPlanId,
+                    personId: $personId,
+                    costItemCatalogId: $catalogId > 0 ? $catalogId : null,
+                    itemName: $itemName,
+                    costType: $costType,
+                    amount: $amount,
+                    startDate: $startDate,
+                    endDate: $endDate,
+                    notes: $notes,
+                    createdBy: $userId
+                );
+
+                $itemsCount++;
+                $monthlyTotal += $this->monthlyEquivalent((float) $amount, $costType);
+                $annualizedTotal += $this->annualizedTotal((float) $amount, $costType);
+
+                $this->audit->log(
+                    entity: 'cost_plan_item',
+                    entityId: $itemId,
+                    action: 'create',
+                    beforeData: null,
+                    afterData: [
+                        'cost_plan_id' => $newPlanId,
+                        'person_id' => $personId,
+                        'cost_item_catalog_id' => $catalogId,
+                        'item_name' => $itemName,
+                        'cost_type' => $costType,
+                        'amount' => $amount,
+                        'start_date' => $startDate,
+                        'end_date' => $endDate,
+                    ],
+                    metadata: [
+                        'notes' => $notes,
+                        'cost_code' => (int) ($row['cost_code'] ?? 0),
+                        'macro_category' => (string) ($row['macro_category'] ?? ''),
+                        'subcategory' => (string) ($row['subcategory'] ?? ''),
+                        'expense_nature' => (string) ($row['expense_nature'] ?? ''),
+                        'calculation_base' => (string) ($row['calculation_base'] ?? ''),
+                        'charge_incidence' => (int) ($row['charge_incidence'] ?? 0),
+                        'reimbursability' => (string) ($row['reimbursability'] ?? ''),
+                        'predictability' => (string) ($row['predictability'] ?? ''),
+                        'linkage_code' => (int) ($row['linkage_code'] ?? 0),
+                        'is_reimbursable' => (int) ($row['is_reimbursable'] ?? 0),
+                        'payment_periodicity' => (string) ($row['payment_periodicity'] ?? ''),
+                        'source' => 'table_batch_save',
+                    ],
+                    userId: $userId,
+                    ip: $ip,
+                    userAgent: $userAgent
+                );
+            }
+
+            $this->audit->log(
+                entity: 'cost_plan',
+                entityId: $newPlanId,
+                action: 'version.create.auto_table',
+                beforeData: $latest,
+                afterData: [
+                    'person_id' => $personId,
+                    'version_number' => $nextVersion,
+                    'label' => $finalLabel,
+                    'is_active' => 1,
+                    'items_count' => $itemsCount,
+                    'monthly_total' => number_format($monthlyTotal, 2, '.', ''),
+                    'annualized_total' => number_format($annualizedTotal, 2, '.', ''),
+                ],
+                metadata: [
+                    'source' => 'people.costs.table',
+                ],
+                userId: $userId,
+                ip: $ip,
+                userAgent: $userAgent
+            );
+
+            $this->events->recordEvent(
+                entity: 'person',
+                type: 'cost_plan.table_saved',
+                payload: [
+                    'plan_id' => $newPlanId,
+                    'version_number' => $nextVersion,
+                    'items_count' => $itemsCount,
+                    'monthly_total' => round($monthlyTotal, 2),
+                    'annualized_total' => round($annualizedTotal, 2),
+                ],
+                entityId: $personId,
+                userId: $userId
+            );
+
+            $this->costs->commit();
+        } catch (\Throwable $exception) {
+            $this->costs->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Não foi possível salvar os custos da tabela.',
+                'errors' => ['Falha ao persistir a nova versão automática. Tente novamente.'],
+                'warnings' => [],
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'message' => 'Versão V' . $nextVersion . ' salva automaticamente com ' . count($rows) . ' item(ns).',
+            'errors' => [],
+            'warnings' => [],
+        ];
+    }
+
     /** @return array<string, mixed> */
     private function createInitialVersion(int $personId, int $userId, string $ip, string $userAgent): array
     {
         $latest = $this->costs->latestPlanByPerson($personId);
         $nextVersion = $latest !== null ? ((int) ($latest['version_number'] ?? 0) + 1) : 1;
+        $label = $this->buildAutoVersionLabel($nextVersion);
 
         $newPlanId = $this->costs->createPlan(
             personId: $personId,
             versionNumber: $nextVersion,
-            label: 'Versão ' . $nextVersion,
+            label: $label,
             createdBy: $userId,
             isActive: true
         );
@@ -354,7 +541,7 @@ final class CostPlanService
             afterData: [
                 'person_id' => $personId,
                 'version_number' => $nextVersion,
-                'label' => 'Versão ' . $nextVersion,
+                'label' => $label,
                 'is_active' => 1,
             ],
             metadata: null,
@@ -378,9 +565,137 @@ final class CostPlanService
             'id' => $newPlanId,
             'person_id' => $personId,
             'version_number' => $nextVersion,
-            'label' => 'Versão ' . $nextVersion,
+            'label' => $label,
             'is_active' => 1,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{errors: array<int, string>, rows: array<int, array<string, mixed>>}
+     */
+    private function parseTableRows(array $input): array
+    {
+        $rowsInput = is_array($input['items'] ?? null) ? $input['items'] : [];
+        $catalogItems = $this->catalogItems->activeList();
+        $errors = [];
+        $rows = [];
+
+        if ($catalogItems === []) {
+            return [
+                'errors' => ['Nenhum item de custo ativo encontrado no catálogo.'],
+                'rows' => [],
+            ];
+        }
+
+        foreach ($catalogItems as $catalogItem) {
+            $catalogId = (int) ($catalogItem['id'] ?? 0);
+            if ($catalogId <= 0) {
+                continue;
+            }
+
+            $rowInput = [];
+            $rawRow = $rowsInput[$catalogId] ?? $rowsInput[(string) $catalogId] ?? null;
+            if (is_array($rawRow)) {
+                $rowInput = $rawRow;
+            }
+
+            $amount = $this->parseMoney($rowInput['amount'] ?? null);
+            if ($amount === null || (float) $amount <= 0.0) {
+                continue;
+            }
+
+            $itemName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
+            $catalogCostType = mb_strtolower(trim((string) ($catalogItem['payment_periodicity'] ?? '')));
+            $requestedCostType = mb_strtolower(trim((string) ($rowInput['cost_type'] ?? '')));
+            $costType = $requestedCostType !== '' ? $requestedCostType : $catalogCostType;
+            if (!in_array($costType, self::ALLOWED_COST_TYPES, true)) {
+                $errors[] = 'Periodicidade inválida para o item "' . $itemName . '".';
+                continue;
+            }
+
+            $startDateRaw = $this->clean($rowInput['start_date'] ?? null);
+            $endDateRaw = $this->clean($rowInput['end_date'] ?? null);
+            $notes = $this->clean($rowInput['notes'] ?? null);
+
+            $startDate = $this->normalizeDate($startDateRaw);
+            if ($startDateRaw !== null && $startDate === null) {
+                $errors[] = 'Data de início inválida para o item "' . $itemName . '".';
+            }
+
+            $endDate = $this->normalizeDate($endDateRaw);
+            if ($endDateRaw !== null && $endDate === null) {
+                $errors[] = 'Data de fim inválida para o item "' . $itemName . '".';
+            }
+
+            if ($startDate !== null && $endDate !== null && strtotime($endDate) < strtotime($startDate)) {
+                $errors[] = 'Data de fim deve ser igual ou posterior ao início para o item "' . $itemName . '".';
+            }
+
+            if ($startDateRaw !== null && $startDate === null) {
+                continue;
+            }
+
+            if ($endDateRaw !== null && $endDate === null) {
+                continue;
+            }
+
+            if ($startDate !== null && $endDate !== null && strtotime($endDate) < strtotime($startDate)) {
+                continue;
+            }
+
+            $rows[] = [
+                'catalog_id' => $catalogId,
+                'item_name' => $itemName,
+                'cost_type' => $costType,
+                'amount' => $amount,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'notes' => $notes,
+                'cost_code' => (int) ($catalogItem['cost_code'] ?? 0),
+                'macro_category' => (string) ($catalogItem['macro_category'] ?? ''),
+                'subcategory' => (string) ($catalogItem['subcategory'] ?? ''),
+                'expense_nature' => (string) ($catalogItem['expense_nature'] ?? ''),
+                'calculation_base' => (string) ($catalogItem['calculation_base'] ?? ''),
+                'charge_incidence' => (int) ($catalogItem['charge_incidence'] ?? 0),
+                'reimbursability' => (string) ($catalogItem['reimbursability'] ?? ''),
+                'predictability' => (string) ($catalogItem['predictability'] ?? ''),
+                'linkage_code' => (int) ($catalogItem['linkage_code'] ?? 0),
+                'is_reimbursable' => (int) ($catalogItem['is_reimbursable'] ?? 0),
+                'payment_periodicity' => (string) ($catalogItem['payment_periodicity'] ?? ''),
+                'selected_periodicity' => $costType,
+            ];
+        }
+
+        return [
+            'errors' => $errors,
+            'rows' => $rows,
+        ];
+    }
+
+    private function monthlyEquivalent(float $amount, string $costType): float
+    {
+        return match ($costType) {
+            'mensal' => $amount,
+            'anual', 'eventual', 'unico' => $amount / 12,
+            default => 0.0,
+        };
+    }
+
+    private function annualizedTotal(float $amount, string $costType): float
+    {
+        return match ($costType) {
+            'mensal' => $amount * 12,
+            'anual', 'eventual', 'unico' => $amount,
+            default => 0.0,
+        };
+    }
+
+    private function buildAutoVersionLabel(int $versionNumber): string
+    {
+        $today = new DateTimeImmutable('now');
+
+        return 'V' . max(1, $versionNumber) . ' - ' . $today->format('d/m/Y');
     }
 
     private function parseMoney(mixed $value): ?string

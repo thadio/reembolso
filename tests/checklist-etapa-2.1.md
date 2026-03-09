@@ -4,31 +4,40 @@
 - [ ] `php db/migrate.php` aplicado com `007_phase2_cost_plans.sql`
 - [ ] `php db/seed.php` executado
 - [ ] Existe pessoa cadastrada com acesso ao Perfil 360
+- [ ] Existe ao menos 1 item ativo em `cost_item_catalog`
 
-## Criacao de versao
-- [ ] `POST /people/costs/version/create` cria versao inicial quando ainda nao existe plano de custos
-- [ ] Criacao de nova versao desativa a anterior e mantem apenas uma versao ativa
-- [ ] Opcao `clone_current=1` replica itens da versao anterior para a nova versao
-- [ ] Opcao `clone_current=0` cria nova versao vazia
+## Fluxo em tabela (oficial)
+- [ ] `POST /people/costs/item/store` com ao menos 1 valor > 0 cria versao automatica (`V1`) quando ainda nao existe plano
+- [ ] Novo salvamento da tabela gera nova versao automatica (`V2`, `V3`, ...) e desativa a versao anterior
+- [ ] Rotulo da proxima versao aparece previamente no formulario no padrao `Vn - dd/mm/aaaa`
+- [ ] Salvar tabela com todos os valores vazios retorna erro de validacao
+- [ ] Linhas com valor > 0 sao persistidas em lote na nova versao
 
-## Inclusao de itens
-- [ ] `POST /people/costs/item/store` inclui item valido para versao ativa
-- [ ] Tipos `mensal`, `anual` e `unico` sao aceitos
-- [ ] Valor menor/igual a zero e rejeitado com mensagem de erro
-- [ ] Vigencia com `end_date < start_date` e rejeitada
-- [ ] Sem versao ativa, o sistema cria versao inicial automaticamente antes de inserir o item
+## Validacoes por linha da tabela
+- [ ] Campo `Periodicidade` inicia com valor do catalogo e permite alterar para `mensal`, `anual` ou `unico`
+- [ ] Valor invalido (nao numerico) nao e salvo como item
+- [ ] Campo `Fim da vigencia` nao e exibido na tabela de custos
+- [ ] `Inicio da vigencia` vem preenchido por `Inicio efetivo (real)` e, sem esse dado, usa `Inicio efetivo (previsto)`
+- [ ] Data de inicio invalida e rejeitada com mensagem de erro
 
 ## Perfil 360 (visual)
 - [ ] Secao "Custos previstos" exibe versao ativa e KPIs
-- [ ] Tabela de itens mostra tipo, valor, vigencia e responsavel
+- [ ] Texto de apoio da secao exibe `Conforme {versao}`
+- [ ] Tabela principal lista todos os itens ativos do catalogo em modo somente leitura
+- [ ] Edicao da tabela so aparece apos acionar "Ajustar/alterar e gerar nova versao de custos"
+- [ ] Placeholders de valor orientam o usuario conforme periodicidade
+- [ ] Totais da tabela (periodo, anualizado e ate fim do ano) recalculam automaticamente durante digitacao
+- [ ] Atalho `Ctrl/Cmd + S` dispara salvamento da tabela
+- [ ] `Enter` avanca para o proximo campo e `Shift + Enter` volta para o campo anterior
+- [ ] Botao final da edicao exibe somente "Salvar nova versao"
 - [ ] Historico de versoes exibe totais por versao (mensal e anualizado)
 - [ ] Comparacao com versao anterior exibe deltas mensal e anualizado
 
 ## Auditoria e eventos
-- [ ] Criacao de versao registra `audit_log` (`entity=cost_plan`, `action=version.create`)
-- [ ] Inclusao de item registra `audit_log` (`entity=cost_plan_item`, `action=create`)
-- [ ] `system_events` registra `cost_plan.initial_created`, `cost_plan.version_created` e `cost_plan.item_added`
+- [ ] Salvamento em lote registra `audit_log` de versao (`entity=cost_plan`, `action=version.create.auto_table`)
+- [ ] Cada linha salva registra `audit_log` (`entity=cost_plan_item`, `action=create`)
+- [ ] `system_events` registra `cost_plan.table_saved` para cada salvamento da tabela
 
 ## Seguranca
-- [ ] Usuario sem `people.manage` recebe 403 nos endpoints de custos
-- [ ] Endpoints `POST` de custos exigem CSRF valido
+- [ ] Usuario sem `people.manage` recebe 403 no endpoint oficial de tabela (`POST /people/costs/item/store`)
+- [ ] Endpoint `POST /people/costs/item/store` exige CSRF valido

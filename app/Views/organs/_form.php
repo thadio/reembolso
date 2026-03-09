@@ -27,6 +27,11 @@ $organ = $organ ?? [];
     </div>
 
     <div class="field">
+      <label for="company_nire">NIRE</label>
+      <input id="company_nire" name="company_nire" type="text" value="<?= e(old('company_nire', (string) ($organ['company_nire'] ?? ''))) ?>">
+    </div>
+
+    <div class="field">
       <label for="organ_type">Tipo institucional</label>
       <?php $selectedOrganType = old('organ_type', (string) ($organ['organ_type'] ?? '')); ?>
       <select id="organ_type" name="organ_type">
@@ -37,6 +42,17 @@ $organ = $organ ?? [];
         <option value="fundacao_publica" <?= $selectedOrganType === 'fundacao_publica' ? 'selected' : '' ?>>Fundacao publica</option>
         <option value="empresa_publica" <?= $selectedOrganType === 'empresa_publica' ? 'selected' : '' ?>>Empresa publica</option>
         <option value="sociedade_economia_mista" <?= $selectedOrganType === 'sociedade_economia_mista' ? 'selected' : '' ?>>Sociedade de economia mista</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="company_dependency_type">Vinculacao da empresa</label>
+      <?php $selectedDependencyType = old('company_dependency_type', (string) ($organ['company_dependency_type'] ?? '')); ?>
+      <select id="company_dependency_type" name="company_dependency_type">
+        <option value="">Selecionar</option>
+        <option value="independente" <?= $selectedDependencyType === 'independente' ? 'selected' : '' ?>>Independente</option>
+        <option value="dependente" <?= $selectedDependencyType === 'dependente' ? 'selected' : '' ?>>Dependente</option>
+        <option value="em_liquidacao" <?= $selectedDependencyType === 'em_liquidacao' ? 'selected' : '' ?>>Em liquidacao</option>
       </select>
     </div>
 
@@ -67,6 +83,11 @@ $organ = $organ ?? [];
     <div class="field field-wide">
       <label for="supervising_organ">Orgao supervisor/vinculador</label>
       <input id="supervising_organ" name="supervising_organ" type="text" value="<?= e(old('supervising_organ', (string) ($organ['supervising_organ'] ?? ''))) ?>">
+    </div>
+
+    <div class="field">
+      <label for="federative_entity">Ente federativo vinculado</label>
+      <input id="federative_entity" name="federative_entity" type="text" value="<?= e(old('federative_entity', (string) ($organ['federative_entity'] ?? ''))) ?>">
     </div>
 
     <div class="field">
@@ -109,6 +130,31 @@ $organ = $organ ?? [];
       <textarea id="notes" name="notes" rows="4"><?= e(old('notes', (string) ($organ['notes'] ?? ''))) ?></textarea>
     </div>
 
+    <div class="field field-wide">
+      <label for="company_objective">Objetivo da empresa</label>
+      <textarea id="company_objective" name="company_objective" rows="4"><?= e(old('company_objective', (string) ($organ['company_objective'] ?? ''))) ?></textarea>
+    </div>
+
+    <div class="field field-wide">
+      <label for="capital_information">Capital social</label>
+      <textarea id="capital_information" name="capital_information" rows="3"><?= e(old('capital_information', (string) ($organ['capital_information'] ?? ''))) ?></textarea>
+    </div>
+
+    <div class="field field-wide">
+      <label for="creation_act">Ato de criacao</label>
+      <textarea id="creation_act" name="creation_act" rows="3"><?= e(old('creation_act', (string) ($organ['creation_act'] ?? ''))) ?></textarea>
+    </div>
+
+    <div class="field field-wide">
+      <label for="internal_regulations">Regulamentacao interna</label>
+      <textarea id="internal_regulations" name="internal_regulations" rows="3"><?= e(old('internal_regulations', (string) ($organ['internal_regulations'] ?? ''))) ?></textarea>
+    </div>
+
+    <div class="field field-wide">
+      <label for="subsidiaries">Subsidiarias</label>
+      <textarea id="subsidiaries" name="subsidiaries" rows="3"><?= e(old('subsidiaries', (string) ($organ['subsidiaries'] ?? ''))) ?></textarea>
+    </div>
+
     <div class="field">
       <label for="source_name">Fonte do cadastro</label>
       <input id="source_name" name="source_name" type="text" value="<?= e(old('source_name', (string) ($organ['source_name'] ?? ''))) ?>">
@@ -117,6 +163,11 @@ $organ = $organ ?? [];
     <div class="field field-wide">
       <label for="source_url">URL de referencia</label>
       <input id="source_url" name="source_url" type="url" value="<?= e(old('source_url', (string) ($organ['source_url'] ?? ''))) ?>">
+    </div>
+
+    <div class="field field-wide">
+      <label for="official_website">Site oficial</label>
+      <input id="official_website" name="official_website" type="url" value="<?= e(old('official_website', (string) ($organ['official_website'] ?? ''))) ?>">
     </div>
 
     <div class="form-actions field-wide">

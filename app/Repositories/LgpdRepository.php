@@ -463,7 +463,6 @@ final class LgpdRepository
                     OR birth_date IS NOT NULL
                     OR tags IS NOT NULL
                     OR notes IS NOT NULL
-                    OR mte_destination IS NOT NULL
                     OR name NOT LIKE :anonymized_name_like
                     OR sei_process_number IS NULL
                     OR sei_process_number NOT LIKE :anonymized_sei_like
@@ -491,7 +490,6 @@ final class LgpdRepository
                 email = NULL,
                 phone = NULL,
                 sei_process_number = CONCAT("anon-", id),
-                mte_destination = NULL,
                 tags = NULL,
                 notes = NULL,
                 updated_at = NOW()
@@ -504,7 +502,6 @@ final class LgpdRepository
                     OR birth_date IS NOT NULL
                     OR tags IS NOT NULL
                     OR notes IS NOT NULL
-                    OR mte_destination IS NOT NULL
                     OR name NOT LIKE :anonymized_name_like
                     OR sei_process_number IS NULL
                     OR sei_process_number NOT LIKE :anonymized_sei_like

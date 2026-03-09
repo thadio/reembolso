@@ -120,8 +120,6 @@ final class PeopleService
 
         $organs = $this->activeOrgans();
         $modalities = $this->activeModalities();
-        $destinations = $this->activeMteDestinations();
-
         $organsById = [];
         $organsByName = [];
         $organsByAcronym = [];
@@ -153,25 +151,11 @@ final class PeopleService
             $modalitiesByName[$this->normalizeLookupValue($name)] = $id;
         }
 
-        $destinationsByName = [];
-        $destinationsByCode = [];
-        foreach ($destinations as $destination) {
-            $name = trim((string) ($destination['name'] ?? ''));
-            $code = trim((string) ($destination['code'] ?? ''));
-            if ($name === '') {
-                continue;
-            }
-
-            $destinationsByName[$this->normalizeLookupValue($name)] = $name;
-            if ($code !== '') {
-                $destinationsByCode[$this->normalizeLookupValue($code)] = $name;
-            }
-        }
-
         $errors = [];
         $warnings = [];
         $candidates = [];
         $seenCpfs = [];
+        $seenSiapes = [];
         $processedRows = 0;
         $lineNumber = 1;
 
@@ -195,27 +179,21 @@ final class PeopleService
                 $modalitiesById,
                 $modalitiesByName
             );
-            $resolvedDestination = $this->resolveDestinationName(
-                (string) ($mapped['mte_destination'] ?? ''),
-                $destinationsByName,
-                $destinationsByCode
-            );
-
             $input = [
                 'organ_id' => $resolvedOrganId ?? 0,
                 'desired_modality_id' => $resolvedModalityId ?? 0,
                 'name' => (string) ($mapped['name'] ?? ''),
                 'cpf' => (string) ($mapped['cpf'] ?? ''),
+                'matricula_siape' => (string) ($mapped['matricula_siape'] ?? ''),
                 'birth_date' => (string) ($mapped['birth_date'] ?? ''),
                 'email' => (string) ($mapped['email'] ?? ''),
                 'phone' => (string) ($mapped['phone'] ?? ''),
                 'sei_process_number' => (string) ($mapped['sei_process_number'] ?? ''),
-                'mte_destination' => $resolvedDestination ?? (string) ($mapped['mte_destination'] ?? ''),
                 'tags' => (string) ($mapped['tags'] ?? ''),
                 'notes' => (string) ($mapped['notes'] ?? ''),
             ];
 
-            $validation = $this->validate($input, null);
+            $validation = $this->validate($input);
             $rowErrors = $validation['errors'];
 
             if ((string) ($mapped['organ'] ?? '') !== '' && $resolvedOrganId === null) {
@@ -224,10 +202,6 @@ final class PeopleService
 
             if ((string) ($mapped['desired_modality'] ?? '') !== '' && $resolvedModalityId === null) {
                 $rowErrors[] = 'Modalidade invalida (use ID ou nome cadastrado).';
-            }
-
-            if ((string) ($mapped['mte_destination'] ?? '') !== '' && $resolvedDestination === null) {
-                $rowErrors[] = 'Lotacao MTE invalida (use nome ou codigo cadastrado).';
             }
 
             $normalizedCpf = (string) ($validation['data']['cpf'] ?? '');
@@ -241,6 +215,19 @@ final class PeopleService
 
             if ($normalizedCpf !== '' && $this->people->cpfExists($normalizedCpf)) {
                 $rowErrors[] = 'Ja existe pessoa cadastrada com este CPF.';
+            }
+
+            $normalizedSiape = (string) ($validation['data']['matricula_siape'] ?? '');
+            if ($normalizedSiape !== '') {
+                if (isset($seenSiapes[$normalizedSiape])) {
+                    $rowErrors[] = 'Matricula SIAPE duplicada no CSV (linha ' . $seenSiapes[$normalizedSiape] . ').';
+                } else {
+                    $seenSiapes[$normalizedSiape] = $lineNumber;
+                }
+            }
+
+            if ($normalizedSiape !== '' && $this->people->siapeExists($normalizedSiape)) {
+                $rowErrors[] = 'Ja existe pessoa cadastrada com esta matricula SIAPE.';
             }
 
             if ($rowErrors !== []) {
@@ -344,7 +331,7 @@ final class PeopleService
      */
     public function create(array $input, int $userId, string $ip, string $userAgent): array
     {
-        $validation = $this->validate($input, null);
+        $validation = $this->validate($input);
         if ($validation['errors'] !== []) {
             return [
                 'ok' => false,
@@ -359,6 +346,15 @@ final class PeopleService
             return [
                 'ok' => false,
                 'errors' => ['Já existe pessoa cadastrada com este CPF.'],
+                'data' => $validation['data'],
+            ];
+        }
+
+        $matriculaSiape = (string) ($validation['data']['matricula_siape'] ?? '');
+        if ($matriculaSiape !== '' && $this->people->siapeExists($matriculaSiape)) {
+            return [
+                'ok' => false,
+                'errors' => ['Já existe pessoa cadastrada com esta matrícula SIAPE.'],
                 'data' => $validation['data'],
             ];
         }
@@ -411,7 +407,7 @@ final class PeopleService
             ];
         }
 
-        $validation = $this->validate($input, $this->clean($before['mte_destination'] ?? null));
+        $validation = $this->validate($input);
         if ($validation['errors'] !== []) {
             return [
                 'ok' => false,
@@ -424,6 +420,15 @@ final class PeopleService
             return [
                 'ok' => false,
                 'errors' => ['Já existe pessoa cadastrada com este CPF.'],
+                'data' => $validation['data'],
+            ];
+        }
+
+        $matriculaSiape = (string) ($validation['data']['matricula_siape'] ?? '');
+        if ($matriculaSiape !== '' && $this->people->siapeExists($matriculaSiape, $id)) {
+            return [
+                'ok' => false,
+                'errors' => ['Já existe pessoa cadastrada com esta matrícula SIAPE.'],
                 'data' => $validation['data'],
             ];
         }
@@ -496,21 +501,20 @@ final class PeopleService
 
     /**
      * @param array<string, mixed> $input
-     * @param ?string $legacyDestination
      * @return array{errors: array<int, string>, data: array<string, mixed>}
      */
-    private function validate(array $input, ?string $legacyDestination): array
+    private function validate(array $input): array
     {
         $organId = (int) ($input['organ_id'] ?? 0);
         $modalityId = (int) ($input['desired_modality_id'] ?? 0);
         $flowId = (int) ($input['assignment_flow_id'] ?? 0);
         $name = $this->clean($input['name'] ?? null);
         $cpf = $this->normalizeCpf($this->clean($input['cpf'] ?? null));
+        $matriculaSiape = $this->clean($input['matricula_siape'] ?? null);
         $birthDate = $this->normalizeDate($this->clean($input['birth_date'] ?? null));
         $email = $this->clean($input['email'] ?? null);
         $phone = $this->clean($input['phone'] ?? null);
         $sei = $this->clean($input['sei_process_number'] ?? null);
-        $destination = $this->clean($input['mte_destination'] ?? null);
         $tags = $this->normalizeTags($this->clean($input['tags'] ?? null));
         $notes = $this->clean($input['notes'] ?? null);
 
@@ -541,17 +545,16 @@ final class PeopleService
             $errors[] = 'CPF inválido. Informe 11 dígitos.';
         }
 
-        if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'E-mail inválido.';
+        if ($matriculaSiape !== null && preg_match('/^\d+$/', $matriculaSiape) !== 1) {
+            $errors[] = 'Matrícula SIAPE inválida. Informe apenas números.';
         }
 
-        if ($destination !== null && !$this->people->mteDestinationExists($destination)) {
-            $isLegacyDestination = $legacyDestination !== null
-                && mb_strtolower($legacyDestination) === mb_strtolower($destination);
+        if ($matriculaSiape !== null && mb_strlen($matriculaSiape) > 20) {
+            $errors[] = 'Matrícula SIAPE inválida. Limite de 20 dígitos.';
+        }
 
-            if (!$isLegacyDestination) {
-                $errors[] = 'Lotação MTE inválida. Selecione uma lotação cadastrada.';
-            }
+        if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'E-mail inválido.';
         }
 
         $data = [
@@ -560,12 +563,12 @@ final class PeopleService
             'assignment_flow_id' => $flowId > 0 ? $flowId : null,
             'name' => $name,
             'cpf' => $cpf,
+            'matricula_siape' => $matriculaSiape,
             'birth_date' => $birthDate,
             'email' => $email,
             'phone' => $phone,
             'status' => 'interessado',
             'sei_process_number' => $sei,
-            'mte_destination' => $destination,
             'tags' => $tags,
             'notes' => $notes,
         ];
@@ -777,13 +780,13 @@ final class PeopleService
         $aliases = [
             'name' => ['name', 'nome', 'nome_completo', 'pessoa'],
             'cpf' => ['cpf'],
+            'matricula_siape' => ['matricula_siape', 'siape', 'matricula', 'matricula_siape_numero', 'numero_siape'],
             'organ' => ['organ', 'organ_id', 'orgao', 'orgao_id', 'orgao_origem'],
             'desired_modality' => ['desired_modality', 'desired_modality_id', 'modalidade', 'modalidade_id', 'modalidade_pretendida'],
             'birth_date' => ['birth_date', 'data_nascimento', 'nascimento'],
             'email' => ['email', 'e_mail'],
             'phone' => ['phone', 'telefone', 'celular'],
             'sei_process_number' => ['sei_process_number', 'sei', 'processo_sei', 'numero_processo_sei'],
-            'mte_destination' => ['mte_destination', 'lotacao_mte', 'destino_mte', 'lotacao_destino_mte', 'mte'],
             'tags' => ['tags', 'etiquetas'],
             'notes' => ['notes', 'observacoes', 'observacao'],
         ];
@@ -879,22 +882,6 @@ final class PeopleService
         $key = $this->normalizeLookupValue($value);
 
         return $modalitiesByName[$key] ?? null;
-    }
-
-    /** @param array<string, string> $destinationsByName @param array<string, string> $destinationsByCode */
-    private function resolveDestinationName(string $rawValue, array $destinationsByName, array $destinationsByCode): ?string
-    {
-        $value = trim($rawValue);
-        if ($value === '') {
-            return null;
-        }
-
-        $key = $this->normalizeLookupValue($value);
-        if (isset($destinationsByName[$key])) {
-            return $destinationsByName[$key];
-        }
-
-        return $destinationsByCode[$key] ?? null;
     }
 
     private function detectCsvDelimiter(string $sample): string

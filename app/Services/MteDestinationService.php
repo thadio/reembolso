@@ -50,21 +50,13 @@ final class MteDestinationService
             ];
         }
 
-        if ($this->destinations->nameExists((string) $validation['data']['name'])) {
-            return [
-                'ok' => false,
-                'errors' => ['Já existe lotação com este nome.'],
-                'data' => $validation['data'],
-            ];
-        }
-
         if (
             $validation['data']['code'] !== null
             && $this->destinations->codeExists((string) $validation['data']['code'])
         ) {
             return [
                 'ok' => false,
-                'errors' => ['Já existe lotação com este código.'],
+                'errors' => ['Já existe unidade com este código UORG.'],
                 'data' => $validation['data'],
             ];
         }
@@ -123,21 +115,13 @@ final class MteDestinationService
             ];
         }
 
-        if ($this->destinations->nameExists((string) $validation['data']['name'], $id)) {
-            return [
-                'ok' => false,
-                'errors' => ['Já existe lotação com este nome.'],
-                'data' => $validation['data'],
-            ];
-        }
-
         if (
             $validation['data']['code'] !== null
             && $this->destinations->codeExists((string) $validation['data']['code'], $id)
         ) {
             return [
                 'ok' => false,
-                'errors' => ['Já existe lotação com este código.'],
+                'errors' => ['Já existe unidade com este código UORG.'],
                 'data' => $validation['data'],
             ];
         }
@@ -211,21 +195,45 @@ final class MteDestinationService
     {
         $name = $this->clean($input['name'] ?? null);
         $code = $this->clean($input['code'] ?? null);
+        $acronym = $this->clean($input['acronym'] ?? null);
+        $uf = $this->clean($input['uf'] ?? null);
+        $upagCode = $this->clean($input['upag_code'] ?? null);
+        $parentUorgCode = $this->clean($input['parent_uorg_code'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
 
         $errors = [];
 
         if ($name === null || mb_strlen($name) < 3) {
-            $errors[] = 'Nome da lotação é obrigatório e deve ter ao menos 3 caracteres.';
+            $errors[] = 'Nome da unidade é obrigatório e deve ter ao menos 3 caracteres.';
         }
 
         if ($code !== null && mb_strlen($code) > 60) {
-            $errors[] = 'Código da lotação deve ter no máximo 60 caracteres.';
+            $errors[] = 'Codigo UORG deve ter no maximo 60 caracteres.';
+        }
+
+        if ($acronym !== null && mb_strlen($acronym) > 60) {
+            $errors[] = 'Sigla da unidade deve ter no máximo 60 caracteres.';
+        }
+
+        if ($uf !== null && (mb_strlen($uf) !== 2 || preg_match('/^[A-Za-z]{2}$/', $uf) !== 1)) {
+            $errors[] = 'UF deve conter exatamente 2 letras.';
+        }
+
+        if ($upagCode !== null && mb_strlen($upagCode) > 20) {
+            $errors[] = 'Codigo da UPAG deve ter no maximo 20 caracteres.';
+        }
+
+        if ($parentUorgCode !== null && mb_strlen($parentUorgCode) > 20) {
+            $errors[] = 'UORG de vinculacao deve ter no maximo 20 caracteres.';
         }
 
         $data = [
             'name' => $name,
             'code' => $code === null ? null : mb_strtoupper($code),
+            'acronym' => $acronym === null ? null : mb_strtoupper($acronym),
+            'uf' => $uf === null ? null : mb_strtoupper($uf),
+            'upag_code' => $upagCode === null ? null : mb_strtoupper($upagCode),
+            'parent_uorg_code' => $parentUorgCode === null ? null : mb_strtoupper($parentUorgCode),
             'notes' => $notes,
         ];
 

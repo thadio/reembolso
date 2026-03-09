@@ -108,6 +108,9 @@ function ensureMteDestination(PDO $db, string $code, string $name): int
         'INSERT INTO mte_destinations (
             name,
             code,
+            acronym,
+            upag_code,
+            parent_uorg_code,
             notes,
             created_at,
             updated_at,
@@ -115,15 +118,22 @@ function ensureMteDestination(PDO $db, string $code, string $name): int
          ) VALUES (
             :name,
             :code,
+            :acronym,
+            :upag_code,
+            :parent_uorg_code,
             :notes,
             NOW(),
             NOW(),
             NULL
          )'
     );
+    $code20 = mb_substr($code, 0, 20);
     $stmt->execute([
         'name' => $name,
         'code' => $code,
+        'acronym' => $code,
+        'upag_code' => $code20,
+        'parent_uorg_code' => $code20,
         'notes' => 'Criado automaticamente pela homologacao da fase 10.',
     ]);
 

@@ -64,7 +64,7 @@ if ($activeVersion === null && $versions !== []) {
 
   <div class="details-grid">
     <div><strong>Tipo:</strong> <?= e($typeLabel((string) ($template['template_type'] ?? 'outro'))) ?></div>
-    <div><strong>Criado por:</strong> <?= e((string) ($template['created_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Criado por:</strong> <?= e((string) ($template['created_by_name'] ?? 'Nao informado')) ?></div>
     <div><strong>Criado em:</strong> <?= e($formatDate((string) ($template['created_at'] ?? ''))) ?></div>
     <div><strong>Atualizado em:</strong> <?= e($formatDate((string) ($template['updated_at'] ?? ''))) ?></div>
     <div class="details-wide"><strong>Descricao:</strong> <?= e((string) ($template['description'] ?? '-')) ?></div>
@@ -226,7 +226,7 @@ if ($activeVersion === null && $versions !== []) {
                   <span class="badge badge-neutral">Historica</span>
                 <?php endif; ?>
               </td>
-              <td><?= e((string) ($version['created_by_name'] ?? 'N/I')) ?></td>
+              <td><?= e((string) ($version['created_by_name'] ?? 'Nao informado')) ?></td>
               <td><?= e($formatDate((string) ($version['created_at'] ?? ''))) ?></td>
             </tr>
           <?php endforeach; ?>
@@ -265,7 +265,7 @@ if ($activeVersion === null && $versions !== []) {
               <td><?= e((string) ($document['person_name'] ?? '-')) ?></td>
               <td><?= e((string) ($document['organ_name'] ?? '-')) ?></td>
               <td><?= e((string) ($document['rendered_subject'] ?? '-')) ?></td>
-              <td><?= e((string) ($document['generated_by_name'] ?? 'N/I')) ?></td>
+              <td><?= e((string) ($document['generated_by_name'] ?? 'Nao informado')) ?></td>
               <td><?= e($formatDate((string) ($document['created_at'] ?? ''))) ?></td>
               <td class="actions-cell">
                 <a class="btn btn-ghost" href="<?= e(url('/office-documents/show?id=' . (int) ($document['id'] ?? 0))) ?>">Ver</a>

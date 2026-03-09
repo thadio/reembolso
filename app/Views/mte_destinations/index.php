@@ -36,20 +36,22 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Lotações MTE</h2>
-      <p class="muted">Cadastro de lotações para uso no campo de destino no MTE.</p>
+      <h2>Unidades organizacionais MTE (UORG)</h2>
+      <p class="muted">Cadastro de UORGs para uso nos campos de origem e destino no MTE.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>
-      <a class="btn btn-primary" href="<?= e(url('/mte-destinations/create')) ?>">Nova lotação</a>
+      <a class="btn btn-primary" href="<?= e(url('/mte-destinations/create')) ?>">Nova UORG</a>
     <?php endif; ?>
   </div>
 
   <form method="get" action="<?= e(url('/mte-destinations')) ?>" class="filters-row">
-    <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome ou código">
+    <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome, UORG, sigla ou UF">
 
     <select name="sort">
       <option value="name" <?= $sort === 'name' ? 'selected' : '' ?>>Ordenar por nome</option>
+      <option value="acronym" <?= $sort === 'acronym' ? 'selected' : '' ?>>Ordenar por sigla</option>
       <option value="code" <?= $sort === 'code' ? 'selected' : '' ?>>Ordenar por código</option>
+      <option value="uf" <?= $sort === 'uf' ? 'selected' : '' ?>>Ordenar por UF</option>
       <option value="created_at" <?= $sort === 'created_at' ? 'selected' : '' ?>>Ordenar por cadastro</option>
     </select>
 
@@ -70,7 +72,7 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 
   <?php if ($destinations === []): ?>
     <div class="empty-state">
-      <p>Nenhuma lotação encontrada com os filtros atuais.</p>
+      <p>Nenhuma unidade encontrada com os filtros atuais.</p>
     </div>
   <?php else: ?>
     <div class="table-wrap">
@@ -78,8 +80,9 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
         <thead>
           <tr>
             <th><a href="<?= e($buildUrl(['sort' => 'name', 'dir' => $nextDir('name'), 'page' => 1])) ?>">Nome</a></th>
-            <th><a href="<?= e($buildUrl(['sort' => 'code', 'dir' => $nextDir('code'), 'page' => 1])) ?>">Código</a></th>
-            <th><a href="<?= e($buildUrl(['sort' => 'created_at', 'dir' => $nextDir('created_at'), 'page' => 1])) ?>">Cadastro</a></th>
+            <th><a href="<?= e($buildUrl(['sort' => 'acronym', 'dir' => $nextDir('acronym'), 'page' => 1])) ?>">Sigla</a></th>
+            <th><a href="<?= e($buildUrl(['sort' => 'code', 'dir' => $nextDir('code'), 'page' => 1])) ?>">UORG</a></th>
+            <th><a href="<?= e($buildUrl(['sort' => 'uf', 'dir' => $nextDir('uf'), 'page' => 1])) ?>">UF</a></th>
             <th>Ações</th>
           </tr>
         </thead>
@@ -87,13 +90,14 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
           <?php foreach ($destinations as $destination): ?>
             <tr>
               <td><?= e((string) ($destination['name'] ?? '')) ?></td>
+              <td><?= e((string) ($destination['acronym'] ?? '-')) ?></td>
               <td><?= e((string) ($destination['code'] ?? '-')) ?></td>
-              <td><?= e((string) ($destination['created_at'] ?? '-')) ?></td>
+              <td><?= e((string) ($destination['uf'] ?? '-')) ?></td>
               <td class="actions-cell">
                 <a class="btn btn-ghost" href="<?= e(url('/mte-destinations/show?id=' . (int) $destination['id'])) ?>">Ver</a>
                 <?php if (($canManage ?? false) === true): ?>
                   <a class="btn btn-ghost" href="<?= e(url('/mte-destinations/edit?id=' . (int) $destination['id'])) ?>">Editar</a>
-                  <form method="post" action="<?= e(url('/mte-destinations/delete')) ?>" onsubmit="return confirm('Confirmar remoção desta lotação?');">
+                  <form method="post" action="<?= e(url('/mte-destinations/delete')) ?>" onsubmit="return confirm('Confirmar remoção desta unidade?');">
                     <?= csrf_field() ?>
                     <input type="hidden" name="id" value="<?= e((string) $destination['id']) ?>">
                     <button type="submit" class="btn btn-danger">Excluir</button>

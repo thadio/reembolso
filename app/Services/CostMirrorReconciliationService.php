@@ -489,7 +489,7 @@ final class CostMirrorReconciliationService
             return $this->isItemActiveInMonth($item, $monthStart, $monthEnd) ? ($amount / 12.0) : 0.0;
         }
 
-        if ($type === 'unico') {
+        if ($type === 'eventual' || $type === 'unico') {
             $effectiveDate = $this->singleItemEffectiveDate($item);
             if ($effectiveDate === null) {
                 return 0.0;

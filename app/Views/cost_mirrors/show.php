@@ -97,7 +97,7 @@ $status = (string) ($mirror['status'] ?? '');
     <div><strong>Competencia:</strong> <?= e($formatMonth((string) ($mirror['reference_month'] ?? ''))) ?></div>
     <div><strong>Fonte:</strong> <?= e($sourceLabel((string) ($mirror['source'] ?? 'manual'))) ?></div>
     <div><strong>Criado em:</strong> <?= e($formatDateTime((string) ($mirror['created_at'] ?? ''))) ?></div>
-    <div><strong>Criado por:</strong> <?= e((string) ($mirror['created_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Criado por:</strong> <?= e((string) ($mirror['created_by_name'] ?? 'Nao informado')) ?></div>
     <div>
       <strong>Boleto vinculado:</strong>
       <?php if (!empty($mirror['invoice_id'])): ?>
@@ -253,7 +253,7 @@ $status = (string) ($mirror['status'] ?? '');
               <td><?= nl2br(e((string) ($item['notes'] ?? '-'))) ?></td>
               <td>
                 <?= e($formatDate((string) ($item['created_at'] ?? ''))) ?>
-                <div class="muted">por <?= e((string) ($item['created_by_name'] ?? 'N/I')) ?></div>
+                <div class="muted">por <?= e((string) ($item['created_by_name'] ?? 'Nao informado')) ?></div>
               </td>
               <td class="actions-cell">
                 <?php if ($canEditMirror): ?>

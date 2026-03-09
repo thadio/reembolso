@@ -91,7 +91,7 @@ $isFinalStatus = in_array($status, ['encerrado', 'cancelado'], true);
     <div><strong>UG:</strong> <?= e((string) ($cdo['ug_code'] ?? '-')) ?></div>
     <div><strong>Acao:</strong> <?= e((string) ($cdo['action_code'] ?? '-')) ?></div>
     <div><strong>Criado em:</strong> <?= e($formatDateTime((string) ($cdo['created_at'] ?? ''))) ?></div>
-    <div><strong>Criado por:</strong> <?= e((string) ($cdo['created_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Criado por:</strong> <?= e((string) ($cdo['created_by_name'] ?? 'Nao informado')) ?></div>
     <div class="details-wide"><strong>Observacoes:</strong> <?= nl2br(e((string) ($cdo['notes'] ?? '-'))) ?></div>
   </div>
 </div>
@@ -201,7 +201,7 @@ $isFinalStatus = in_array($status, ['encerrado', 'cancelado'], true);
               <td><?= e($formatMoney((float) ($link['allocated_amount'] ?? 0))) ?></td>
               <td>
                 <?= e($formatDateTime((string) ($link['created_at'] ?? ''))) ?>
-                <div class="muted">por <?= e((string) ($link['created_by_name'] ?? 'N/I')) ?></div>
+                <div class="muted">por <?= e((string) ($link['created_by_name'] ?? 'Nao informado')) ?></div>
               </td>
               <td><?= nl2br(e((string) ($link['notes'] ?? '-'))) ?></td>
               <td class="actions-cell">

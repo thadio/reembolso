@@ -114,7 +114,7 @@ $cycleStatusLabel = static function (string $value): string {
         'aberto' => 'Aberto',
         'encerrado' => 'Encerrado',
         'suspenso' => 'Suspenso',
-        default => 'N/I',
+        default => 'Nao informado',
     };
 };
 
@@ -136,6 +136,15 @@ $financialNatureLabel = static function (string $value): string {
 
 $financialNatureBadgeClass = static function (string $value): string {
     return trim(mb_strtolower($value)) === 'receita_reembolso' ? 'badge-success' : 'badge-warning';
+};
+
+$avgSourceLabel = static function (?string $value): string {
+    return match (trim(mb_strtolower((string) $value))) {
+        'historico_orgao' => 'Historico do orgao',
+        'media_historica_global', 'media_global' => 'Media historica geral',
+        'informado', 'manual_input' => 'Base historica registrada',
+        default => 'Historico do sistema',
+    };
 };
 
 $summaryRisk = (string) ($summary['risk_level'] ?? 'baixo');
@@ -238,7 +247,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
 <div class="card">
   <div class="header-row">
     <div>
-      <h3>Alertas ativos (5.4)</h3>
+      <h3>Alertas ativos</h3>
       <p class="muted">Sinais de risco orcamentario e deficit projetado para acao imediata.</p>
     </div>
   </div>
@@ -275,8 +284,8 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
 <div class="card">
   <div class="header-row">
     <div>
-      <h3>Projecoes 5.1 (mensal, anual e proximo ano)</h3>
-      <p class="muted">Consolidacao mensal do ciclo e envelopes de cenario para o proximo ano.</p>
+      <h3>Projecoes mensais e anuais</h3>
+      <p class="muted">Consolidacao mensal do ciclo com previsoes para o proximo ano.</p>
     </div>
   </div>
 
@@ -345,7 +354,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
 <div class="card">
   <div class="header-row">
     <div>
-      <h3>Risco de insuficiencia por mes (5.2)</h3>
+      <h3>Risco de insuficiencia por mes</h3>
       <p class="muted">Compara o acumulado projetado do ciclo com o envelope acumulado de orcamento.</p>
     </div>
   </div>
@@ -391,8 +400,8 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
   <div class="card">
     <div class="header-row">
       <div>
-        <h3>CRUD do orcamento anual do MTE</h3>
-        <p class="muted">Cadastro do total anual para financiar movimentacoes de pessoas com reembolso.</p>
+        <h3>Orcamento anual do MTE</h3>
+        <p class="muted">Registre e atualize o valor anual para financiar movimentacoes com reembolso.</p>
       </div>
     </div>
 
@@ -427,7 +436,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
       </div>
 
       <div class="form-actions field-wide">
-        <button type="submit" class="btn btn-primary">Cadastrar orcamento anual</button>
+        <button type="submit" class="btn btn-primary">Salvar orcamento anual</button>
       </div>
     </form>
 
@@ -445,8 +454,8 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
               <th>Orcamento anual MTE</th>
               <th>Fator anual</th>
               <th>Status</th>
-              <th>Cenarios</th>
-              <th>Atualizacao</th>
+              <th>Simulacoes</th>
+              <th>Ultima atualizacao</th>
               <th>Acoes</th>
             </tr>
           </thead>
@@ -461,7 +470,21 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
                     : $cycleTotalBudgetValue;
                 $scenarioCount = (int) ($cycleItem['scenarios_count'] ?? 0);
                 $scenarioParameterCount = (int) ($cycleItem['scenario_parameters_count'] ?? 0);
-                $canDeleteCycle = $scenarioCount === 0;
+                $simulationLabel = $scenarioCount === 1 ? 'simulacao registrada' : 'simulacoes registradas';
+                $parameterLabel = $scenarioParameterCount === 1 ? 'parametro de simulacao' : 'parametros de simulacao';
+                $deleteImpact = [];
+                if ($scenarioCount > 0) {
+                    $deleteImpact[] = $scenarioCount . ' ' . $simulationLabel;
+                }
+                if ($scenarioParameterCount > 0) {
+                    $deleteImpact[] = $scenarioParameterCount . ' ' . $parameterLabel;
+                }
+                $deleteImpactLabel = $deleteImpact === []
+                    ? 'Sem dados vinculados.'
+                    : 'A exclusao tambem removera: ' . implode(' e ', $deleteImpact) . '.';
+                $deleteConfirmation = $deleteImpact === []
+                    ? "return confirm('Confirmar exclusao deste orcamento anual do MTE?');"
+                    : "return confirm('Confirmar exclusao deste orcamento anual do MTE? " . addslashes($deleteImpactLabel) . "');";
                 $cycleStatus = (string) ($cycleItem['status'] ?? 'aberto');
               ?>
               <tr>
@@ -488,28 +511,23 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
                 <td><?= e(number_format((float) ($cycleItem['annual_factor'] ?? 13.3), 2, ',', '.')) ?></td>
                 <td><span class="badge <?= e($cycleStatusBadgeClass($cycleStatus)) ?>"><?= e($cycleStatusLabel($cycleStatus)) ?></span></td>
                 <td>
-                  <?= e((string) $scenarioCount) ?> cenario(s)
-                  <div class="muted"><?= e((string) $scenarioParameterCount) ?> parametro(s)</div>
+                  <?= e((string) $scenarioCount) ?> <?= e($simulationLabel) ?>
+                  <div class="muted"><?= e((string) $scenarioParameterCount) ?> <?= e($parameterLabel) ?></div>
                 </td>
                 <td>
                   <?= e($formatDateTime((string) ($cycleItem['updated_at'] ?? ''))) ?>
                   <div class="muted">cadastro <?= e($formatDateTime((string) ($cycleItem['created_at'] ?? ''))) ?></div>
                 </td>
                 <td class="actions-cell">
-                  <form method="post" action="<?= e(url('/budget/cycles/delete')) ?>" onsubmit="return confirm('Confirmar remocao deste ciclo anual do MTE?');">
+                  <form method="post" action="<?= e(url('/budget/cycles/delete')) ?>" onsubmit="<?= e($deleteConfirmation) ?>">
                     <?= csrf_field() ?>
                     <input type="hidden" name="cycle_id" value="<?= e((string) $cycleId) ?>">
                     <input type="hidden" name="cycle_year" value="<?= e((string) $cycleYear) ?>">
                     <input type="hidden" name="year" value="<?= e((string) $year) ?>">
                     <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
-                    <button
-                      type="submit"
-                      class="btn btn-danger"
-                      <?= $canDeleteCycle ? '' : 'disabled title="Nao e possivel excluir: existem cenarios de simulacao vinculados."' ?>
-                    >
-                      Excluir
-                    </button>
+                    <button type="submit" class="btn btn-danger">Excluir ciclo</button>
                   </form>
+                  <div class="muted"><?= e($deleteImpactLabel) ?></div>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -522,80 +540,44 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
   <div class="card">
     <div class="header-row">
       <div>
-        <h3>Parametro de custo medio por orgao</h3>
-        <p class="muted">Usado como fallback na simulacao quando o custo medio nao e informado.</p>
+        <h3>Custo medio por orgao (calculo automatico)</h3>
+        <p class="muted">Calculado automaticamente com base no historico de custos do sistema.</p>
       </div>
     </div>
 
-    <form method="post" action="<?= e(url('/budget/parameters/upsert')) ?>" class="form-grid">
-      <?= csrf_field() ?>
-      <input type="hidden" name="year" value="<?= e((string) $year) ?>">
-      <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
-
-      <div class="field field-wide">
-        <label for="parameter_organ_id">Orgao *</label>
-        <select id="parameter_organ_id" name="parameter_organ_id" required>
-          <option value="">Selecione um orgao</option>
-          <?php foreach ($organs as $organ): ?>
-            <option value="<?= e((string) ($organ['id'] ?? 0)) ?>" <?= old('parameter_organ_id') === (string) ($organ['id'] ?? '') ? 'selected' : '' ?>>
-              <?= e((string) ($organ['name'] ?? '-')) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="parameter_cargo">Cargo</label>
-        <input id="parameter_cargo" name="parameter_cargo" type="text" maxlength="120" value="<?= e(old('parameter_cargo', '')) ?>" placeholder="Opcional">
-      </div>
-
-      <div class="field">
-        <label for="parameter_setor">Setor</label>
-        <input id="parameter_setor" name="parameter_setor" type="text" maxlength="120" value="<?= e(old('parameter_setor', '')) ?>" placeholder="Opcional">
-      </div>
-
-      <div class="field">
-        <label for="parameter_avg_monthly_cost">Custo medio mensal (R$) *</label>
-        <input id="parameter_avg_monthly_cost" name="parameter_avg_monthly_cost" type="text" placeholder="0,00" value="<?= e(old('parameter_avg_monthly_cost', '')) ?>" required>
-      </div>
-
-      <div class="field field-wide">
-        <label for="parameter_notes">Observacoes</label>
-        <textarea id="parameter_notes" name="parameter_notes" rows="3"><?= e(old('parameter_notes', '')) ?></textarea>
-      </div>
-
-      <div class="form-actions field-wide">
-        <button type="submit" class="btn btn-primary">Salvar parametro</button>
-      </div>
-    </form>
-
     <?php if ($parameters === []): ?>
       <div class="empty-state">
-        <p>Nenhum parametro por orgao cadastrado ate o momento.</p>
+        <p>Sem historico suficiente para calcular o custo medio por orgao.</p>
       </div>
     <?php else: ?>
-      <div class="table-wrap" style="margin-top:12px;">
+      <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Orgao</th>
-              <th>Escopo</th>
               <th>Custo medio mensal</th>
-              <th>Observacoes</th>
-              <th>Atualizacao</th>
+              <th>Base historica</th>
+              <th>Periodo analisado</th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($parameters as $parameter): ?>
+              <?php
+                $historicalRecords = max(0, (int) ($parameter['historical_records'] ?? 0));
+                $historicalRecordsLabel = $historicalRecords === 1 ? 'registro' : 'registros';
+                $historicalBasis = trim((string) ($parameter['notes'] ?? 'Historico do sistema'));
+                $firstReference = $formatDate((string) ($parameter['first_reference_month'] ?? ''));
+                $lastReference = $formatDate((string) ($parameter['last_reference_month'] ?? ''));
+                $periodLabel = ($firstReference !== '-' && $lastReference !== '-') ? ($firstReference . ' ate ' . $lastReference) : '-';
+              ?>
               <tr>
                 <td><?= e((string) ($parameter['organ_name'] ?? '-')) ?></td>
-                <td><?= e($scopeLabel((string) ($parameter['cargo'] ?? ''), (string) ($parameter['setor'] ?? ''))) ?></td>
                 <td><?= e($formatMoney((float) ($parameter['avg_monthly_cost'] ?? 0))) ?></td>
-                <td><?= nl2br(e((string) ($parameter['notes'] ?? '-'))) ?></td>
                 <td>
-                  <?= e($formatDateTime((string) ($parameter['updated_at'] ?? ''))) ?>
-                  <div class="muted">por <?= e((string) ($parameter['updated_by_name'] ?? 'N/I')) ?></div>
+                  <?= e((string) $historicalRecords) ?> <?= e($historicalRecordsLabel) ?>
+                  <div class="muted"><?= e($historicalBasis) ?></div>
                 </td>
+                <td><?= e($periodLabel) ?></td>
               </tr>
             <?php endforeach; ?>
           </tbody>
@@ -607,8 +589,8 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
   <div class="card">
     <div class="header-row">
       <div>
-        <h3>Variacoes de cenario por orgao/modalidade</h3>
-        <p class="muted">Define variacoes para cenarios Base, Atualizado e Pior Caso no simulador.</p>
+        <h3>Parametros de simulacao por orgao e modalidade</h3>
+        <p class="muted">Defina as variacoes para os cenarios Base, Atualizado e Pior Caso.</p>
       </div>
     </div>
 
@@ -688,7 +670,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
 
     <?php if ($scenarioParameters === []): ?>
       <div class="empty-state">
-        <p>Nenhuma variacao de cenario cadastrada para este ciclo.</p>
+        <p>Nenhuma regra de simulacao cadastrada para este ciclo.</p>
       </div>
     <?php else: ?>
       <div class="table-wrap" style="margin-top:12px;">
@@ -713,7 +695,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
                 <td><?= e($formatPercent((float) ($scenarioParameter['worst_variation_percent'] ?? 0))) ?></td>
                 <td>
                   <?= e($formatDateTime((string) ($scenarioParameter['updated_at'] ?? ''))) ?>
-                  <div class="muted">por <?= e((string) ($scenarioParameter['updated_by_name'] ?? 'N/I')) ?></div>
+                  <div class="muted">por <?= e((string) ($scenarioParameter['updated_by_name'] ?? 'Nao informado')) ?></div>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -728,8 +710,8 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
   <div class="card">
     <div class="header-row">
       <div>
-        <h3>Simulador de contratacao multiparametrico</h3>
-        <p class="muted">Cenarios Base, Atualizado e Pior Caso com variacao por orgao/modalidade.</p>
+        <h3>Simulador de contratacao</h3>
+        <p class="muted">Compare os cenarios Base, Atualizado e Pior Caso por orgao e modalidade.</p>
       </div>
     </div>
 
@@ -797,9 +779,9 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
         <input id="quantity" name="quantity" type="number" min="1" max="10000" value="<?= e(old('quantity', '1')) ?>" required>
       </div>
 
-      <div class="field">
-        <label for="avg_monthly_cost">Custo medio mensal (R$)</label>
-        <input id="avg_monthly_cost" name="avg_monthly_cost" type="text" value="<?= e(old('avg_monthly_cost', '')) ?>" placeholder="Opcional (usa parametro do orgao ou media global)">
+      <div class="field field-wide">
+        <label>Custo medio mensal</label>
+        <div class="muted">Calculado automaticamente com base no historico do orgao selecionado.</div>
       </div>
 
       <div class="field field-wide">
@@ -808,7 +790,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
       </div>
 
       <div class="form-actions field-wide">
-        <button type="submit" class="btn btn-primary">Executar simulacao</button>
+        <button type="submit" class="btn btn-primary">Simular</button>
       </div>
     </form>
   </div>
@@ -819,7 +801,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
   <div class="card">
     <div class="header-row">
       <div>
-        <h3>Resultado da ultima simulacao</h3>
+        <h3>Resultado da simulacao mais recente</h3>
         <p class="muted">
           <?= e((string) ($simulationResult['scenario_name'] ?? 'Simulacao')) ?> ·
           Ano <?= e((string) ($simulationResult['year'] ?? $year)) ?> ·
@@ -865,7 +847,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
       <strong class="<?= (float) ($simulationResult['remaining_after_current_year'] ?? 0) < 0 ? 'text-danger' : 'text-success' ?>">
         <?= e($formatMoney((float) ($simulationResult['remaining_after_current_year'] ?? 0))) ?>
       </strong>
-      · Fonte do custo medio: <?= e((string) ($simulationResult['avg_source'] ?? 'informado')) ?>
+      · Fonte do custo medio: <?= e($avgSourceLabel((string) ($simulationResult['avg_source'] ?? 'historico_orgao'))) ?>
     </p>
 
     <?php if ($simulationMatrix !== []): ?>
@@ -909,8 +891,8 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
 <div class="card">
   <div class="header-row">
     <div>
-      <h3>Ranking de maiores ofensores (Pior Caso)</h3>
-      <p class="muted">Cenarios de entrada com maior deficit projetado no perfil de pior caso.</p>
+      <h3>Ranking de maior impacto (Pior Caso)</h3>
+      <p class="muted">Simulacoes de entrada com maior deficit projetado no cenario de pior caso.</p>
     </div>
   </div>
 
@@ -961,14 +943,14 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
 <div class="card">
   <div class="header-row">
     <div>
-      <h3>Cenarios recentes</h3>
+      <h3>Simulacoes recentes</h3>
       <p class="muted">Historico das simulacoes registradas no ciclo.</p>
     </div>
   </div>
 
   <?php if ($scenarios === []): ?>
     <div class="empty-state">
-      <p>Ainda nao ha cenarios de contratacao registrados neste ciclo.</p>
+      <p>Ainda nao ha simulacoes de contratacao registradas neste ciclo.</p>
     </div>
   <?php else: ?>
     <div class="table-wrap">
@@ -1013,7 +995,7 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
               <td><span class="badge <?= e($riskBadgeClass($scenarioRisk)) ?>"><?= e($riskLabel($scenarioRisk)) ?></span></td>
               <td>
                 <?= e($formatDateTime((string) ($scenario['created_at'] ?? ''))) ?>
-                <div class="muted">por <?= e((string) ($scenario['created_by_name'] ?? 'N/I')) ?></div>
+                <div class="muted">por <?= e((string) ($scenario['created_by_name'] ?? 'Nao informado')) ?></div>
               </td>
             </tr>
           <?php endforeach; ?>

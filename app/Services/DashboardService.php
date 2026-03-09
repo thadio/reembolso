@@ -16,7 +16,7 @@ final class DashboardService
     /**
      * @return array{
      *   summary: array<string, int|float>,
-     *   status_distribution: array<int, array<string, int|float|string>>,
+     *   status_distribution: array<int, array<string, mixed>>,
      *   recent_timeline: array<int, array<string, mixed>>,
      *   executive_panel: array{
      *      summary: array<string, int|float>,
@@ -35,10 +35,19 @@ final class DashboardService
             $summary = $this->normalizeSummary(
                 is_array($snapshot['summary'] ?? null) ? $snapshot['summary'] : []
             );
+            $snapshotDistribution = is_array($snapshot['status_distribution'] ?? null)
+                ? $snapshot['status_distribution']
+                : [];
             $statusDistribution = $this->normalizeStatusDistribution(
-                is_array($snapshot['status_distribution'] ?? null) ? $snapshot['status_distribution'] : [],
+                $snapshotDistribution,
                 (int) $summary['total_people']
             );
+            if (!$this->hasBpmnFlowSegmentation($statusDistribution)) {
+                $statusDistribution = $this->normalizeStatusDistribution(
+                    $this->repository->statusDistribution(),
+                    (int) $summary['total_people']
+                );
+            }
             $executivePanel = is_array($snapshot['executive_panel'] ?? null)
                 ? $this->normalizeExecutivePanel($snapshot['executive_panel'])
                 : $this->executivePanel();
@@ -127,24 +136,296 @@ final class DashboardService
 
     /**
      * @param array<int, array<string, mixed>> $rows
-     * @return array<int, array<string, int|float|string>>
+     * @return array<int, array<string, mixed>>
      */
     private function normalizeStatusDistribution(array $rows, int $totalPeople): array
+    {
+        if ($rows === []) {
+            return [];
+        }
+
+        $firstRow = $rows[0] ?? null;
+        if (is_array($firstRow) && is_array($firstRow['statuses'] ?? null)) {
+            return $this->normalizeGroupedStatusDistributionRows($rows, $totalPeople);
+        }
+
+        foreach ($rows as $row) {
+            if (is_array($row) && array_key_exists('flow_id', $row)) {
+                return $this->normalizeFlowStatusDistributionRows($rows, $totalPeople);
+            }
+        }
+
+        return $this->normalizeLegacyStatusDistributionRows($rows, $totalPeople);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeGroupedStatusDistributionRows(array $rows, int $totalPeople): array
     {
         $distribution = [];
 
         foreach ($rows as $row) {
-            $total = max(0, (int) ($row['total'] ?? 0));
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $rawStatuses = is_array($row['statuses'] ?? null) ? $row['statuses'] : [];
+            $flowTotal = max(0, (int) ($row['total'] ?? 0));
+            $computedTotal = 0;
+            foreach ($rawStatuses as $statusRow) {
+                if (!is_array($statusRow)) {
+                    continue;
+                }
+
+                $computedTotal += max(0, (int) ($statusRow['total'] ?? 0));
+            }
+
+            if ($computedTotal > 0) {
+                $flowTotal = $computedTotal;
+            }
+
+            $statuses = $this->normalizeStatusesList(
+                $rawStatuses,
+                $flowTotal,
+                $totalPeople
+            );
+
+            if ($statuses === []) {
+                continue;
+            }
+
             $distribution[] = [
-                'code' => (string) ($row['code'] ?? ''),
-                'label' => (string) ($row['label'] ?? ''),
-                'sort_order' => max(0, (int) ($row['sort_order'] ?? 0)),
-                'total' => $total,
-                'share' => $this->percent($total, $totalPeople),
+                'flow_id' => max(0, (int) ($row['flow_id'] ?? 0)),
+                'flow_name' => $this->normalizeFlowName(
+                    trim((string) ($row['flow_name'] ?? '')),
+                    max(0, (int) ($row['flow_id'] ?? 0))
+                ),
+                'is_default' => (int) ((int) ($row['is_default'] ?? 0) === 1),
+                'total' => $flowTotal,
+                'share' => $this->percent($flowTotal, $totalPeople),
+                'statuses' => $statuses,
             ];
         }
 
+        return $this->sortFlowDistribution($distribution);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeFlowStatusDistributionRows(array $rows, int $totalPeople): array
+    {
+        $grouped = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $statusCode = trim((string) ($row['code'] ?? ''));
+            if ($statusCode === '') {
+                continue;
+            }
+
+            $flowId = max(0, (int) ($row['flow_id'] ?? 0));
+            $groupKey = (string) $flowId;
+            if (!isset($grouped[$groupKey])) {
+                $grouped[$groupKey] = [
+                    'flow_id' => $flowId,
+                    'flow_name' => $this->normalizeFlowName(trim((string) ($row['flow_name'] ?? '')), $flowId),
+                    'is_default' => (int) ((int) ($row['flow_is_default'] ?? 0) === 1),
+                    'total' => 0,
+                    'statuses' => [],
+                ];
+            }
+
+            $statusTotal = max(0, (int) ($row['total'] ?? 0));
+            $grouped[$groupKey]['statuses'][] = [
+                'code' => $statusCode,
+                'label' => (string) ($row['label'] ?? $statusCode),
+                'sort_order' => max(0, (int) ($row['flow_sort_order'] ?? ($row['status_sort_order'] ?? 0))),
+                'total' => $statusTotal,
+            ];
+            $grouped[$groupKey]['total'] += $statusTotal;
+        }
+
+        if ($grouped === []) {
+            return [];
+        }
+
+        $distribution = [];
+        foreach ($grouped as $flow) {
+            if (!is_array($flow)) {
+                continue;
+            }
+
+            $flowTotal = max(0, (int) ($flow['total'] ?? 0));
+            $statuses = $this->normalizeStatusesList(
+                is_array($flow['statuses'] ?? null) ? $flow['statuses'] : [],
+                $flowTotal,
+                $totalPeople
+            );
+
+            $distribution[] = [
+                'flow_id' => max(0, (int) ($flow['flow_id'] ?? 0)),
+                'flow_name' => $this->normalizeFlowName(
+                    trim((string) ($flow['flow_name'] ?? '')),
+                    max(0, (int) ($flow['flow_id'] ?? 0))
+                ),
+                'is_default' => (int) ((int) ($flow['is_default'] ?? 0) === 1),
+                'total' => $flowTotal,
+                'share' => $this->percent($flowTotal, $totalPeople),
+                'statuses' => $statuses,
+            ];
+        }
+
+        return $this->sortFlowDistribution($distribution);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeLegacyStatusDistributionRows(array $rows, int $totalPeople): array
+    {
+        $statuses = [];
+        $flowTotal = 0;
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $statusCode = trim((string) ($row['code'] ?? ''));
+            if ($statusCode === '') {
+                continue;
+            }
+
+            $statusTotal = max(0, (int) ($row['total'] ?? 0));
+            $flowTotal += $statusTotal;
+            $statuses[] = [
+                'code' => $statusCode,
+                'label' => (string) ($row['label'] ?? $statusCode),
+                'sort_order' => max(0, (int) ($row['sort_order'] ?? 0)),
+                'total' => $statusTotal,
+            ];
+        }
+
+        if ($statuses === []) {
+            return [];
+        }
+
+        $normalizedStatuses = $this->normalizeStatusesList($statuses, $flowTotal, $totalPeople);
+
+        return [[
+            'flow_id' => 0,
+            'flow_name' => 'Fluxo BPMN',
+            'is_default' => 1,
+            'total' => $flowTotal,
+            'share' => $this->percent($flowTotal, $totalPeople),
+            'statuses' => $normalizedStatuses,
+        ]];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $statuses
+     * @return array<int, array<string, int|float|string>>
+     */
+    private function normalizeStatusesList(array $statuses, int $flowTotal, int $totalPeople): array
+    {
+        $filteredStatuses = array_values(array_filter(
+            $statuses,
+            static fn (mixed $row): bool => is_array($row)
+        ));
+
+        usort($filteredStatuses, static function (array $left, array $right): int {
+            $sortDiff = (int) ($left['sort_order'] ?? 0) <=> (int) ($right['sort_order'] ?? 0);
+            if ($sortDiff !== 0) {
+                return $sortDiff;
+            }
+
+            return strcmp((string) ($left['code'] ?? ''), (string) ($right['code'] ?? ''));
+        });
+
+        $normalized = [];
+        foreach ($filteredStatuses as $row) {
+            $total = max(0, (int) ($row['total'] ?? 0));
+            $code = trim((string) ($row['code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+
+            $normalized[] = [
+                'code' => $code,
+                'label' => (string) ($row['label'] ?? $code),
+                'sort_order' => max(0, (int) ($row['sort_order'] ?? 0)),
+                'total' => $total,
+                'share' => $this->percent($total, $flowTotal),
+                'global_share' => $this->percent($total, $totalPeople),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $distribution
+     * @return array<int, array<string, mixed>>
+     */
+    private function sortFlowDistribution(array $distribution): array
+    {
+        usort($distribution, static function (array $left, array $right): int {
+            $defaultDiff = (int) ($right['is_default'] ?? 0) <=> (int) ($left['is_default'] ?? 0);
+            if ($defaultDiff !== 0) {
+                return $defaultDiff;
+            }
+
+            $nameDiff = strcmp(
+                mb_strtolower(trim((string) ($left['flow_name'] ?? ''))),
+                mb_strtolower(trim((string) ($right['flow_name'] ?? '')))
+            );
+            if ($nameDiff !== 0) {
+                return $nameDiff;
+            }
+
+            return (int) ($left['flow_id'] ?? 0) <=> (int) ($right['flow_id'] ?? 0);
+        });
+
         return $distribution;
+    }
+
+    private function normalizeFlowName(string $name, int $flowId): string
+    {
+        if ($name !== '') {
+            return $name;
+        }
+
+        if ($flowId > 0) {
+            return 'Fluxo BPMN #' . $flowId;
+        }
+
+        return 'Fluxo BPMN';
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $distribution
+     */
+    private function hasBpmnFlowSegmentation(array $distribution): bool
+    {
+        foreach ($distribution as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            if (max(0, (int) ($row['flow_id'] ?? 0)) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

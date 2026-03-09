@@ -14,10 +14,11 @@
 - [ ] Card de saude aponta para `/health` e exibe volume de auditoria dos ultimos 30 dias
 
 ## Distribuicao do pipeline
-- [ ] Secao "Distribuicao do pipeline" lista todas as etapas ativas de `assignment_statuses`
-- [ ] Quantidade por etapa corresponde ao status atual das pessoas
-- [ ] Percentual por etapa corresponde a participacao no total de pessoas
-- [ ] Barra visual acompanha o percentual exibido
+- [ ] Secao "Distribuicao do pipeline" lista os fluxos BPMN ativos (`assignment_flows`)
+- [ ] Cada fluxo exibe suas etapas ativas configuradas em `assignment_flow_steps` + `assignment_statuses`
+- [ ] Quantidade por etapa corresponde ao status atual das pessoas no respectivo fluxo
+- [ ] Percentuais por etapa exibem participacao no fluxo e no total geral de pessoas
+- [ ] Barra visual acompanha o percentual exibido dentro do fluxo
 
 ## Recomendacao operacional
 - [ ] Bloco "Proxima acao" muda conforme gap identificado (sem pessoas, sem documentos, sem custos, etc.)

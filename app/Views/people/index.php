@@ -146,7 +146,7 @@ $formatMoney = static function (float $value): string {
   <?php endif; ?>
 
   <form method="get" action="<?= e(url('/people')) ?>" class="filters-row filters-people">
-    <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome, CPF, órgão, SEI">
+    <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome, CPF, SIAPE, órgão, SEI">
 
     <select name="status">
       <option value="">Status (todos)</option>

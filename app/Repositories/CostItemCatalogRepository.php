@@ -18,23 +18,32 @@ final class CostItemCatalogRepository
     public function paginate(
         string $query,
         string $linkage,
-        string $reimbursable,
+        string $reimbursability,
         string $periodicity,
+        string $macroCategory,
+        string $subcategory,
+        string $expenseNature,
+        string $predictability,
         string $sort,
         string $dir,
         int $page,
         int $perPage
     ): array {
         $sortMap = [
+            'cost_code' => 'cost_code',
             'name' => 'name',
+            'macro_category' => 'macro_category',
+            'subcategory' => 'subcategory',
+            'expense_nature' => 'expense_nature',
+            'reimbursability' => 'reimbursability',
+            'predictability' => 'predictability',
             'linkage_code' => 'linkage_code',
-            'is_reimbursable' => 'is_reimbursable',
             'payment_periodicity' => 'payment_periodicity',
             'created_at' => 'created_at',
             'updated_at' => 'updated_at',
         ];
 
-        $sortColumn = $sortMap[$sort] ?? 'name';
+        $sortColumn = $sortMap[$sort] ?? 'cost_code';
         $direction = strtoupper($dir) === 'DESC' ? 'DESC' : 'ASC';
 
         $where = 'WHERE deleted_at IS NULL';
@@ -42,9 +51,16 @@ final class CostItemCatalogRepository
 
         $normalizedQuery = trim($query);
         if ($normalizedQuery !== '') {
-            $where .= ' AND (name LIKE :q_name OR CAST(linkage_code AS CHAR) LIKE :q_linkage)';
+            $where .= ' AND (
+                name LIKE :q_name
+                OR type_description LIKE :q_description
+                OR CAST(cost_code AS CHAR) LIKE :q_code
+                OR CAST(linkage_code AS CHAR) LIKE :q_linkage
+            )';
             $search = '%' . $normalizedQuery . '%';
             $params['q_name'] = $search;
+            $params['q_description'] = $search;
+            $params['q_code'] = $search;
             $params['q_linkage'] = $search;
         }
 
@@ -53,15 +69,34 @@ final class CostItemCatalogRepository
             $params['linkage_code'] = (int) $linkage;
         }
 
-        if ($reimbursable === 'reimbursable') {
-            $where .= ' AND is_reimbursable = 1';
-        } elseif ($reimbursable === 'non_reimbursable') {
-            $where .= ' AND is_reimbursable = 0';
+        if (in_array($reimbursability, ['reembolsavel', 'parcialmente_reembolsavel', 'nao_reembolsavel'], true)) {
+            $where .= ' AND reimbursability = :reimbursability';
+            $params['reimbursability'] = $reimbursability;
         }
 
-        if (in_array($periodicity, ['mensal', 'anual', 'unico'], true)) {
+        if (in_array($periodicity, ['mensal', 'anual', 'eventual', 'unico'], true)) {
             $where .= ' AND payment_periodicity = :payment_periodicity';
             $params['payment_periodicity'] = $periodicity;
+        }
+
+        if ($macroCategory !== '') {
+            $where .= ' AND macro_category = :macro_category';
+            $params['macro_category'] = $macroCategory;
+        }
+
+        if ($subcategory !== '') {
+            $where .= ' AND subcategory = :subcategory';
+            $params['subcategory'] = $subcategory;
+        }
+
+        if (in_array($expenseNature, ['remuneratoria', 'indenizatoria', 'encargos', 'provisoes'], true)) {
+            $where .= ' AND expense_nature = :expense_nature';
+            $params['expense_nature'] = $expenseNature;
+        }
+
+        if (in_array($predictability, ['fixa', 'variavel', 'eventual'], true)) {
+            $where .= ' AND predictability = :predictability';
+            $params['predictability'] = $predictability;
         }
 
         $countStmt = $this->db->prepare("SELECT COUNT(*) AS total FROM cost_item_catalog {$where}");
@@ -75,7 +110,16 @@ final class CostItemCatalogRepository
         $sql = "
             SELECT
                 id,
+                cost_code,
                 name,
+                type_description,
+                macro_category,
+                subcategory,
+                expense_nature,
+                calculation_base,
+                charge_incidence,
+                reimbursability,
+                predictability,
                 linkage_code,
                 is_reimbursable,
                 payment_periodicity,
@@ -115,7 +159,16 @@ final class CostItemCatalogRepository
         $stmt = $this->db->prepare(
             'SELECT
                 id,
+                cost_code,
                 name,
+                type_description,
+                macro_category,
+                subcategory,
+                expense_nature,
+                calculation_base,
+                charge_incidence,
+                reimbursability,
+                predictability,
                 linkage_code,
                 is_reimbursable,
                 payment_periodicity,
@@ -139,23 +192,31 @@ final class CostItemCatalogRepository
     }
 
     public function combinationExists(
+        int $costCode,
         string $name,
         int $linkageCode,
-        int $isReimbursable,
+        string $reimbursability,
         string $paymentPeriodicity,
         ?int $ignoreId = null
     ): bool {
         $sql = 'SELECT id
                 FROM cost_item_catalog
-                WHERE name = :name
-                  AND linkage_code = :linkage_code
-                  AND is_reimbursable = :is_reimbursable
-                  AND payment_periodicity = :payment_periodicity
-                  AND deleted_at IS NULL';
+                WHERE deleted_at IS NULL
+                  AND (
+                    cost_code = :cost_code
+                    OR (
+                        name = :name
+                        AND linkage_code = :linkage_code
+                        AND reimbursability = :reimbursability
+                        AND payment_periodicity = :payment_periodicity
+                    )
+                  )';
+
         $params = [
+            'cost_code' => $costCode,
             'name' => $name,
             'linkage_code' => $linkageCode,
-            'is_reimbursable' => $isReimbursable,
+            'reimbursability' => $reimbursability,
             'payment_periodicity' => $paymentPeriodicity,
         ];
 
@@ -177,7 +238,16 @@ final class CostItemCatalogRepository
     {
         $stmt = $this->db->prepare(
             'INSERT INTO cost_item_catalog (
+                cost_code,
                 name,
+                type_description,
+                macro_category,
+                subcategory,
+                expense_nature,
+                calculation_base,
+                charge_incidence,
+                reimbursability,
+                predictability,
                 linkage_code,
                 is_reimbursable,
                 payment_periodicity,
@@ -186,7 +256,16 @@ final class CostItemCatalogRepository
                 updated_at,
                 deleted_at
              ) VALUES (
+                :cost_code,
                 :name,
+                :type_description,
+                :macro_category,
+                :subcategory,
+                :expense_nature,
+                :calculation_base,
+                :charge_incidence,
+                :reimbursability,
+                :predictability,
                 :linkage_code,
                 :is_reimbursable,
                 :payment_periodicity,
@@ -198,7 +277,16 @@ final class CostItemCatalogRepository
         );
 
         $stmt->execute([
+            'cost_code' => $data['cost_code'],
             'name' => $data['name'],
+            'type_description' => $data['type_description'],
+            'macro_category' => $data['macro_category'],
+            'subcategory' => $data['subcategory'],
+            'expense_nature' => $data['expense_nature'],
+            'calculation_base' => $data['calculation_base'],
+            'charge_incidence' => $data['charge_incidence'],
+            'reimbursability' => $data['reimbursability'],
+            'predictability' => $data['predictability'],
             'linkage_code' => $data['linkage_code'],
             'is_reimbursable' => $data['is_reimbursable'],
             'payment_periodicity' => $data['payment_periodicity'],
@@ -214,7 +302,16 @@ final class CostItemCatalogRepository
         $stmt = $this->db->prepare(
             'UPDATE cost_item_catalog
              SET
+                cost_code = :cost_code,
                 name = :name,
+                type_description = :type_description,
+                macro_category = :macro_category,
+                subcategory = :subcategory,
+                expense_nature = :expense_nature,
+                calculation_base = :calculation_base,
+                charge_incidence = :charge_incidence,
+                reimbursability = :reimbursability,
+                predictability = :predictability,
                 linkage_code = :linkage_code,
                 is_reimbursable = :is_reimbursable,
                 payment_periodicity = :payment_periodicity,
@@ -225,7 +322,16 @@ final class CostItemCatalogRepository
 
         return $stmt->execute([
             'id' => $id,
+            'cost_code' => $data['cost_code'],
             'name' => $data['name'],
+            'type_description' => $data['type_description'],
+            'macro_category' => $data['macro_category'],
+            'subcategory' => $data['subcategory'],
+            'expense_nature' => $data['expense_nature'],
+            'calculation_base' => $data['calculation_base'],
+            'charge_incidence' => $data['charge_incidence'],
+            'reimbursability' => $data['reimbursability'],
+            'predictability' => $data['predictability'],
             'linkage_code' => $data['linkage_code'],
             'is_reimbursable' => $data['is_reimbursable'],
             'payment_periodicity' => $data['payment_periodicity'],
@@ -251,13 +357,28 @@ final class CostItemCatalogRepository
         $stmt = $this->db->query(
             'SELECT
                 id,
+                cost_code,
                 name,
+                type_description,
+                macro_category,
+                subcategory,
+                expense_nature,
+                calculation_base,
+                charge_incidence,
+                reimbursability,
+                predictability,
                 linkage_code,
                 is_reimbursable,
                 payment_periodicity
              FROM cost_item_catalog
              WHERE deleted_at IS NULL
-             ORDER BY linkage_code ASC, name ASC, id ASC'
+             ORDER BY
+                CASE WHEN cost_code IS NULL THEN 1 ELSE 0 END ASC,
+                macro_category ASC,
+                subcategory ASC,
+                cost_code ASC,
+                name ASC,
+                id ASC'
         );
 
         return $stmt->fetchAll();

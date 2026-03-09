@@ -11,23 +11,28 @@
 - [ ] KPIs exibem total, executado, comprometido e disponivel
 - [ ] Projecao do ano seguinte e saldo projetado sao exibidos
 
-## Parametrizacao por orgao/cargo/setor
-- [ ] `POST /budget/parameters/upsert` salva custo medio por escopo (`orgao`, `cargo`, `setor`)
-- [ ] Atualizacao de parametro existente funciona (upsert por escopo)
-- [ ] Tabela de parametros lista orgao, escopo, custo e usuario de atualizacao
-- [ ] Escopo geral (sem cargo/setor) segue disponivel para fallback
-- [ ] Usuario sem `budget.manage` nao altera parametros
+## Gestao de ciclos anuais
+- [ ] Atualizacao de valor anual do ciclo funciona na tabela de ciclos
+- [ ] Exclusao de ciclo remove o ciclo selecionado
+- [ ] Exclusao de ciclo tambem remove simulacoes e parametros vinculados ao mesmo ciclo
+- [ ] Mensagem de confirmacao da exclusao informa os impactos (simulacoes/parametros)
+
+## Custo medio automatico por orgao
+- [ ] Tabela de custo medio lista orgao, valor calculado e base historica usada
+- [ ] Valor por orgao prioriza historico de espelhos de custo (`cost_mirrors`)
+- [ ] Sem espelho suficiente, calculo usa historico de custos planejados ativos
+- [ ] Sem base por orgao, simulador usa media historica global automaticamente
 
 ## Simulador de contratacao
 - [ ] `POST /budget/simulate` salva cenario com orgao, data, quantidade e custo medio
 - [ ] Simulacao calcula impacto no ano corrente (pro rata) e no ano seguinte
 - [ ] Simulacao calcula capacidade maxima antes da contratacao
 - [ ] Simulacao mostra risco (`baixo`, `medio`, `alto`) conforme saldo remanescente
-- [ ] Fallback de custo medio usa prioridade de escopo (`cargo+setor` -> `cargo` -> `setor` -> `geral`)
-- [ ] Sem parametro do orgao, fallback usa media global de custos ativos
+- [ ] Simulacao nao aceita entrada manual de custo medio na interface
+- [ ] Fonte exibida na simulacao indica se veio de historico do orgao ou media historica global
 
 ## Alertas ativos
-- [ ] Painel \"Alertas ativos (5.4)\" e exibido no dashboard
+- [ ] Painel \"Alertas ativos\" e exibido no dashboard
 - [ ] Alertas incluem risco de saldo negativo e deficit projetado no proximo ano
 - [ ] Alertas incluem risco mensal alto de insuficiencia quando existir
 - [ ] Sem risco ativo, painel exibe estado vazio
@@ -38,9 +43,7 @@
 
 ## Auditoria e eventos
 - [ ] `audit_log` registra `hiring_scenario:simulate`
-- [ ] `audit_log` registra `org_cost_parameter:create` e `org_cost_parameter:update`
 - [ ] `system_events` registra `budget.hiring_simulated`
-- [ ] `system_events` registra `budget.org_cost_parameter_upserted`
 
 ## Seguranca de acesso
 - [ ] Usuario sem `budget.view` nao acessa `/budget`

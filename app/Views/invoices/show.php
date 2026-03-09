@@ -132,7 +132,7 @@ $remainingPayable = max(0.0, $totalAmount - $paidAmount);
     <div><strong>Linha digitavel:</strong> <?= e((string) ($invoice['digitable_line'] ?? '-')) ?></div>
     <div><strong>Referencia:</strong> <?= e((string) ($invoice['reference_code'] ?? '-')) ?></div>
     <div><strong>PDF:</strong> <?= e((string) ($invoice['pdf_original_name'] ?? 'Nao anexado')) ?></div>
-    <div><strong>Criado por:</strong> <?= e((string) ($invoice['created_by_name'] ?? 'N/I')) ?></div>
+    <div><strong>Criado por:</strong> <?= e((string) ($invoice['created_by_name'] ?? 'Nao informado')) ?></div>
     <div class="details-wide"><strong>Observacoes:</strong> <?= nl2br(e((string) ($invoice['notes'] ?? '-'))) ?></div>
   </div>
 </div>
@@ -315,7 +315,7 @@ $remainingPayable = max(0.0, $totalAmount - $paidAmount);
               </td>
               <td>
                 <?= e($formatDateTime((string) ($payment['created_at'] ?? ''))) ?>
-                <div class="muted">por <?= e((string) ($payment['created_by_name'] ?? 'N/I')) ?></div>
+                <div class="muted">por <?= e((string) ($payment['created_by_name'] ?? 'Nao informado')) ?></div>
               </td>
               <td><?= nl2br(e((string) ($payment['notes'] ?? '-'))) ?></td>
             </tr>
@@ -364,7 +364,7 @@ $remainingPayable = max(0.0, $totalAmount - $paidAmount);
               <td><?= e($formatMoney((float) ($link['paid_amount'] ?? 0))) ?></td>
               <td>
                 <?= e($formatDateTime((string) ($link['created_at'] ?? ''))) ?>
-                <div class="muted">por <?= e((string) ($link['created_by_name'] ?? 'N/I')) ?></div>
+                <div class="muted">por <?= e((string) ($link['created_by_name'] ?? 'Nao informado')) ?></div>
               </td>
               <td><?= nl2br(e((string) ($link['notes'] ?? '-'))) ?></td>
               <td class="actions-cell">

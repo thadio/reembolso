@@ -194,7 +194,18 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
             }
 
             $destinationCode = trim((string) ($destination['code'] ?? ''));
-            $destinationLabel = $destinationCode === '' ? $destinationName : ($destinationCode . ' - ' . $destinationName);
+            $destinationAcronym = trim((string) ($destination['acronym'] ?? ''));
+            $destinationUf = trim((string) ($destination['uf'] ?? ''));
+
+            $prefix = $destinationAcronym !== '' ? $destinationAcronym : $destinationCode;
+            if ($destinationUf !== '') {
+                $prefix = $prefix === '' ? $destinationUf : ($prefix . '/' . $destinationUf);
+            }
+            if ($destinationCode !== '' && $destinationAcronym !== '' && $destinationCode !== $destinationAcronym) {
+                $prefix .= ' [' . $destinationCode . ']';
+            }
+
+            $destinationLabel = $prefix === '' ? $destinationName : ($prefix . ' - ' . $destinationName);
           ?>
           <option value="<?= e((string) $destinationId) ?>" <?= $selectedOriginDestination === $destinationId ? 'selected' : '' ?>>
             <?= e($destinationLabel) ?>
@@ -217,7 +228,18 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
             }
 
             $destinationCode = trim((string) ($destination['code'] ?? ''));
-            $destinationLabel = $destinationCode === '' ? $destinationName : ($destinationCode . ' - ' . $destinationName);
+            $destinationAcronym = trim((string) ($destination['acronym'] ?? ''));
+            $destinationUf = trim((string) ($destination['uf'] ?? ''));
+
+            $prefix = $destinationAcronym !== '' ? $destinationAcronym : $destinationCode;
+            if ($destinationUf !== '') {
+                $prefix = $prefix === '' ? $destinationUf : ($prefix . '/' . $destinationUf);
+            }
+            if ($destinationCode !== '' && $destinationAcronym !== '' && $destinationCode !== $destinationAcronym) {
+                $prefix .= ' [' . $destinationCode . ']';
+            }
+
+            $destinationLabel = $prefix === '' ? $destinationName : ($prefix . ' - ' . $destinationName);
           ?>
           <option value="<?= e((string) $destinationId) ?>" <?= $selectedDestination === $destinationId ? 'selected' : '' ?>>
             <?= e($destinationLabel) ?>
@@ -258,6 +280,21 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
     <div class="field">
       <label for="cpf">CPF *</label>
       <input id="cpf" name="cpf" type="text" value="<?= e(old('cpf', (string) ($person['cpf'] ?? ''))) ?>" required placeholder="000.000.000-00">
+    </div>
+
+    <div class="field">
+      <label for="matricula_siape">Matrícula SIAPE</label>
+      <input
+        id="matricula_siape"
+        name="matricula_siape"
+        type="text"
+        value="<?= e(old('matricula_siape', (string) ($person['matricula_siape'] ?? ''))) ?>"
+        inputmode="numeric"
+        maxlength="20"
+        pattern="[0-9]+"
+        placeholder="Somente números"
+      >
+      <p class="muted">Quando informada, deve ser numérica e única por pessoa.</p>
     </div>
 
     <div class="field">
@@ -502,5 +539,20 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
       radio.addEventListener('change', syncByDirection);
     });
     syncByDirection();
+  })();
+</script>
+<script>
+  (function () {
+    var siapeField = document.getElementById('matricula_siape');
+    if (!siapeField) {
+      return;
+    }
+
+    siapeField.addEventListener('input', function () {
+      var digits = (siapeField.value || '').replace(/\D+/g, '');
+      if (digits !== siapeField.value) {
+        siapeField.value = digits;
+      }
+    });
   })();
 </script>

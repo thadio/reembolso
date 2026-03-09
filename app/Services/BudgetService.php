@@ -189,9 +189,8 @@ final class BudgetService
         $scenarioNameInput = $this->clean($input['scenario_name'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
 
-        $avgMonthlyRaw = $this->parseMoneyNullable($input['avg_monthly_cost'] ?? null);
-        $avgMonthly = $avgMonthlyRaw;
-        $avgSource = 'informado';
+        $avgMonthly = null;
+        $avgSource = 'historico_orgao';
 
         $errors = [];
 
@@ -212,31 +211,29 @@ final class BudgetService
             $errors[] = sprintf('Data de entrada deve estar dentro do ciclo %d.', $yearValue);
         }
 
-        if ($avgMonthly === null || $avgMonthly <= 0.0) {
-            if ($organId > 0) {
-                $parameter = $this->budget->findOrgParameterByScope(
-                    organId: $organId,
-                    cargo: $cargo !== '' ? $cargo : null,
-                    setor: $setor !== '' ? $setor : null
-                );
-                $paramAvg = max(0.0, $this->toFloat($parameter['avg_monthly_cost'] ?? 0));
-                if ($paramAvg > 0.0) {
-                    $avgMonthly = $paramAvg;
-                    $avgSource = $this->resolveParameterSource($parameter, $cargo, $setor);
-                }
+        if ($organId > 0) {
+            $parameter = $this->budget->findOrgParameterByScope(
+                organId: $organId,
+                cargo: $cargo !== '' ? $cargo : null,
+                setor: $setor !== '' ? $setor : null
+            );
+            $paramAvg = max(0.0, $this->toFloat($parameter['avg_monthly_cost'] ?? 0));
+            if ($paramAvg > 0.0) {
+                $avgMonthly = $paramAvg;
+                $avgSource = 'historico_orgao';
             }
+        }
 
-            if (($avgMonthly === null || $avgMonthly <= 0.0)) {
-                $globalAvg = max(0.0, $this->budget->globalAverageMonthlyCost());
-                if ($globalAvg > 0.0) {
-                    $avgMonthly = $globalAvg;
-                    $avgSource = 'media_global';
-                }
+        if (($avgMonthly === null || $avgMonthly <= 0.0)) {
+            $globalAvg = max(0.0, $this->budget->globalAverageMonthlyCost());
+            if ($globalAvg > 0.0) {
+                $avgMonthly = $globalAvg;
+                $avgSource = 'media_historica_global';
             }
         }
 
         if ($avgMonthly === null || $avgMonthly <= 0.0) {
-            $errors[] = 'Custo medio mensal invalido e sem parametro de fallback disponivel.';
+            $errors[] = 'Nao foi possivel calcular automaticamente o custo medio mensal com o historico disponivel.';
         }
 
         $monthsRemaining = 0;
@@ -675,21 +672,15 @@ final class BudgetService
         $scenariosCount = (int) ($dependencies['scenarios_count'] ?? 0);
         $scenarioParametersCount = (int) ($dependencies['scenario_parameters_count'] ?? 0);
 
-        if ($scenariosCount > 0) {
-            return [
-                'ok' => false,
-                'message' => 'Nao foi possivel remover orcamento anual do MTE.',
-                'errors' => ['Este ciclo possui cenarios de simulacao vinculados e nao pode ser removido.'],
-                'year' => (int) ($before['cycle_year'] ?? date('Y')),
-                'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
-            ];
-        }
-
         try {
             $this->budget->beginTransaction();
 
             if ($scenarioParametersCount > 0) {
                 $this->budget->deleteScenarioParametersByCycle($cycleId);
+            }
+
+            if ($scenariosCount > 0) {
+                $this->budget->deleteScenariosByCycle($cycleId);
             }
 
             $deleted = $this->budget->deleteCycle($cycleId);
@@ -751,89 +742,6 @@ final class BudgetService
             'errors' => [],
             'year' => $redirectYear,
             'financial_nature' => (string) ($before['financial_nature'] ?? 'despesa_reembolso'),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $input
-     * @return array{ok: bool, message: string, errors: array<int, string>}
-     */
-    public function upsertOrgParameter(array $input, int $userId, string $ip, string $userAgent): array
-    {
-        $organId = max(0, (int) ($input['organ_id'] ?? 0));
-        $cargo = $this->normalizeScopeValue($this->clean($input['cargo'] ?? null));
-        $setor = $this->normalizeScopeValue($this->clean($input['setor'] ?? null));
-        $avgMonthlyCost = $this->parseMoneyNullable($input['avg_monthly_cost'] ?? null);
-        $notes = $this->clean($input['notes'] ?? null);
-
-        $errors = [];
-
-        if ($organId <= 0 || !$this->budget->organExists($organId)) {
-            $errors[] = 'Orgao invalido para parametrizacao de custo medio.';
-        }
-
-        if ($avgMonthlyCost === null || $avgMonthlyCost <= 0.0) {
-            $errors[] = 'Custo medio mensal invalido (deve ser maior que zero).';
-        }
-
-        if ($errors !== []) {
-            return [
-                'ok' => false,
-                'message' => 'Nao foi possivel salvar parametro de custo medio.',
-                'errors' => $errors,
-            ];
-        }
-
-        $before = $this->budget->findOrgParameterExact($organId, $cargo, $setor);
-        $id = $this->budget->upsertOrgParameter(
-            organId: $organId,
-            cargo: $cargo,
-            setor: $setor,
-            avgMonthlyCost: number_format((float) $avgMonthlyCost, 2, '.', ''),
-            notes: $notes === null ? null : mb_substr($notes, 0, 4000),
-            updatedBy: $userId > 0 ? $userId : null
-        );
-
-        if ($id <= 0) {
-            return [
-                'ok' => false,
-                'message' => 'Nao foi possivel salvar parametro de custo medio.',
-                'errors' => ['Falha ao persistir parametro por orgao.'],
-            ];
-        }
-
-        $after = $this->budget->findOrgParameterExact($organId, $cargo, $setor);
-
-        $this->audit->log(
-            entity: 'org_cost_parameter',
-            entityId: $id,
-            action: $before === null ? 'create' : 'update',
-            beforeData: $before,
-            afterData: $after,
-            metadata: null,
-            userId: $userId,
-            ip: $ip,
-            userAgent: $userAgent
-        );
-
-        $this->events->recordEvent(
-            entity: 'budget',
-            type: 'budget.org_cost_parameter_upserted',
-            payload: [
-                'organ_id' => $organId,
-                'cargo' => $cargo,
-                'setor' => $setor,
-                'avg_monthly_cost' => number_format((float) $avgMonthlyCost, 2, '.', ''),
-                'parameter_id' => $id,
-            ],
-            entityId: $id,
-            userId: $userId
-        );
-
-        return [
-            'ok' => true,
-            'message' => 'Parametro de custo medio salvo com sucesso.',
-            'errors' => [],
         ];
     }
 
@@ -1330,28 +1238,6 @@ final class BudgetService
         $text = trim(mb_strtolower((string) $value));
 
         return $text === 'saida' ? 'saida' : 'entrada';
-    }
-
-    private function resolveParameterSource(?array $parameter, string $inputCargo, string $inputSetor): string
-    {
-        $paramCargo = $this->normalizeScopeValue((string) ($parameter['cargo'] ?? ''));
-        $paramSetor = $this->normalizeScopeValue((string) ($parameter['setor'] ?? ''));
-        $cargo = $this->normalizeScopeValue($inputCargo);
-        $setor = $this->normalizeScopeValue($inputSetor);
-
-        if ($paramCargo !== '' && $paramSetor !== '' && $paramCargo === $cargo && $paramSetor === $setor) {
-            return 'parametro_orgao_cargo_setor';
-        }
-
-        if ($paramCargo !== '' && $paramCargo === $cargo && $paramSetor === '') {
-            return 'parametro_orgao_cargo';
-        }
-
-        if ($paramSetor !== '' && $paramSetor === $setor && $paramCargo === '') {
-            return 'parametro_orgao_setor';
-        }
-
-        return 'parametro_orgao';
     }
 
     private function normalizeScopeValue(?string $value): string

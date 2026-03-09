@@ -64,6 +64,9 @@ final class PersonDossierExportService
             ];
         }
 
+        $pipelineProfile = $this->pipeline->profileData($personId, 1, 1);
+        $assignment = is_array($pipelineProfile['assignment'] ?? null) ? $pipelineProfile['assignment'] : [];
+
         $timeline = $this->pipeline->fullTimeline($personId, 2000);
         $documentsData = $this->documents->profileData($personId, 1, 2500, $canViewSensitiveDocuments);
         $documentItems = is_array($documentsData['items'] ?? null) ? $documentsData['items'] : [];
@@ -124,7 +127,7 @@ final class PersonDossierExportService
         $usedZipPaths = [];
 
         try {
-            $zip->addFromString('dossie/pessoa.csv', $this->csvString($this->buildPersonCsvRows($person, $canViewCpfFull)));
+            $zip->addFromString('dossie/pessoa.csv', $this->csvString($this->buildPersonCsvRows($person, $assignment, $canViewCpfFull)));
             $zip->addFromString('dossie/timeline_operacional.csv', $this->csvString($this->buildOperationalTimelineCsvRows($timeline)));
             $zip->addFromString('dossie/documentos.csv', $this->csvString($this->buildDocumentsCsvRows($documentItems)));
             $zip->addFromString('dossie/comentarios_internos.csv', $this->csvString($this->buildProcessCommentsCsvRows($commentItems)));
@@ -345,21 +348,26 @@ final class PersonDossierExportService
 
     /**
      * @param array<string, mixed> $person
+     * @param array<string, mixed> $assignment
      * @return array<int, array<int, string|int|float>>
      */
-    private function buildPersonCsvRows(array $person, bool $canViewCpfFull): array
+    private function buildPersonCsvRows(array $person, array $assignment, bool $canViewCpfFull): array
     {
         $cpf = (string) ($person['cpf'] ?? '');
+        $originMteDestination = (string) ($assignment['origin_mte_destination_name'] ?? '');
+        $destinationMteDestination = (string) ($assignment['destination_mte_destination_name'] ?? '');
 
         return [[
             'id',
             'nome',
             'cpf',
+            'matricula_siape',
             'status',
             'orgao',
             'modalidade',
             'sei',
-            'lotacao_mte',
+            'lotacao_origem_mte',
+            'lotacao_destino_mte',
             'email',
             'telefone',
             'tags',
@@ -370,11 +378,13 @@ final class PersonDossierExportService
             (int) ($person['id'] ?? 0),
             (string) ($person['name'] ?? ''),
             $canViewCpfFull ? $cpf : (string) \mask_cpf($cpf),
+            (string) ($person['matricula_siape'] ?? ''),
             (string) ($person['status'] ?? ''),
             (string) ($person['organ_name'] ?? ''),
             (string) ($person['modality_name'] ?? ''),
             (string) ($person['sei_process_number'] ?? ''),
-            (string) ($person['mte_destination'] ?? ''),
+            $originMteDestination,
+            $destinationMteDestination,
             (string) ($person['email'] ?? ''),
             (string) ($person['phone'] ?? ''),
             (string) ($person['tags'] ?? ''),

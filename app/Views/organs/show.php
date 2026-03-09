@@ -145,10 +145,13 @@ $buildAuditExportUrl = static function () use ($organId, $auditFilters): string 
   <div class="details-grid">
     <div><strong>Sigla:</strong> <?= e((string) ($organ['acronym'] ?? '-')) ?></div>
     <div><strong>CNPJ:</strong> <?= e((string) ($organ['cnpj'] ?? '-')) ?></div>
+    <div><strong>NIRE:</strong> <?= e((string) ($organ['company_nire'] ?? '-')) ?></div>
     <div><strong>Tipo institucional:</strong> <?= e($formatDimension((string) ($organ['organ_type'] ?? ''))) ?></div>
+    <div><strong>Vinculacao da empresa:</strong> <?= e($formatDimension((string) ($organ['company_dependency_type'] ?? ''))) ?></div>
     <div><strong>Esfera:</strong> <?= e($formatDimension((string) ($organ['government_level'] ?? ''))) ?></div>
     <div><strong>Poder:</strong> <?= e($formatDimension((string) ($organ['government_branch'] ?? ''))) ?></div>
     <div><strong>Orgao supervisor:</strong> <?= e((string) ($organ['supervising_organ'] ?? '-')) ?></div>
+    <div><strong>Ente federativo:</strong> <?= e((string) ($organ['federative_entity'] ?? '-')) ?></div>
     <div><strong>Contato:</strong> <?= e((string) ($organ['contact_name'] ?? '-')) ?></div>
     <div><strong>E-mail:</strong> <?= e((string) ($organ['contact_email'] ?? '-')) ?></div>
     <div><strong>Telefone:</strong> <?= e((string) ($organ['contact_phone'] ?? '-')) ?></div>
@@ -164,6 +167,19 @@ $buildAuditExportUrl = static function () use ($organId, $auditFilters): string 
         -
       <?php endif; ?>
     </div>
+    <div>
+      <strong>Site oficial:</strong>
+      <?php if (!empty($organ['official_website'])): ?>
+        <a href="<?= e((string) $organ['official_website']) ?>" target="_blank" rel="noopener noreferrer">Abrir site</a>
+      <?php else: ?>
+        -
+      <?php endif; ?>
+    </div>
+    <div class="details-wide"><strong>Objetivo da empresa:</strong> <?= nl2br(e((string) ($organ['company_objective'] ?? '-'))) ?></div>
+    <div class="details-wide"><strong>Capital social:</strong> <?= nl2br(e((string) ($organ['capital_information'] ?? '-'))) ?></div>
+    <div class="details-wide"><strong>Ato de criacao:</strong> <?= nl2br(e((string) ($organ['creation_act'] ?? '-'))) ?></div>
+    <div class="details-wide"><strong>Regulamentacao interna:</strong> <?= nl2br(e((string) ($organ['internal_regulations'] ?? '-'))) ?></div>
+    <div class="details-wide"><strong>Subsidiarias:</strong> <?= nl2br(e((string) ($organ['subsidiaries'] ?? '-'))) ?></div>
     <div class="details-wide"><strong>Observacoes:</strong> <?= nl2br(e((string) ($organ['notes'] ?? '-'))) ?></div>
   </div>
 </div>

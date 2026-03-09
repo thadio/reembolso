@@ -21,6 +21,7 @@ final class OrganService
     private const REQUIRED_IMPORT_COLUMNS = ['name'];
     private const ALLOWED_GOVERNMENT_LEVELS = ['federal', 'estadual', 'municipal', 'distrital'];
     private const ALLOWED_GOVERNMENT_BRANCHES = ['executivo', 'legislativo', 'judiciario', 'autonomo'];
+    private const ALLOWED_COMPANY_DEPENDENCY_TYPES = ['independente', 'dependente', 'em_liquidacao'];
 
     public function __construct(
         private OrganRepository $organs,
@@ -112,10 +113,13 @@ final class OrganService
                 'name' => (string) ($mapped['name'] ?? ''),
                 'acronym' => (string) ($mapped['acronym'] ?? ''),
                 'cnpj' => (string) ($mapped['cnpj'] ?? ''),
+                'company_nire' => (string) ($mapped['company_nire'] ?? ''),
                 'organ_type' => (string) ($mapped['organ_type'] ?? ''),
+                'company_dependency_type' => (string) ($mapped['company_dependency_type'] ?? ''),
                 'government_level' => (string) ($mapped['government_level'] ?? ''),
                 'government_branch' => (string) ($mapped['government_branch'] ?? ''),
                 'supervising_organ' => (string) ($mapped['supervising_organ'] ?? ''),
+                'federative_entity' => (string) ($mapped['federative_entity'] ?? ''),
                 'contact_name' => (string) ($mapped['contact_name'] ?? ''),
                 'contact_email' => (string) ($mapped['contact_email'] ?? ''),
                 'contact_phone' => (string) ($mapped['contact_phone'] ?? ''),
@@ -126,6 +130,12 @@ final class OrganService
                 'notes' => (string) ($mapped['notes'] ?? ''),
                 'source_name' => (string) ($mapped['source_name'] ?? ''),
                 'source_url' => (string) ($mapped['source_url'] ?? ''),
+                'company_objective' => (string) ($mapped['company_objective'] ?? ''),
+                'capital_information' => (string) ($mapped['capital_information'] ?? ''),
+                'creation_act' => (string) ($mapped['creation_act'] ?? ''),
+                'internal_regulations' => (string) ($mapped['internal_regulations'] ?? ''),
+                'subsidiaries' => (string) ($mapped['subsidiaries'] ?? ''),
+                'official_website' => (string) ($mapped['official_website'] ?? ''),
             ];
 
             $validation = $this->validate($input);
@@ -384,12 +394,16 @@ final class OrganService
         $name = $this->clean($input['name'] ?? null);
         $acronym = $this->clean($input['acronym'] ?? null);
         $cnpj = $this->normalizeCnpj($this->clean($input['cnpj'] ?? null));
+        $companyNire = $this->truncate($this->clean($input['company_nire'] ?? null), 40);
         $organType = $this->normalizeOrganType($this->clean($input['organ_type'] ?? null));
+        $rawCompanyDependencyType = $this->clean($input['company_dependency_type'] ?? null);
+        $companyDependencyType = $this->normalizeCompanyDependencyType($rawCompanyDependencyType);
         $rawGovernmentLevel = $this->clean($input['government_level'] ?? null);
         $rawGovernmentBranch = $this->clean($input['government_branch'] ?? null);
         $governmentLevel = $this->normalizeGovernmentLevel($rawGovernmentLevel);
         $governmentBranch = $this->normalizeGovernmentBranch($rawGovernmentBranch);
         $supervisingOrgan = $this->clean($input['supervising_organ'] ?? null);
+        $federativeEntity = $this->truncate($this->clean($input['federative_entity'] ?? null), 120);
         $contactName = $this->clean($input['contact_name'] ?? null);
         $contactEmail = $this->clean($input['contact_email'] ?? null);
         $contactPhone = $this->clean($input['contact_phone'] ?? null);
@@ -399,7 +413,13 @@ final class OrganService
         $zipCode = $this->clean($input['zip_code'] ?? null);
         $notes = $this->clean($input['notes'] ?? null);
         $sourceName = $this->clean($input['source_name'] ?? null);
-        $sourceUrl = $this->clean($input['source_url'] ?? null);
+        $sourceUrl = $this->normalizeUrl($this->clean($input['source_url'] ?? null));
+        $companyObjective = $this->clean($input['company_objective'] ?? null);
+        $capitalInformation = $this->clean($input['capital_information'] ?? null);
+        $creationAct = $this->clean($input['creation_act'] ?? null);
+        $internalRegulations = $this->clean($input['internal_regulations'] ?? null);
+        $subsidiaries = $this->clean($input['subsidiaries'] ?? null);
+        $officialWebsite = $this->normalizeUrl($this->clean($input['official_website'] ?? null));
 
         $errors = [];
 
@@ -430,18 +450,29 @@ final class OrganService
             $errors[] = 'Poder invalido. Use executivo, legislativo, judiciario ou autonomo.';
         }
 
+        if ($rawCompanyDependencyType !== null && $companyDependencyType === null) {
+            $errors[] = 'Vinculacao empresarial invalida. Use independente, dependente ou em_liquidacao.';
+        }
+
         if ($sourceUrl !== null && !filter_var($sourceUrl, FILTER_VALIDATE_URL)) {
             $errors[] = 'URL de referencia invalida.';
+        }
+
+        if ($officialWebsite !== null && !filter_var($officialWebsite, FILTER_VALIDATE_URL)) {
+            $errors[] = 'URL do site oficial invalida.';
         }
 
         $data = [
             'name' => $name,
             'acronym' => $acronym === null ? null : mb_strtoupper($acronym),
             'cnpj' => $cnpj,
+            'company_nire' => $companyNire,
             'organ_type' => $organType,
+            'company_dependency_type' => $companyDependencyType,
             'government_level' => $governmentLevel,
             'government_branch' => $governmentBranch,
             'supervising_organ' => $supervisingOrgan,
+            'federative_entity' => $federativeEntity,
             'contact_name' => $contactName,
             'contact_email' => $contactEmail,
             'contact_phone' => $contactPhone,
@@ -452,6 +483,12 @@ final class OrganService
             'notes' => $notes,
             'source_name' => $sourceName,
             'source_url' => $sourceUrl,
+            'company_objective' => $companyObjective,
+            'capital_information' => $capitalInformation,
+            'creation_act' => $creationAct,
+            'internal_regulations' => $internalRegulations,
+            'subsidiaries' => $subsidiaries,
+            'official_website' => $officialWebsite,
         ];
 
         return [
@@ -606,10 +643,13 @@ final class OrganService
             'name' => ['name', 'nome', 'orgao', 'orgao_nome'],
             'acronym' => ['acronym', 'sigla'],
             'cnpj' => ['cnpj'],
+            'company_nire' => ['company_nire', 'nire'],
             'organ_type' => ['organ_type', 'tipo_orgao', 'tipo', 'classificacao', 'natureza'],
+            'company_dependency_type' => ['company_dependency_type', 'vinculacao_empresa', 'dependencia_empresa', 'status_empresa', 'tipo_vinculacao'],
             'government_level' => ['government_level', 'esfera', 'nivel_governo', 'esfera_governo'],
             'government_branch' => ['government_branch', 'poder', 'poder_governo'],
             'supervising_organ' => ['supervising_organ', 'orgao_supervisor', 'orgao_vinculador', 'ministerio_vinculado'],
+            'federative_entity' => ['federative_entity', 'ente_federativo', 'ente', 'vinculo_federativo'],
             'contact_name' => ['contact_name', 'contato', 'contato_nome', 'nome_contato'],
             'contact_email' => ['contact_email', 'email', 'email_contato'],
             'contact_phone' => ['contact_phone', 'telefone', 'telefone_contato', 'fone'],
@@ -620,6 +660,12 @@ final class OrganService
             'notes' => ['notes', 'observacoes', 'observacao', 'notas'],
             'source_name' => ['source_name', 'fonte', 'origem_dado', 'origem'],
             'source_url' => ['source_url', 'fonte_url', 'referencia', 'referencia_url', 'link_fonte'],
+            'company_objective' => ['company_objective', 'objetivo_empresa', 'objetivo'],
+            'capital_information' => ['capital_information', 'capital_social'],
+            'creation_act' => ['creation_act', 'ato_criacao', 'ato_de_criacao'],
+            'internal_regulations' => ['internal_regulations', 'regulamentacao_interna'],
+            'subsidiaries' => ['subsidiaries', 'subsidiarias'],
+            'official_website' => ['official_website', 'website', 'site_oficial', 'url_site_oficial'],
         ];
 
         $lookup = [];
@@ -825,6 +871,60 @@ final class OrganService
         }
 
         return $normalized;
+    }
+
+    private function normalizeCompanyDependencyType(?string $dependencyType): ?string
+    {
+        if ($dependencyType === null) {
+            return null;
+        }
+
+        $lookup = $this->normalizeLookupValue($dependencyType);
+        $map = [
+            'independente' => 'independente',
+            'dependente' => 'dependente',
+            'em_liquidacao' => 'em_liquidacao',
+            'em_liquidacao_' => 'em_liquidacao',
+            'liquidacao' => 'em_liquidacao',
+        ];
+
+        $normalized = $map[$lookup] ?? null;
+        if ($normalized === null || !in_array($normalized, self::ALLOWED_COMPANY_DEPENDENCY_TYPES, true)) {
+            return null;
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeUrl(?string $url): ?string
+    {
+        if ($url === null) {
+            return null;
+        }
+
+        $normalized = trim($url);
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (!preg_match('#^[a-z]+://#i', $normalized) && preg_match('/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}.*$/i', $normalized)) {
+            $normalized = 'https://' . ltrim($normalized, '/');
+        }
+
+        return $normalized;
+    }
+
+    private function truncate(?string $value, int $maxLength): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (mb_strlen($value) <= $maxLength) {
+            return $value;
+        }
+
+        return mb_substr($value, 0, $maxLength);
     }
 
     private function normalizeLookupValue(string $value): string

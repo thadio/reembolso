@@ -82,12 +82,14 @@ final class CostPlanRepository
                 IFNULL(SUM(CASE i.cost_type
                     WHEN "mensal" THEN i.amount
                     WHEN "anual" THEN i.amount / 12
+                    WHEN "eventual" THEN i.amount / 12
                     WHEN "unico" THEN i.amount / 12
                     ELSE 0
                 END), 0) AS monthly_total,
                 IFNULL(SUM(CASE i.cost_type
                     WHEN "mensal" THEN i.amount * 12
                     WHEN "anual" THEN i.amount
+                    WHEN "eventual" THEN i.amount
                     WHEN "unico" THEN i.amount
                     ELSE 0
                 END), 0) AS annualized_total,
@@ -136,6 +138,15 @@ final class CostPlanRepository
                 i.notes,
                 i.created_by,
                 i.created_at,
+                c.cost_code AS catalog_cost_code,
+                c.type_description AS catalog_type_description,
+                c.macro_category AS catalog_macro_category,
+                c.subcategory AS catalog_subcategory,
+                c.expense_nature AS catalog_expense_nature,
+                c.calculation_base AS catalog_calculation_base,
+                c.charge_incidence AS catalog_charge_incidence,
+                c.reimbursability AS catalog_reimbursability,
+                c.predictability AS catalog_predictability,
                 c.linkage_code AS catalog_linkage_code,
                 c.is_reimbursable AS catalog_is_reimbursable,
                 c.payment_periodicity AS catalog_payment_periodicity,
