@@ -38,11 +38,13 @@ $formatDateTime = static function (string $value): string {
 $budgetPath = trim((string) ($links['budget'] ?? '/budget'));
 $dashboard2Path = trim((string) ($links['dashboard2'] ?? '/dashboard2'));
 $availableBalance = (float) ($summary['available_balance'] ?? 0.0);
+$projectedBalanceYearEnd = (float) ($summary['projected_balance_year_end'] ?? 0.0);
+$projectedSpentNextYear = (float) ($summary['projected_spent_next_year'] ?? 0.0);
+$nextYear = $year + 1;
 ?>
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Dashboard executivo de reembolso</h2>
       <p class="muted">Ciclo <?= e((string) $year) ?> · Atualizado em <?= e($formatDateTime($generatedAt)) ?></p>
     </div>
     <div class="actions-inline">
@@ -64,6 +66,14 @@ $availableBalance = (float) ($summary['available_balance'] ?? 0.0);
   <article class="card kpi-card">
     <p class="kpi-label">Saldo disponível</p>
     <p class="kpi-value <?= $availableBalance < 0 ? 'text-danger' : 'text-success' ?>"><?= e($formatMoney($availableBalance)) ?></p>
+  </article>
+  <article class="card kpi-card">
+    <p class="kpi-label">Saldo projetado em 31/12/<?= e((string) $year) ?></p>
+    <p class="kpi-value <?= $projectedBalanceYearEnd < 0 ? 'text-danger' : 'text-success' ?>"><?= e($formatMoney($projectedBalanceYearEnd)) ?></p>
+  </article>
+  <article class="card kpi-card">
+    <p class="kpi-label">Gasto total projetado em <?= e((string) $nextYear) ?></p>
+    <p class="kpi-value"><?= e($formatMoney($projectedSpentNextYear)) ?></p>
   </article>
   <article class="card kpi-card">
     <p class="kpi-label">Comprometido</p>

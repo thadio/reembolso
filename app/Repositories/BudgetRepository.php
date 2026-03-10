@@ -216,6 +216,45 @@ final class BudgetRepository
         return $stmt->fetchAll();
     }
 
+    /** @return array<int, array<string, mixed>> */
+    public function listCyclesByYear(int $year): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                bc.id,
+                bc.cycle_year,
+                bc.financial_nature,
+                bc.annual_factor,
+                bc.total_budget,
+                bc.status,
+                bc.notes,
+                bc.created_by,
+                bc.created_at,
+                bc.updated_at,
+                u.name AS created_by_name,
+                (
+                    SELECT COUNT(*)
+                    FROM hiring_scenarios hs
+                    WHERE hs.budget_cycle_id = bc.id
+                      AND hs.deleted_at IS NULL
+                ) AS scenarios_count,
+                (
+                    SELECT COUNT(*)
+                    FROM budget_scenario_parameters bsp
+                    WHERE bsp.budget_cycle_id = bc.id
+                      AND bsp.deleted_at IS NULL
+                ) AS scenario_parameters_count
+             FROM budget_cycles bc
+             LEFT JOIN users u ON u.id = bc.created_by
+             WHERE bc.deleted_at IS NULL
+               AND bc.cycle_year = :cycle_year
+             ORDER BY bc.financial_nature ASC, bc.updated_at DESC, bc.id DESC'
+        );
+        $stmt->execute(['cycle_year' => $year]);
+
+        return $stmt->fetchAll();
+    }
+
     /** @return array<string, mixed>|null */
     public function findCycleById(int $cycleId): ?array
     {

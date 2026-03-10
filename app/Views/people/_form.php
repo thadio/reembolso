@@ -177,6 +177,7 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
         type="text"
         value="<?= e((string) ($financialNatureLabels[$selectedFinancialNature] ?? '')) ?>"
         readonly
+        disabled
       >
       <p class="muted">A natureza financeira é definida automaticamente pela direção do movimento.</p>
     </div>
@@ -216,7 +217,23 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
     </div>
 
     <div class="field" id="destination_mte_destination_wrapper" <?= $isEntryDirection ? '' : 'style="display: none;"' ?>>
-      <label for="destination_mte_destination_id">Lotação de destino no MTE</label>
+      <label for="destination_mte_destination_search">Lotação de destino no MTE</label>
+      <div class="destination-search-shell">
+        <input
+          id="destination_mte_destination_search"
+          type="search"
+          placeholder="Digite para buscar lotação de destino"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <div
+          id="destination_mte_destination_suggestions"
+          class="destination-suggestions"
+          role="listbox"
+          aria-label="Sugestões de lotação de destino no MTE"
+          aria-live="polite"
+        ></div>
+      </div>
       <select id="destination_mte_destination_id" name="destination_mte_destination_id">
         <option value="0">Selecione</option>
         <?php foreach (($mteDestinations ?? []) as $destination): ?>
@@ -246,7 +263,7 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
           </option>
         <?php endforeach; ?>
       </select>
-      <p class="muted">Obrigatória quando a direção for "Pessoa entrando no MTE".</p>
+      <p class="muted">Digite ao menos 2 caracteres para busca incremental com sugestões. Obrigatória quando a direção for "Pessoa entrando no MTE".</p>
     </div>
 
     <?php
@@ -390,6 +407,8 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
     var reasonField = document.getElementById('desired_modality_id');
     var originField = document.getElementById('origin_mte_destination_id');
     var destinationField = document.getElementById('destination_mte_destination_id');
+    var destinationSearchField = document.getElementById('destination_mte_destination_search');
+    var destinationSuggestions = document.getElementById('destination_mte_destination_suggestions');
     var originWrapper = document.getElementById('origin_mte_destination_wrapper');
     var destinationWrapper = document.getElementById('destination_mte_destination_wrapper');
     if (
@@ -400,6 +419,8 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
       !reasonField ||
       !originField ||
       !destinationField ||
+      !destinationSearchField ||
+      !destinationSuggestions ||
       !originWrapper ||
       !destinationWrapper
     ) {
@@ -410,6 +431,179 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
       despesa_reembolso: 'Despesa de reembolso (a pagar)',
       receita_reembolso: 'Receita de reembolso (a receber)'
     };
+    var destinationSearchDebounce = null;
+    var destinationSuggestionLimit = 8;
+    var destinationCatalog = [];
+
+    function normalizeLookup(value) {
+      if (typeof value !== 'string') {
+        return '';
+      }
+
+      var normalized = value.toLowerCase().trim();
+      if (typeof normalized.normalize === 'function') {
+        normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      }
+
+      return normalized
+        .replace(/[ãáàâ]/g, 'a')
+        .replace(/[éê]/g, 'e')
+        .replace(/[í]/g, 'i')
+        .replace(/[õóô]/g, 'o')
+        .replace(/[ú]/g, 'u')
+        .replace(/[ç]/g, 'c');
+    }
+
+    function matchesLookup(normalizedLabel, normalizedQuery) {
+      if (normalizedQuery === '') {
+        return true;
+      }
+
+      var terms = normalizedQuery.split(/\s+/);
+      for (var i = 0; i < terms.length; i += 1) {
+        var term = terms[i].trim();
+        if (term !== '' && normalizedLabel.indexOf(term) === -1) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function rebuildDestinationCatalog() {
+      destinationCatalog = [];
+      Array.prototype.forEach.call(destinationField.options, function (option) {
+        var value = option.value || '';
+        if (value === '0') {
+          return;
+        }
+
+        var label = (option.textContent || '').trim();
+        destinationCatalog.push({
+          value: value,
+          label: label,
+          normalized: normalizeLookup(label)
+        });
+      });
+    }
+
+    function findDestinationLabelByValue(value) {
+      for (var i = 0; i < destinationCatalog.length; i += 1) {
+        if (destinationCatalog[i].value === value) {
+          return destinationCatalog[i].label;
+        }
+      }
+
+      return '';
+    }
+
+    function hideDestinationSuggestions() {
+      destinationSuggestions.innerHTML = '';
+      destinationSuggestions.classList.remove('is-open');
+    }
+
+    function filterDestinationOptions(searchValue) {
+      var normalizedQuery = normalizeLookup(searchValue);
+      var selectedValue = destinationField.value || '';
+
+      Array.prototype.forEach.call(destinationField.options, function (option) {
+        var value = option.value || '';
+        if (value === '0') {
+          option.hidden = false;
+          option.disabled = false;
+          return;
+        }
+
+        var label = (option.textContent || '').trim();
+        var isMatch = matchesLookup(normalizeLookup(label), normalizedQuery);
+        var isSelected = value === selectedValue;
+        var enabled = normalizedQuery === '' || isMatch || isSelected;
+
+        option.hidden = !enabled;
+        option.disabled = !enabled;
+      });
+    }
+
+    function renderDestinationSuggestions(searchValue) {
+      hideDestinationSuggestions();
+
+      if (destinationField.disabled) {
+        return;
+      }
+
+      var normalizedQuery = normalizeLookup(searchValue);
+      if (normalizedQuery.length < 2) {
+        return;
+      }
+
+      var matches = [];
+      for (var i = 0; i < destinationCatalog.length; i += 1) {
+        var candidate = destinationCatalog[i];
+        if (!matchesLookup(candidate.normalized, normalizedQuery)) {
+          continue;
+        }
+
+        matches.push(candidate);
+        if (matches.length >= destinationSuggestionLimit) {
+          break;
+        }
+      }
+
+      if (matches.length === 0) {
+        var emptyMessage = document.createElement('div');
+        emptyMessage.className = 'destination-suggestion-empty';
+        emptyMessage.textContent = 'Nenhuma lotação encontrada.';
+        destinationSuggestions.appendChild(emptyMessage);
+        destinationSuggestions.classList.add('is-open');
+        return;
+      }
+
+      for (var matchIndex = 0; matchIndex < matches.length; matchIndex += 1) {
+        var match = matches[matchIndex];
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'destination-suggestion-btn';
+        button.setAttribute('data-value', match.value);
+        button.setAttribute('data-label', match.label);
+        button.textContent = match.label;
+        destinationSuggestions.appendChild(button);
+      }
+
+      destinationSuggestions.classList.add('is-open');
+    }
+
+    function applyDestinationSearch(searchValue) {
+      filterDestinationOptions(searchValue);
+      renderDestinationSuggestions(searchValue);
+    }
+
+    function scheduleDestinationSearch() {
+      if (destinationSearchDebounce !== null) {
+        window.clearTimeout(destinationSearchDebounce);
+      }
+
+      destinationSearchDebounce = window.setTimeout(function () {
+        applyDestinationSearch(destinationSearchField.value || '');
+      }, 250);
+    }
+
+    function syncDestinationSearchFromSelect() {
+      var value = destinationField.value || '';
+      if (value === '' || value === '0') {
+        if (document.activeElement !== destinationSearchField) {
+          destinationSearchField.value = '';
+        }
+        return;
+      }
+
+      destinationSearchField.value = findDestinationLabelByValue(value);
+    }
+
+    function resetDestinationSearch() {
+      destinationSearchField.value = '';
+      filterDestinationOptions('');
+      hideDestinationSuggestions();
+    }
 
     function selectedDirection() {
       var selected = '';
@@ -523,6 +717,7 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
       destinationWrapper.style.display = isEntrada ? '' : 'none';
       originField.disabled = !isSaida;
       destinationField.disabled = !isEntrada;
+      destinationSearchField.disabled = !isEntrada;
       originField.required = isSaida;
       destinationField.required = isEntrada;
 
@@ -532,12 +727,82 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
 
       if (!isEntrada) {
         destinationField.value = '0';
+        resetDestinationSearch();
+      } else {
+        syncDestinationSearchFromSelect();
+        filterDestinationOptions(destinationSearchField.value || '');
       }
     }
+
+    destinationSearchField.addEventListener('input', function () {
+      var currentQuery = destinationSearchField.value || '';
+      var normalizedQuery = normalizeLookup(currentQuery);
+      var selectedLabel = findDestinationLabelByValue(destinationField.value || '');
+
+      if (normalizedQuery !== '' && normalizedQuery !== normalizeLookup(selectedLabel)) {
+        destinationField.value = '0';
+      }
+
+      scheduleDestinationSearch();
+    });
+
+    destinationSearchField.addEventListener('focus', function () {
+      var query = destinationSearchField.value || '';
+      if (normalizeLookup(query).length >= 2) {
+        applyDestinationSearch(query);
+      }
+    });
+
+    destinationSearchField.addEventListener('blur', function () {
+      window.setTimeout(function () {
+        hideDestinationSuggestions();
+      }, 140);
+    });
+
+    destinationSuggestions.addEventListener('mousedown', function (event) {
+      var node = event.target;
+      var button = null;
+      while (node && node !== destinationSuggestions) {
+        if (
+          node.tagName === 'BUTTON'
+          && node.getAttribute('data-value')
+        ) {
+          button = node;
+          break;
+        }
+
+        node = node.parentNode;
+      }
+
+      if (!button) {
+        return;
+      }
+
+      event.preventDefault();
+      destinationField.value = button.getAttribute('data-value') || '0';
+      destinationSearchField.value = button.getAttribute('data-label') || '';
+      filterDestinationOptions('');
+      hideDestinationSuggestions();
+      if (typeof Event === 'function') {
+        destinationField.dispatchEvent(new Event('change'));
+      } else {
+        var changeEvent = document.createEvent('Event');
+        changeEvent.initEvent('change', true, true);
+        destinationField.dispatchEvent(changeEvent);
+      }
+    });
+
+    destinationField.addEventListener('change', function () {
+      syncDestinationSearchFromSelect();
+      filterDestinationOptions('');
+    });
 
     Array.prototype.forEach.call(directionRadios, function (radio) {
       radio.addEventListener('change', syncByDirection);
     });
+    rebuildDestinationCatalog();
+    syncDestinationSearchFromSelect();
+    filterDestinationOptions('');
     syncByDirection();
   })();
 </script>

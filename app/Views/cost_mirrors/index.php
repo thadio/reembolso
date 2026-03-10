@@ -99,7 +99,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Espelhos de custo</h2>
       <p class="muted">Controle item a item por pessoa e competencia, com vinculo opcional a boleto.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>

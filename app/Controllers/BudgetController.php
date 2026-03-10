@@ -156,6 +156,37 @@ final class BudgetController extends Controller
         $this->redirect($this->budgetUrl($year, $redirectNature));
     }
 
+    public function destroyYearCycles(Request $request): void
+    {
+        $financialNature = $this->normalizeFinancialNature((string) $request->input('financial_nature', 'despesa_reembolso'));
+        $input = $request->all();
+        $input['financial_nature'] = $financialNature;
+
+        $result = $this->service()->deleteAnnualBudgetYear(
+            input: $input,
+            userId: (int) ($this->app->auth()->id() ?? 0),
+            ip: $request->ip(),
+            userAgent: $request->userAgent()
+        );
+
+        $year = $this->resolveRedirectYear(
+            preferredYear: $result['year'] ?? null,
+            fallbackYear: $request->input('year', $request->input('cycle_year', (string) date('Y')))
+        );
+        $redirectNature = $this->resolveRedirectNature(
+            preferredNature: $result['financial_nature'] ?? null,
+            fallbackNature: $financialNature
+        );
+
+        if (!$result['ok']) {
+            flash('error', implode(' ', $result['errors']));
+            $this->redirect($this->budgetUrl($year, $redirectNature));
+        }
+
+        flash('success', $result['message']);
+        $this->redirect($this->budgetUrl($year, $redirectNature));
+    }
+
     public function upsertScenarioParameter(Request $request): void
     {
         $year = $this->normalizeYear((int) $request->input('year', (string) date('Y')));

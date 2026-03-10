@@ -14,7 +14,6 @@ $boolChecked = static function (mixed $value): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Seguranca reforcada (6.3)</h2>
       <p class="muted">Politica de senha, expiracao, bloqueio de login e parametros de hardening de upload.</p>
     </div>
   </div>

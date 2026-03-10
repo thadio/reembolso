@@ -10,6 +10,8 @@ $projectionMonths = is_array($projection['months'] ?? null) ? $projection['month
 $nextYearScenarios = is_array($projection['next_year_scenarios'] ?? null) ? $projection['next_year_scenarios'] : [];
 $cycle = is_array($budget['cycle'] ?? null) ? $budget['cycle'] : [];
 $cycles = is_array($budget['cycles'] ?? null) ? $budget['cycles'] : [];
+$yearCycles = is_array($budget['year_cycles'] ?? null) ? $budget['year_cycles'] : [];
+$yearDependencies = is_array($budget['year_dependencies'] ?? null) ? $budget['year_dependencies'] : [];
 $organs = is_array($budget['organs'] ?? null) ? $budget['organs'] : [];
 $modalities = is_array($budget['modalities'] ?? null) ? $budget['modalities'] : [];
 $parameters = is_array($budget['parameters'] ?? null) ? $budget['parameters'] : [];
@@ -162,11 +164,15 @@ $selectedCargo = (string) old('cargo', '');
 $selectedSetor = (string) old('setor', '');
 $oldCycleId = max(0, (int) old('cycle_id', '0'));
 $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
+$yearCycleCount = max(0, (int) ($yearDependencies['cycles_count'] ?? count($yearCycles)));
+$yearScenariosCount = max(0, (int) ($yearDependencies['scenarios_count'] ?? 0));
+$yearScenarioParametersCount = max(0, (int) ($yearDependencies['scenario_parameters_count'] ?? 0));
+$yearFinancialNatures = is_array($yearDependencies['financial_natures'] ?? null) ? $yearDependencies['financial_natures'] : [];
+$yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ?? null) ? $yearDependencies['missing_financial_natures'] : [];
 ?>
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Dashboard orcamentario</h2>
       <p class="muted">
         Ciclo <?= e((string) $year) ?> ·
         <?= e($financialNatureLabel($financialNature)) ?> ·
@@ -393,6 +399,102 @@ $oldCycleTotalBudget = (string) old('cycle_total_budget', '');
         </tbody>
       </table>
     </div>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <div class="header-row">
+    <div>
+      <h3>Dependencias e visibilidade do ano</h3>
+      <p class="muted">Mostra ciclos de todas as naturezas no ano atual para evitar bloqueios ocultos na exclusao.</p>
+    </div>
+  </div>
+
+  <div class="grid-kpi">
+    <article class="card kpi-card">
+      <p class="kpi-label">Ciclos no ano</p>
+      <p class="kpi-value"><?= e((string) $yearCycleCount) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Simulacoes vinculadas</p>
+      <p class="kpi-value"><?= e((string) $yearScenariosCount) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Parametros vinculados</p>
+      <p class="kpi-value"><?= e((string) $yearScenarioParametersCount) ?></p>
+    </article>
+    <article class="card kpi-card">
+      <p class="kpi-label">Naturezas presentes</p>
+      <p class="kpi-value"><?= e((string) count($yearFinancialNatures)) ?>/2</p>
+      <?php if ($yearMissingNatures !== []): ?>
+        <p class="dashboard-kpi-note text-danger">Faltando: <?= e(implode(', ', array_map($financialNatureLabel, $yearMissingNatures))) ?></p>
+      <?php else: ?>
+        <p class="dashboard-kpi-note text-success">Completo (despesa + receita)</p>
+      <?php endif; ?>
+    </article>
+  </div>
+
+  <?php if ($yearCycles === []): ?>
+    <div class="empty-state" style="margin-top: 12px;">
+      <p>Sem ciclos cadastrados para o ano selecionado.</p>
+    </div>
+  <?php else: ?>
+    <div class="table-wrap" style="margin-top: 12px;">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Ano</th>
+            <th>Natureza</th>
+            <th>Status</th>
+            <th>Simulacoes</th>
+            <th>Parametros</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php foreach ($yearCycles as $yearCycle): ?>
+            <?php
+              $yearCycleId = (int) ($yearCycle['id'] ?? 0);
+              $yearCycleNature = (string) ($yearCycle['financial_nature'] ?? 'despesa_reembolso');
+              $yearCycleStatus = (string) ($yearCycle['status'] ?? 'aberto');
+            ?>
+            <tr>
+              <td><?= e((string) $yearCycleId) ?></td>
+              <td><?= e((string) (int) ($yearCycle['cycle_year'] ?? $year)) ?></td>
+              <td><span class="badge <?= e($financialNatureBadgeClass($yearCycleNature)) ?>"><?= e($financialNatureLabel($yearCycleNature)) ?></span></td>
+              <td><span class="badge <?= e($cycleStatusBadgeClass($yearCycleStatus)) ?>"><?= e($cycleStatusLabel($yearCycleStatus)) ?></span></td>
+              <td><?= e((string) (int) ($yearCycle['scenarios_count'] ?? 0)) ?></td>
+              <td><?= e((string) (int) ($yearCycle['scenario_parameters_count'] ?? 0)) ?></td>
+              <td class="actions-cell">
+                <a class="btn btn-outline" href="<?= e(url('/budget?year=' . (string) $year . '&financial_nature=' . urlencode($yearCycleNature))) ?>">Abrir natureza</a>
+                <a class="btn btn-outline" href="<?= e(url('/integrity/dependencies?entity=budget_cycles&id=' . (string) $yearCycleId)) ?>">Diagnosticar</a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($canManage && $yearCycles !== []): ?>
+    <?php
+      $deleteYearConfirmation = sprintf(
+          "return confirm('Confirmar exclusao de TODOS os ciclos do ano %d? Esta acao remove tambem simulacoes e parametros vinculados em todas as naturezas.');",
+          $year
+      );
+    ?>
+    <form method="post" action="<?= e(url('/budget/cycles/delete-year')) ?>" class="actions-cell" style="margin-top: 12px;" onsubmit="<?= e($deleteYearConfirmation) ?>">
+      <?= csrf_field() ?>
+      <input type="hidden" name="year" value="<?= e((string) $year) ?>">
+      <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
+      <button type="submit" class="btn btn-danger">Excluir ano completo (todas as naturezas)</button>
+      <span class="muted">
+        Impacto previsto: <?= e((string) $yearCycleCount) ?> ciclo(s),
+        <?= e((string) $yearScenariosCount) ?> simulacao(oes),
+        <?= e((string) $yearScenarioParametersCount) ?> parametro(s).
+      </span>
+    </form>
   <?php endif; ?>
 </div>
 

@@ -86,7 +86,6 @@ $decodeRunSummary = static function (mixed $payload): array {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>LGPD avancado (6.2)</h2>
       <p class="muted">Trilha de acesso sensivel, relatorio consolidado e politicas parametrizaveis de retencao/anonimizacao.</p>
     </div>
     <div class="actions-inline">

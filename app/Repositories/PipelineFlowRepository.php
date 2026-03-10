@@ -623,11 +623,12 @@ final class PipelineFlowRepository
             'DELETE
              FROM assignment_flow_transitions
              WHERE flow_id = :flow_id
-               AND (from_status_id = :status_id OR to_status_id = :status_id)'
+               AND (from_status_id = :from_status_id OR to_status_id = :to_status_id)'
         );
         $deleteTransitions->execute([
             'flow_id' => $flowId,
-            'status_id' => $statusId,
+            'from_status_id' => $statusId,
+            'to_status_id' => $statusId,
         ]);
 
         $stmt = $this->db->prepare(

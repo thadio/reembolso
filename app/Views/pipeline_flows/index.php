@@ -36,7 +36,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Fluxos BPMN</h2>
       <p class="muted">Gerencie fluxos, etapas e transições de decisão do pipeline.</p>
     </div>
     <a class="btn btn-primary" href="<?= e(url('/pipeline-flows/create')) ?>">Novo fluxo</a>

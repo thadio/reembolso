@@ -60,6 +60,69 @@ name,acronym,cnpj,organ_type,government_level,government_branch,supervising_orga
 "Companhia de Saneamento Basico do Estado de SP",SABESP,43.776.517/0001-80,empresa_publica,estadual,executivo,"Governo de Sao Paulo","Cadastro complementar de estatais estaduais 2026-03-09",,,SP,
 "Companhia de Saneamento de Sergipe",DESO,13.018.171/0001-90,empresa_publica,estadual,executivo,"Governo de Sergipe","Cadastro complementar de estatais estaduais 2026-03-09",,,SE,
 "Agencia Tocantinense de Saneamento",ATS,08.991.325/0001-01,empresa_publica,estadual,executivo,"Governo do Tocantins","Cadastro complementar de estatais estaduais 2026-03-09",,,TO,
+"Companhia de Desenvolvimento do Acre",CODISAC,,empresa_publica,estadual,executivo,"Governo do Estado do Acre","Cadastro complementar de estatais estaduais 2026-03-09",,,AC,"CNPJ nao confirmado ate 2026-03-09"
+"Companhia de Habitacao do Acre",COHAB/AC,,empresa_publica,estadual,executivo,"Governo do Estado do Acre","Cadastro complementar de estatais estaduais 2026-03-09",,,AC,"CNPJ nao confirmado ate 2026-03-09"
+"Companhia de Armazens Gerais e Entrepostos do Acre",,,empresa_publica,estadual,executivo,"Governo do Estado do Acre","Cadastro complementar de estatais estaduais 2026-03-09",,,AC,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento de Alagoas",DESENVOLVE AL,,empresa_publica,estadual,executivo,"Governo de Alagoas","Cadastro complementar de estatais estaduais 2026-03-09",,,AL,"CNPJ nao confirmado ate 2026-03-09"
+"Companhia de Desenvolvimento Economico de Alagoas",,,empresa_publica,estadual,executivo,"Governo de Alagoas","Cadastro complementar de estatais estaduais 2026-03-09",,,AL,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento do Amapa",,,empresa_publica,estadual,executivo,"Governo do Amapa","Cadastro complementar de estatais estaduais 2026-03-09",,,AP,"CNPJ nao confirmado ate 2026-03-09"
+"Companhia de Eletricidade do Amapa",CEA,,empresa_publica,estadual,executivo,"Governo do Amapa","Cadastro complementar de estatais estaduais 2026-03-09",,,AP,"Empresa historica / em reestruturacao | CNPJ nao confirmado ate 2026-03-09"
+"Processamento de Dados do Amazonas",PRODAM,04.407.920/0001-80,empresa_publica,estadual,executivo,"Governo do Amazonas","Cadastro complementar de estatais estaduais 2026-03-09",,,AM,
+"Agencia de Fomento do Amazonas",AFEAM,03.183.937/0001-38,empresa_publica,estadual,executivo,"Governo do Amazonas","Cadastro complementar de estatais estaduais 2026-03-09",,,AM,
+"Companhia de Gas da Bahia",BAHIAGAS,34.432.153/0001-20,empresa_publica,estadual,executivo,"Governo da Bahia","Cadastro complementar de estatais estaduais 2026-03-09",,,BA,
+"Companhia de Desenvolvimento Urbano",CONDER,13.595.251/0001-08,empresa_publica,estadual,executivo,"Governo da Bahia","Cadastro complementar de estatais estaduais 2026-03-09",,,BA,
+"Companhia de Transportes do Estado da Bahia",CTB,03.231.999/0001-78,empresa_publica,estadual,executivo,"Governo da Bahia","Cadastro complementar de estatais estaduais 2026-03-09",,,BA,
+"Companhia Baiana de Pesquisa Mineral",CBPM,13.554.910/0001-68,empresa_publica,estadual,executivo,"Governo da Bahia","Cadastro complementar de estatais estaduais 2026-03-09",,,BA,
+"Empresa de Tecnologia da Informacao do Ceara",ETICE,03.773.788/0001-67,empresa_publica,estadual,executivo,"Governo do Ceara","Cadastro complementar de estatais estaduais 2026-03-09",,,CE,
+"Companhia de Participacao e Gestao de Ativos",,,empresa_publica,estadual,executivo,"Governo do Ceara","Cadastro complementar de estatais estaduais 2026-03-09",,,CE,"CNPJ nao confirmado ate 2026-03-09"
+"Empresa de Assistencia Tecnica e Extensao Rural do Ceara",EMATERCE,05.371.711/0001-96,empresa_publica,estadual,executivo,"Governo do Ceara","Cadastro complementar de estatais estaduais 2026-03-09",,,CE,
+"Banco de Desenvolvimento do Espirito Santo",BANDES,28.145.829/0001-00,empresa_publica,estadual,executivo,"Governo do Espirito Santo","Cadastro complementar de estatais estaduais 2026-03-09",,,ES,
+"Companhia de Gas do Espirito Santo",ES GAS,34.307.295/0001-65,empresa_publica,estadual,executivo,"Governo do Espirito Santo","Cadastro complementar de estatais estaduais 2026-03-09",,,ES,
+"Agencia de Fomento de Goias",GOIASFOMENTO,03.918.382/0001-25,empresa_publica,estadual,executivo,"Governo de Goias","Cadastro complementar de estatais estaduais 2026-03-09",,,GO,
+"Companhia de Investimentos e Parcerias de Goias",GOIAS PARCERIAS,08.235.587/0001-20,empresa_publica,estadual,executivo,"Governo de Goias","Cadastro complementar de estatais estaduais 2026-03-09",,,GO,
+"Companhia de Aguas e Esgotos do Maranhao",CAEMA,06.274.757/0001-50,empresa_publica,estadual,executivo,"Governo do Maranhao","Cadastro complementar de estatais estaduais 2026-03-09",,,MA,
+"Agencia de Fomento do Maranhao",,,empresa_publica,estadual,executivo,"Governo do Maranhao","Cadastro complementar de estatais estaduais 2026-03-09",,,MA,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento do Estado de Mato Grosso",DESENVOLVE MT,06.284.531/0001-30,empresa_publica,estadual,executivo,"Governo de Mato Grosso","Cadastro complementar de estatais estaduais 2026-03-09",,,MT,
+"Empresa Mato-grossense de Tecnologia da Informacao",MTI,15.011.059/0001-52,empresa_publica,estadual,executivo,"Governo de Mato Grosso","Cadastro complementar de estatais estaduais 2026-03-09",,,MT,
+"Empresa Mato-grossense de Pesquisa Agropecuaria",EMPAER,36.886.778/0001-97,empresa_publica,estadual,executivo,"Governo de Mato Grosso","Cadastro complementar de estatais estaduais 2026-03-09",,,MT,
+"MT Participacoes e Projetos",MTPAR,17.816.442/0001-03,empresa_publica,estadual,executivo,"Governo de Mato Grosso","Cadastro complementar de estatais estaduais 2026-03-09",,,MT,
+"Companhia Mato-grossense de Gas",MT GAS,,empresa_publica,estadual,executivo,"Governo de Mato Grosso","Cadastro complementar de estatais estaduais 2026-03-09",,,MT,"CNPJ nao confirmado ate 2026-03-09"
+"Central de Abastecimento do Mato Grosso",CEASA/MT,18.297.232/0001-19,empresa_publica,estadual,executivo,"Governo de Mato Grosso","Cadastro complementar de estatais estaduais 2026-03-09",,,MT,
+"Agencia de Fomento do MS",,,empresa_publica,estadual,executivo,"Governo de Mato Grosso do Sul","Cadastro complementar de estatais estaduais 2026-03-09",,,MS,"CNPJ nao confirmado ate 2026-03-09"
+"MS Gas",MS GAS,02.741.679/0001-03,empresa_publica,estadual,executivo,"Governo de Mato Grosso do Sul","Cadastro complementar de estatais estaduais 2026-03-09",,,MS,
+"Companhia Energetica de Minas Gerais",CEMIG,17.155.730/0001-64,empresa_publica,estadual,executivo,"Governo de Minas Gerais","Cadastro complementar de estatais estaduais 2026-03-09",,,MG,
+"Banco de Desenvolvimento de Minas Gerais",BDMG,38.486.817/0001-94,empresa_publica,estadual,executivo,"Governo de Minas Gerais","Cadastro complementar de estatais estaduais 2026-03-09",,,MG,
+"Companhia de Desenvolvimento Economico de MG",CODEMGE,29.768.219/0001-17,empresa_publica,estadual,executivo,"Governo de Minas Gerais","Cadastro complementar de estatais estaduais 2026-03-09",,,MG,
+"Minas Gerais Participacoes",MGI,19.296.342/0001-29,empresa_publica,estadual,executivo,"Governo de Minas Gerais","Cadastro complementar de estatais estaduais 2026-03-09",,,MG,
+"Companhia de Desenvolvimento Economico do Para",,,empresa_publica,estadual,executivo,"Governo do Para","Cadastro complementar de estatais estaduais 2026-03-09",,,PA,"CNPJ nao confirmado ate 2026-03-09"
+"Companhia de Gas do Para",GASPARA,,empresa_publica,estadual,executivo,"Governo do Para","Cadastro complementar de estatais estaduais 2026-03-09",,,PA,"CNPJ nao confirmado ate 2026-03-09"
+"Companhia Estadual de Habitacao Popular",CEHAP,09.111.618/0001-01,empresa_publica,estadual,executivo,"Governo da Paraiba","Cadastro complementar de estatais estaduais 2026-03-09",,,PB,
+"Empresa Paraibana de Turismo",PBTUR,08.946.006/0001-68,empresa_publica,estadual,executivo,"Governo da Paraiba","Cadastro complementar de estatais estaduais 2026-03-09",,,PB,
+"Empresa Estadual de Pesquisa Agropecuaria",EMEPA,08.137.318/0001-40,empresa_publica,estadual,executivo,"Governo da Paraiba","Cadastro complementar de estatais estaduais 2026-03-09",,,PB,
+"Companhia de Saneamento do Parana",SANEPAR,76.484.013/0001-45,empresa_publica,estadual,executivo,"Governo do Parana","Cadastro complementar de estatais estaduais 2026-03-09",,,PR,
+"Agencia de Fomento do Parana",FOMENTO PARANA,03.584.906/0001-99,empresa_publica,estadual,executivo,"Governo do Parana","Cadastro complementar de estatais estaduais 2026-03-09",,,PR,
+"Parana Participacoes",,,empresa_publica,estadual,executivo,"Governo do Parana","Cadastro complementar de estatais estaduais 2026-03-09",,,PR,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento de Pernambuco",AGEFEPE,13.178.690/0001-15,empresa_publica,estadual,executivo,"Governo de Pernambuco","Cadastro complementar de estatais estaduais 2026-03-09",,,PE,
+"Porto do Recife S.A.",PORTO DO RECIFE,02.731.167/0001-84,empresa_publica,estadual,executivo,"Governo de Pernambuco","Cadastro complementar de estatais estaduais 2026-03-09",,,PE,
+"Agencia de Fomento do Piaui",,,empresa_publica,estadual,executivo,"Governo do Piaui","Cadastro complementar de estatais estaduais 2026-03-09",,,PI,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento do RN",AGN,03.848.103/0001-02,empresa_publica,estadual,executivo,"Governo do Rio Grande do Norte","Cadastro complementar de estatais estaduais 2026-03-09",,,RN,
+"Companhia de Processamento de Dados",PROCERGS,87.124.582/0001-04,empresa_publica,estadual,executivo,"Governo do Rio Grande do Sul","Cadastro complementar de estatais estaduais 2026-03-09",,,RS,
+"Banco Regional de Desenvolvimento do Extremo Sul",BRDE,92.816.560/0001-37,empresa_publica,estadual,executivo,"Governo do Rio Grande do Sul","Cadastro complementar de estatais estaduais 2026-03-09",,,RS,
+"Companhia de Gas do RS",SULGAS,72.300.122/0001-04,empresa_publica,estadual,executivo,"Governo do Rio Grande do Sul","Cadastro complementar de estatais estaduais 2026-03-09",,,RS,
+"Companhia de Mineracao de Rondonia",,,empresa_publica,estadual,executivo,"Governo de Rondonia","Cadastro complementar de estatais estaduais 2026-03-09",,,RO,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento de Roraima",,,empresa_publica,estadual,executivo,"Governo de Roraima","Cadastro complementar de estatais estaduais 2026-03-09",,,RR,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento do Estado de Santa Catarina",BADESC,82.937.293/0001-00,empresa_publica,estadual,executivo,"Governo de Santa Catarina","Cadastro complementar de estatais estaduais 2026-03-09",,,SC,
+"Companhia Catarinense de Gas",SCGAS,86.864.543/0001-72,empresa_publica,estadual,executivo,"Governo de Santa Catarina","Cadastro complementar de estatais estaduais 2026-03-09",,,SC,
+"Centro de Informatica e Automacao de Santa Catarina",CIASC,83.043.745/0001-65,empresa_publica,estadual,executivo,"Governo de Santa Catarina","Cadastro complementar de estatais estaduais 2026-03-09",,,SC,
+"Companhia Paulista de Trens Metropolitanos",CPTM,71.832.679/0001-23,empresa_publica,estadual,executivo,"Governo de Sao Paulo","Cadastro complementar de estatais estaduais 2026-03-09",,,SP,
+"Companhia do Metropolitano de SP",METRO SP,62.070.362/0001-06,empresa_publica,estadual,executivo,"Governo de Sao Paulo","Cadastro complementar de estatais estaduais 2026-03-09",,,SP,
+"Companhia de Desenvolvimento Habitacional e Urbano",CDHU,47.865.597/0001-09,empresa_publica,estadual,executivo,"Governo de Sao Paulo","Cadastro complementar de estatais estaduais 2026-03-09",,,SP,
+"Companhia de Processamento de Dados do Estado de Sao Paulo",PRODESP,62.577.929/0001-35,empresa_publica,estadual,executivo,"Governo de Sao Paulo","Cadastro complementar de estatais estaduais 2026-03-09",,,SP,
+"Agencia de Fomento do Estado de Sao Paulo",DESENVOLVE SP,10.663.610/0001-29,empresa_publica,estadual,executivo,"Governo de Sao Paulo","Cadastro complementar de estatais estaduais 2026-03-09",,,SP,
+"Companhia Ambiental do Estado de Sao Paulo",CETESB,43.776.491/0001-70,empresa_publica,estadual,executivo,"Governo de Sao Paulo","Cadastro complementar de estatais estaduais 2026-03-09",,,SP,
+"Agencia de Fomento de Sergipe",,,empresa_publica,estadual,executivo,"Governo de Sergipe","Cadastro complementar de estatais estaduais 2026-03-09",,,SE,"CNPJ nao confirmado ate 2026-03-09"
+"Agencia de Fomento do Tocantins",,05.474.540/0001-20,empresa_publica,estadual,executivo,"Governo do Tocantins","Cadastro complementar de estatais estaduais 2026-03-09",,,TO,
+"Tocantins Parcerias",TO PARCERIAS,17.579.560/0001-45,empresa_publica,estadual,executivo,"Governo do Tocantins","Cadastro complementar de estatais estaduais 2026-03-09",,,TO,
 "AGENCIA BRASILEIRA GESTORA DE FUNDOS GARANTIDORES E GARANTIAS S.A -ABGF",,17.909.518/0001-45,empresa_publica,,,,"Cadastro oficial de empresas publicas e sociedades de economia mista ativas ate dezembro de 2025",,,,"NIRE: 53500005200 | DT_CADASTRO: 11/04/2013 | COD_NATUREZA_JURIDICA: 2011"
 "AGENCIA ESPECIAL DE FINANCIAMENTO INDUSTRIAL FINAME",,33.660.564/0001-00,empresa_publica,,,,"Cadastro oficial de empresas publicas e sociedades de economia mista ativas ate dezembro de 2025",,,,"NIRE: 33300048774 | DT_CADASTRO: 25/04/1967 | COD_NATUREZA_JURIDICA: 2011"
 "ALADA - EMPRESA DE PROJETOS AEROESPACIAIS DO BRASIL S.A",,61.993.931/0001-22,empresa_publica,,,,"Cadastro oficial de empresas publicas e sociedades de economia mista ativas ate dezembro de 2025",,,,"NIRE: 53500011676 | DT_CADASTRO: 30/07/2025 | COD_NATUREZA_JURIDICA: 2011"

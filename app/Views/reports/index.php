@@ -98,7 +98,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Relatorios premium (5.3)</h2>
       <p class="muted">Consolidado operacional (SLA, gargalos, tempos medios) e financeiro (previsto x efetivo + painel completo de status abertos/vencidos/pagos/conciliados).</p>
     </div>
     <div class="actions-inline">

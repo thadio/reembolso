@@ -125,14 +125,62 @@ $costSuggestedVersionLabel = trim((string) ($costs['suggested_version_label'] ??
 if ($costSuggestedVersionLabel === '') {
     $costSuggestedVersionLabel = 'V1 - ' . date('d/m/Y');
 }
-$costActiveItemsByCatalog = [];
+$costActiveRowsByCatalog = [];
 foreach ($costItems as $costItemRow) {
     $catalogId = (int) ($costItemRow['cost_item_catalog_id'] ?? 0);
-    if ($catalogId <= 0 || isset($costActiveItemsByCatalog[$catalogId])) {
+    if ($catalogId <= 0) {
         continue;
     }
 
-    $costActiveItemsByCatalog[$catalogId] = $costItemRow;
+    if (!isset($costActiveRowsByCatalog[$catalogId])) {
+        $costActiveRowsByCatalog[$catalogId] = [];
+    }
+    $costActiveRowsByCatalog[$catalogId][] = $costItemRow;
+}
+
+$costCatalogAggregators = [];
+$costCatalogChildrenByParent = [];
+$costCatalogStandalone = [];
+foreach ($costItemCatalog as $catalogItem) {
+    $catalogId = (int) ($catalogItem['id'] ?? 0);
+    if ($catalogId <= 0) {
+        continue;
+    }
+
+    $isAggregator = (int) ($catalogItem['is_aggregator'] ?? 0) === 1;
+    if ($isAggregator) {
+        $costCatalogAggregators[$catalogId] = $catalogItem;
+        continue;
+    }
+
+    $parentId = (int) ($catalogItem['parent_cost_item_id'] ?? 0);
+    if ($parentId > 0) {
+        if (!isset($costCatalogChildrenByParent[$parentId])) {
+            $costCatalogChildrenByParent[$parentId] = [];
+        }
+        $costCatalogChildrenByParent[$parentId][] = $catalogItem;
+        continue;
+    }
+
+    $costCatalogStandalone[] = $catalogItem;
+}
+
+$costCatalogHierarchy = [];
+foreach ($costCatalogAggregators as $aggregatorId => $aggregatorItem) {
+    $children = $costCatalogChildrenByParent[$aggregatorId] ?? [];
+    $costCatalogHierarchy[] = [
+        'category' => $aggregatorItem,
+        'children' => $children,
+    ];
+}
+
+if ($costCatalogStandalone !== []) {
+    foreach ($costCatalogStandalone as $standaloneItem) {
+        $costCatalogHierarchy[] = [
+            'category' => $standaloneItem,
+            'children' => [],
+        ];
+    }
 }
 
 $costProjectionStartDate = trim((string) ($assignment['effective_start_date'] ?? ''));
@@ -1045,6 +1093,147 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    var expandToggles = Array.prototype.slice.call(document.querySelectorAll('[data-cost-expand-toggle]'));
+    expandToggles.forEach(function (toggle) {
+      toggle.addEventListener('click', function () {
+        var token = String(toggle.getAttribute('data-cost-expand-toggle') || '');
+        if (!token) {
+          return;
+        }
+
+        var target = document.getElementById('cost-expand-' + token);
+        if (!target) {
+          return;
+        }
+
+        var willOpen = target.hidden;
+        target.hidden = !willOpen;
+        toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      });
+    });
+
+    var reimbursementBatchForm = document.querySelector('[data-reimbursement-batch-form]');
+    if (reimbursementBatchForm) {
+      var reimbursementRows = Array.prototype.slice.call(reimbursementBatchForm.querySelectorAll('[data-reimbursement-row]'));
+      var reimbursementAmountInputs = Array.prototype.slice.call(reimbursementBatchForm.querySelectorAll('[data-reimbursement-batch-amount]'));
+      var reimbursementTotalNode = reimbursementBatchForm.querySelector('[data-reimbursement-batch-total]');
+      var reimbursementCountNode = reimbursementBatchForm.querySelector('[data-reimbursement-batch-count]');
+
+      var reimbursementParseMoney = function (value) {
+        var normalized = String(value || '').replace(',', '.').replace(/[^0-9.-]/g, '');
+        var numeric = Number(normalized);
+        return Number.isFinite(numeric) ? numeric : 0;
+      };
+
+      var reimbursementFormatMoney = function (value) {
+        return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      };
+
+      var reimbursementRowById = {};
+      var reimbursementChildrenByParent = {};
+      reimbursementRows.forEach(function (row) {
+        var rowId = String(row.getAttribute('data-id') || '');
+        if (!rowId) {
+          return;
+        }
+        reimbursementRowById[rowId] = row;
+
+        var rowLevel = String(row.getAttribute('data-level') || 'aggregator').toLowerCase();
+        if (rowLevel !== 'child') {
+          return;
+        }
+
+        var parentId = String(row.getAttribute('data-parent-id') || '');
+        if (!parentId) {
+          return;
+        }
+        if (!reimbursementChildrenByParent[parentId]) {
+          reimbursementChildrenByParent[parentId] = [];
+        }
+        reimbursementChildrenByParent[parentId].push(rowId);
+      });
+
+      var reimbursementRecalc = function () {
+        var rowAmountById = {};
+        reimbursementRows.forEach(function (row) {
+          var rowId = String(row.getAttribute('data-id') || '');
+          if (!rowId) {
+            return;
+          }
+          var amountInput = row.querySelector('[data-reimbursement-batch-amount]');
+          rowAmountById[rowId] = reimbursementParseMoney(amountInput ? amountInput.value : '');
+        });
+
+        var totalAmount = 0;
+        var totalCount = 0;
+        var consumed = {};
+
+        reimbursementRows.forEach(function (row) {
+          var rowId = String(row.getAttribute('data-id') || '');
+          var rowLevel = String(row.getAttribute('data-level') || 'aggregator').toLowerCase();
+          if (!rowId || rowLevel !== 'aggregator') {
+            return;
+          }
+
+          var childIds = Array.isArray(reimbursementChildrenByParent[rowId]) ? reimbursementChildrenByParent[rowId] : [];
+          var childAmount = 0;
+          var childCount = 0;
+          childIds.forEach(function (childId) {
+            var amount = Number(rowAmountById[childId] || 0);
+            if (amount <= 0) {
+              return;
+            }
+            childAmount += amount;
+            childCount += 1;
+            consumed[childId] = true;
+          });
+
+          row.classList.toggle('is-overridden', childCount > 0);
+
+          if (childCount > 0) {
+            totalAmount += childAmount;
+            totalCount += childCount;
+            consumed[rowId] = true;
+            return;
+          }
+
+          var ownAmount = Number(rowAmountById[rowId] || 0);
+          if (ownAmount > 0) {
+            totalAmount += ownAmount;
+            totalCount += 1;
+          }
+          consumed[rowId] = true;
+        });
+
+        reimbursementRows.forEach(function (row) {
+          var rowId = String(row.getAttribute('data-id') || '');
+          if (!rowId || consumed[rowId]) {
+            return;
+          }
+          var amount = Number(rowAmountById[rowId] || 0);
+          if (amount <= 0) {
+            return;
+          }
+          totalAmount += amount;
+          totalCount += 1;
+        });
+
+        if (reimbursementTotalNode) {
+          reimbursementTotalNode.textContent = reimbursementFormatMoney(totalAmount);
+        }
+        if (reimbursementCountNode) {
+          reimbursementCountNode.textContent = totalCount + ' item(ns)';
+        }
+      };
+
+      reimbursementAmountInputs.forEach(function (input) {
+        input.addEventListener('input', reimbursementRecalc);
+        input.addEventListener('blur', reimbursementRecalc);
+      });
+
+      reimbursementRecalc();
+    }
+
     var form = document.querySelector('[data-cost-batch-form]');
     if (!form) {
       return;
@@ -1180,12 +1369,34 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     var totalYearEndNode = form.querySelector('[data-cost-total-year-end]');
     var totalItemsNode = form.querySelector('[data-cost-total-items]');
     var editableInputs = Array.prototype.slice.call(form.querySelectorAll('[data-cost-editable]'));
+    var rowMetrics = {};
+    var rowById = {};
+    var childrenByParent = {};
+
+    rows.forEach(function (row) {
+      var rowId = String(row.getAttribute('data-cost-id') || '');
+      if (rowId !== '') {
+        rowById[rowId] = row;
+      }
+
+      var rowLevel = String(row.getAttribute('data-cost-level') || 'aggregator').toLowerCase();
+      if (rowLevel !== 'child') {
+        return;
+      }
+
+      var parentId = String(row.getAttribute('data-parent-id') || '');
+      if (parentId === '') {
+        return;
+      }
+
+      if (!childrenByParent[parentId]) {
+        childrenByParent[parentId] = [];
+      }
+      childrenByParent[parentId].push(row);
+    });
 
     var recalc = function () {
-      var totalPeriod = 0;
-      var totalAnnualized = 0;
-      var totalYearEnd = 0;
-      var totalItems = 0;
+      rowMetrics = {};
 
       rows.forEach(function (row) {
         var periodicityInput = row.querySelector('[data-cost-type]');
@@ -1194,6 +1405,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         var startInput = row.querySelector('[data-cost-start-date]');
         var annualizedNode = row.querySelector('[data-cost-annualized]');
         var yearEndNode = row.querySelector('[data-cost-year-end]');
+        var rowId = String(row.getAttribute('data-cost-id') || '');
 
         var amount = parseMoney(amountInput ? amountInput.value : '');
         var startDate = parseDate(startInput ? startInput.value : '');
@@ -1208,10 +1420,85 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           yearEndNode.textContent = formatMoney(projectedYearEnd);
         }
 
-        totalPeriod += amount;
-        totalAnnualized += annualized;
-        totalYearEnd += projectedYearEnd;
-        if (amount > 0) {
+        if (rowId !== '') {
+          rowMetrics[rowId] = {
+            amount: amount,
+            annualized: annualized,
+            yearEnd: projectedYearEnd
+          };
+        }
+      });
+
+      var totalPeriod = 0;
+      var totalAnnualized = 0;
+      var totalYearEnd = 0;
+      var totalItems = 0;
+      var consumedRows = {};
+
+      rows.forEach(function (row) {
+        var rowId = String(row.getAttribute('data-cost-id') || '');
+        var rowLevel = String(row.getAttribute('data-cost-level') || 'aggregator').toLowerCase();
+        if (rowId === '' || rowLevel !== 'aggregator') {
+          return;
+        }
+
+        var children = Array.isArray(childrenByParent[rowId]) ? childrenByParent[rowId] : [];
+        var detailedChildren = [];
+        children.forEach(function (childRow) {
+          var childId = String(childRow.getAttribute('data-cost-id') || '');
+          if (!childId) {
+            return;
+          }
+          var childMetric = rowMetrics[childId];
+          if (!childMetric || childMetric.amount <= 0) {
+            return;
+          }
+          detailedChildren.push(childMetric);
+          consumedRows[childId] = true;
+        });
+
+        var isOverridden = detailedChildren.length > 0;
+        row.classList.toggle('is-overridden', isOverridden);
+        if (isOverridden) {
+          row.setAttribute('title', 'Categoria com filhos detalhados: valor da categoria sera ignorado no salvamento.');
+          detailedChildren.forEach(function (metric) {
+            totalPeriod += metric.amount;
+            totalAnnualized += metric.annualized;
+            totalYearEnd += metric.yearEnd;
+            if (metric.amount > 0) {
+              totalItems += 1;
+            }
+          });
+          consumedRows[rowId] = true;
+          return;
+        }
+
+        var metric = rowMetrics[rowId];
+        if (!metric) {
+          return;
+        }
+        totalPeriod += metric.amount;
+        totalAnnualized += metric.annualized;
+        totalYearEnd += metric.yearEnd;
+        if (metric.amount > 0) {
+          totalItems += 1;
+        }
+        consumedRows[rowId] = true;
+      });
+
+      rows.forEach(function (row) {
+        var rowId = String(row.getAttribute('data-cost-id') || '');
+        if (rowId === '' || consumedRows[rowId]) {
+          return;
+        }
+        var metric = rowMetrics[rowId];
+        if (!metric) {
+          return;
+        }
+        totalPeriod += metric.amount;
+        totalAnnualized += metric.annualized;
+        totalYearEnd += metric.yearEnd;
+        if (metric.amount > 0) {
           totalItems += 1;
         }
       });
@@ -2215,7 +2502,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     </p>
   <?php endif; ?>
 
-  <?php if ($costItemCatalog === []): ?>
+  <?php if ($costCatalogHierarchy === []): ?>
     <p class="muted">Nenhum item de custo ativo no catálogo. Cadastre ao menos um item para lançar custos.</p>
     <?php if ($canManageCostItems): ?>
       <div class="actions-inline">
@@ -2227,70 +2514,200 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
       <table class="cost-current-table">
         <thead>
           <tr>
-            <th>Item de custo</th>
+            <th>Categoria agregadora</th>
             <th>Periodicidade</th>
             <th>Valor no período</th>
             <th>Início da vigência</th>
             <th>Valor anualizado</th>
             <th>Valor até fim do ano</th>
             <th>Observações</th>
+            <th>Detalhamento</th>
           </tr>
         </thead>
         <tbody>
-          <?php foreach ($costItemCatalog as $catalogItem): ?>
+          <?php foreach ($costCatalogHierarchy as $group): ?>
             <?php
-              $catalogId = (int) ($catalogItem['id'] ?? 0);
-              if ($catalogId <= 0) {
+              $category = is_array($group['category'] ?? null) ? $group['category'] : [];
+              $children = is_array($group['children'] ?? null) ? $group['children'] : [];
+              $categoryId = (int) ($category['id'] ?? 0);
+              if ($categoryId <= 0) {
                   continue;
               }
-              $catalogName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
-              $catalogLinkage = $costLinkageLabel((int) ($catalogItem['linkage_code'] ?? 0), $catalogName);
-              $catalogParcel = $costReimbursabilityLabel(
-                  (string) ($catalogItem['reimbursability'] ?? ''),
-                  (int) ($catalogItem['is_reimbursable'] ?? 0),
-                  $catalogName
+              $categoryName = trim((string) ($category['name'] ?? ('Categoria #' . $categoryId)));
+              $categoryLinkage = $costLinkageLabel((int) ($category['linkage_code'] ?? 0), $categoryName);
+              $categoryParcel = $costReimbursabilityLabel(
+                  (string) ($category['reimbursability'] ?? ''),
+                  (int) ($category['is_reimbursable'] ?? 0),
+                  $categoryName
               );
-              $catalogMacroCategory = $costMacroCategoryLabel((string) ($catalogItem['macro_category'] ?? ''));
-              $catalogSubcategory = trim((string) ($catalogItem['subcategory'] ?? ''));
-              $catalogExpenseNature = $costExpenseNatureLabel((string) ($catalogItem['expense_nature'] ?? ''));
-              $catalogPredictability = $costPredictabilityLabel((string) ($catalogItem['predictability'] ?? ''));
-              $catalogPeriodicityRaw = trim((string) ($catalogItem['payment_periodicity'] ?? 'mensal'));
-              $activeRow = is_array($costActiveItemsByCatalog[$catalogId] ?? null) ? $costActiveItemsByCatalog[$catalogId] : [];
-              $rowAmountFloat = is_numeric((string) ($activeRow['amount'] ?? null))
-                  ? (float) ($activeRow['amount'] ?? 0)
+              $categoryMacroCategory = $costMacroCategoryLabel((string) ($category['macro_category'] ?? ''));
+              $categorySubcategory = trim((string) ($category['subcategory'] ?? ''));
+              $categoryExpenseNature = $costExpenseNatureLabel((string) ($category['expense_nature'] ?? ''));
+              $categoryPredictability = $costPredictabilityLabel((string) ($category['predictability'] ?? ''));
+              $categoryPeriodicityRaw = trim((string) ($category['payment_periodicity'] ?? 'mensal'));
+
+              $categoryRows = is_array($costActiveRowsByCatalog[$categoryId] ?? null) ? $costActiveRowsByCatalog[$categoryId] : [];
+              $categoryRow = is_array($categoryRows[0] ?? null) ? $categoryRows[0] : [];
+
+              $categoryAmount = is_numeric((string) ($categoryRow['amount'] ?? null))
+                  ? (float) ($categoryRow['amount'] ?? 0)
                   : 0.0;
-              $rowStartDate = trim((string) ($activeRow['start_date'] ?? ''));
-              if ($rowStartDate === '' || strtotime($rowStartDate) === false) {
-                  $rowStartDate = $costProjectionStartDate;
+              $categoryStartDate = trim((string) ($categoryRow['start_date'] ?? ''));
+              if ($categoryStartDate === '' || strtotime($categoryStartDate) === false) {
+                  $categoryStartDate = $costProjectionStartDate;
               }
-              $selectedType = trim((string) ($activeRow['cost_type'] ?? $catalogPeriodicityRaw));
-              if (!isset($costPeriodicityOptions[$selectedType])) {
-                  $selectedType = isset($costPeriodicityOptions[$catalogPeriodicityRaw]) ? $catalogPeriodicityRaw : 'mensal';
+              $categoryType = trim((string) ($categoryRow['cost_type'] ?? $categoryPeriodicityRaw));
+              if (!isset($costPeriodicityOptions[$categoryType])) {
+                  $categoryType = isset($costPeriodicityOptions[$categoryPeriodicityRaw]) ? $categoryPeriodicityRaw : 'mensal';
               }
-              $rowNotes = trim((string) ($activeRow['notes'] ?? ''));
-              $rowAnnualized = $costAnnualizedAmount($rowAmountFloat, $selectedType);
-              $rowYearEnd = $costYearEndAmount($rowAmountFloat, $selectedType, $rowStartDate);
+              $categoryNotes = trim((string) ($categoryRow['notes'] ?? ''));
+
+              $detailedRows = [];
+              foreach ($children as $childItem) {
+                  $childId = (int) ($childItem['id'] ?? 0);
+                  if ($childId <= 0) {
+                      continue;
+                  }
+                  $childRows = is_array($costActiveRowsByCatalog[$childId] ?? null) ? $costActiveRowsByCatalog[$childId] : [];
+                  $childRow = is_array($childRows[0] ?? null) ? $childRows[0] : [];
+                  $childAmount = is_numeric((string) ($childRow['amount'] ?? null))
+                      ? (float) ($childRow['amount'] ?? 0)
+                      : 0.0;
+                  if ($childAmount <= 0) {
+                      continue;
+                  }
+                  $detailedRows[] = [
+                      'catalog' => $childItem,
+                      'row' => $childRow,
+                      'amount' => $childAmount,
+                  ];
+              }
+
+              $useDetailed = $detailedRows !== [];
+              $displayAmount = 0.0;
+              $displayAnnualized = 0.0;
+              $displayYearEnd = 0.0;
+              $displayStartDate = $categoryStartDate;
+              $displayType = $categoryType;
+              $displayNotes = $categoryNotes;
+
+              if ($useDetailed) {
+                  $displayType = 'detalhado';
+                  $displayNotes = 'Detalhado em ' . count($detailedRows) . ' item(ns) filho(s).';
+                  $earliestStart = null;
+                  foreach ($detailedRows as $detail) {
+                      $detailCatalog = is_array($detail['catalog'] ?? null) ? $detail['catalog'] : [];
+                      $detailRow = is_array($detail['row'] ?? null) ? $detail['row'] : [];
+                      $detailAmount = (float) ($detail['amount'] ?? 0);
+                      $detailType = trim((string) ($detailRow['cost_type'] ?? ($detailCatalog['payment_periodicity'] ?? 'mensal')));
+                      if (!isset($costPeriodicityOptions[$detailType])) {
+                          $detailType = 'mensal';
+                      }
+                      $detailStart = trim((string) ($detailRow['start_date'] ?? ''));
+                      if ($detailStart === '' || strtotime($detailStart) === false) {
+                          $detailStart = $costProjectionStartDate;
+                      }
+                      if ($earliestStart === null && $detailStart !== '') {
+                          $earliestStart = $detailStart;
+                      } elseif ($detailStart !== '' && strtotime($detailStart) !== false && strtotime((string) $earliestStart) !== false && strtotime($detailStart) < strtotime((string) $earliestStart)) {
+                          $earliestStart = $detailStart;
+                      }
+
+                      $displayAmount += $detailAmount;
+                      $displayAnnualized += $costAnnualizedAmount($detailAmount, $detailType);
+                      $displayYearEnd += $costYearEndAmount($detailAmount, $detailType, $detailStart);
+                  }
+                  $displayStartDate = $earliestStart ?? $costProjectionStartDate;
+              } else {
+                  $displayAmount = $categoryAmount;
+                  $displayAnnualized = $costAnnualizedAmount($displayAmount, $displayType);
+                  $displayYearEnd = $costYearEndAmount($displayAmount, $displayType, $displayStartDate);
+              }
             ?>
             <tr>
               <td>
-                <strong><?= e($catalogName) ?></strong>
-                <div class="muted"><?= e($catalogMacroCategory) ?> · <?= e($catalogSubcategory !== '' ? $catalogSubcategory : '-') ?></div>
-                <div class="muted"><?= e($catalogExpenseNature) ?> · <?= e($catalogParcel) ?> · <?= e($catalogPredictability) ?> · <?= e($catalogLinkage) ?></div>
+                <strong><?= e($categoryName) ?></strong>
+                <div class="muted"><?= e($categoryMacroCategory) ?> · <?= e($categorySubcategory !== '' ? $categorySubcategory : '-') ?></div>
+                <div class="muted"><?= e($categoryExpenseNature) ?> · <?= e($categoryParcel) ?> · <?= e($categoryPredictability) ?> · <?= e($categoryLinkage) ?></div>
               </td>
-              <td><?= e($costTypeLabel($selectedType)) ?></td>
-              <td class="is-numeric"><?= e($rowAmountFloat > 0.0 ? $formatMoney($rowAmountFloat) : '-') ?></td>
-              <td><?= e($rowStartDate !== '' ? $formatDate($rowStartDate) : '-') ?></td>
-              <td class="is-numeric"><?= e($rowAmountFloat > 0.0 ? $formatMoney($rowAnnualized) : '-') ?></td>
-              <td class="is-numeric"><?= e($rowAmountFloat > 0.0 ? $formatMoney($rowYearEnd) : '-') ?></td>
-              <td><?= e($rowNotes !== '' ? $rowNotes : '-') ?></td>
+              <td><?= e($useDetailed ? 'Detalhado' : $costTypeLabel($displayType)) ?></td>
+              <td class="is-numeric"><?= e($displayAmount > 0.0 ? $formatMoney($displayAmount) : '-') ?></td>
+              <td><?= e($displayStartDate !== '' ? $formatDate($displayStartDate) : '-') ?></td>
+              <td class="is-numeric"><?= e($displayAmount > 0.0 ? $formatMoney($displayAnnualized) : '-') ?></td>
+              <td class="is-numeric"><?= e($displayAmount > 0.0 ? $formatMoney($displayYearEnd) : '-') ?></td>
+              <td><?= e($displayNotes !== '' ? $displayNotes : '-') ?></td>
+              <td>
+                <?php if ($children !== []): ?>
+                  <button type="button" class="btn btn-ghost" data-cost-expand-toggle="planned-<?= e((string) $categoryId) ?>" aria-expanded="false">Expandir filhos</button>
+                <?php else: ?>
+                  <span class="muted">-</span>
+                <?php endif; ?>
+              </td>
             </tr>
+            <?php if ($children !== []): ?>
+              <tr id="cost-expand-planned-<?= e((string) $categoryId) ?>" class="cost-expand-row" hidden>
+                <td colspan="8">
+                  <div class="table-wrap">
+                    <table class="cost-children-table">
+                      <thead>
+                        <tr>
+                          <th>Item filho</th>
+                          <th>Periodicidade</th>
+                          <th>Valor no período</th>
+                          <th>Início</th>
+                          <th>Anualizado</th>
+                          <th>Até fim do ano</th>
+                          <th>Observações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <?php foreach ($children as $childItem): ?>
+                          <?php
+                            $childId = (int) ($childItem['id'] ?? 0);
+                            if ($childId <= 0) {
+                                continue;
+                            }
+                            $childName = trim((string) ($childItem['name'] ?? ('Item #' . $childId)));
+                            $childRows = is_array($costActiveRowsByCatalog[$childId] ?? null) ? $costActiveRowsByCatalog[$childId] : [];
+                            $childRow = is_array($childRows[0] ?? null) ? $childRows[0] : [];
+                            $childAmount = is_numeric((string) ($childRow['amount'] ?? null))
+                                ? (float) ($childRow['amount'] ?? 0)
+                                : 0.0;
+                            $childType = trim((string) ($childRow['cost_type'] ?? ($childItem['payment_periodicity'] ?? 'mensal')));
+                            if (!isset($costPeriodicityOptions[$childType])) {
+                                $childType = 'mensal';
+                            }
+                            $childStartDate = trim((string) ($childRow['start_date'] ?? ''));
+                            if ($childStartDate === '' || strtotime($childStartDate) === false) {
+                                $childStartDate = $costProjectionStartDate;
+                            }
+                            $childNotes = trim((string) ($childRow['notes'] ?? ''));
+                            $childAnnualized = $costAnnualizedAmount($childAmount, $childType);
+                            $childYearEnd = $costYearEndAmount($childAmount, $childType, $childStartDate);
+                          ?>
+                          <tr>
+                            <td><?= e((string) ((int) ($childItem['cost_code'] ?? 0))) ?> - <?= e($childName) ?></td>
+                            <td><?= e($costTypeLabel($childType)) ?></td>
+                            <td class="is-numeric"><?= e($childAmount > 0.0 ? $formatMoney($childAmount) : '-') ?></td>
+                            <td><?= e($childStartDate !== '' ? $formatDate($childStartDate) : '-') ?></td>
+                            <td class="is-numeric"><?= e($childAmount > 0.0 ? $formatMoney($childAnnualized) : '-') ?></td>
+                            <td class="is-numeric"><?= e($childAmount > 0.0 ? $formatMoney($childYearEnd) : '-') ?></td>
+                            <td><?= e($childNotes !== '' ? $childNotes : '-') ?></td>
+                          </tr>
+                        <?php endforeach; ?>
+                      </tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+            <?php endif; ?>
           <?php endforeach; ?>
         </tbody>
       </table>
     </div>
   <?php endif; ?>
 
-  <?php if (($canManage ?? false) === true && $costItemCatalog !== []): ?>
+  <?php if (($canManage ?? false) === true && $costCatalogHierarchy !== []): ?>
     <details class="cost-edit-mode">
       <summary class="btn btn-outline">Ajustar/alterar e gerar nova versão de custos</summary>
       <form
@@ -2321,60 +2738,65 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
               <col class="cost-col-annualized">
               <col class="cost-col-year-end">
               <col class="cost-col-notes">
+              <col class="cost-col-details">
             </colgroup>
             <thead>
               <tr>
-                <th>Item de custo</th>
+                <th>Categoria agregadora</th>
                 <th>Periodicidade</th>
                 <th>Valor no período</th>
                 <th>Início da vigência</th>
                 <th>Valor anualizado</th>
                 <th>Valor até fim do ano</th>
                 <th>Observações</th>
+                <th>Detalhamento</th>
               </tr>
             </thead>
             <tbody>
-              <?php foreach ($costItemCatalog as $catalogItem): ?>
+              <?php foreach ($costCatalogHierarchy as $group): ?>
                 <?php
-                  $catalogId = (int) ($catalogItem['id'] ?? 0);
-                  if ($catalogId <= 0) {
+                  $category = is_array($group['category'] ?? null) ? $group['category'] : [];
+                  $children = is_array($group['children'] ?? null) ? $group['children'] : [];
+                  $categoryId = (int) ($category['id'] ?? 0);
+                  if ($categoryId <= 0) {
                       continue;
                   }
-                  $catalogName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
-                  $catalogLinkage = $costLinkageLabel((int) ($catalogItem['linkage_code'] ?? 0), $catalogName);
-                  $catalogParcel = $costReimbursabilityLabel(
-                      (string) ($catalogItem['reimbursability'] ?? ''),
-                      (int) ($catalogItem['is_reimbursable'] ?? 0),
-                      $catalogName
+                  $categoryName = trim((string) ($category['name'] ?? ('Categoria #' . $categoryId)));
+                  $categoryLinkage = $costLinkageLabel((int) ($category['linkage_code'] ?? 0), $categoryName);
+                  $categoryParcel = $costReimbursabilityLabel(
+                      (string) ($category['reimbursability'] ?? ''),
+                      (int) ($category['is_reimbursable'] ?? 0),
+                      $categoryName
                   );
-                  $catalogMacroCategory = $costMacroCategoryLabel((string) ($catalogItem['macro_category'] ?? ''));
-                  $catalogSubcategory = trim((string) ($catalogItem['subcategory'] ?? ''));
-                  $catalogExpenseNature = $costExpenseNatureLabel((string) ($catalogItem['expense_nature'] ?? ''));
-                  $catalogPredictability = $costPredictabilityLabel((string) ($catalogItem['predictability'] ?? ''));
-                  $catalogPeriodicityRaw = trim((string) ($catalogItem['payment_periodicity'] ?? 'mensal'));
-                  $activeRow = is_array($costActiveItemsByCatalog[$catalogId] ?? null) ? $costActiveItemsByCatalog[$catalogId] : [];
-                  $rawAmount = $activeRow['amount'] ?? null;
+                  $categoryMacroCategory = $costMacroCategoryLabel((string) ($category['macro_category'] ?? ''));
+                  $categorySubcategory = trim((string) ($category['subcategory'] ?? ''));
+                  $categoryExpenseNature = $costExpenseNatureLabel((string) ($category['expense_nature'] ?? ''));
+                  $categoryPredictability = $costPredictabilityLabel((string) ($category['predictability'] ?? ''));
+                  $categoryPeriodicityRaw = trim((string) ($category['payment_periodicity'] ?? 'mensal'));
+                  $categoryRows = is_array($costActiveRowsByCatalog[$categoryId] ?? null) ? $costActiveRowsByCatalog[$categoryId] : [];
+                  $categoryRow = is_array($categoryRows[0] ?? null) ? $categoryRows[0] : [];
+                  $rawAmount = $categoryRow['amount'] ?? null;
                   $rowAmount = (is_numeric((string) $rawAmount) && (float) $rawAmount > 0.0)
                       ? number_format((float) $rawAmount, 2, '.', '')
                       : '';
-                  $rowStartDate = trim((string) ($activeRow['start_date'] ?? ''));
+                  $rowStartDate = trim((string) ($categoryRow['start_date'] ?? ''));
                   if ($rowStartDate === '' || strtotime($rowStartDate) === false) {
                       $rowStartDate = $costProjectionStartDate;
                   }
-                  $rowNotes = trim((string) ($activeRow['notes'] ?? ''));
-                  $selectedType = trim((string) ($activeRow['cost_type'] ?? $catalogPeriodicityRaw));
+                  $rowNotes = trim((string) ($categoryRow['notes'] ?? ''));
+                  $selectedType = trim((string) ($categoryRow['cost_type'] ?? $categoryPeriodicityRaw));
                   if (!isset($costPeriodicityOptions[$selectedType])) {
-                      $selectedType = isset($costPeriodicityOptions[$catalogPeriodicityRaw]) ? $catalogPeriodicityRaw : 'mensal';
+                      $selectedType = isset($costPeriodicityOptions[$categoryPeriodicityRaw]) ? $categoryPeriodicityRaw : 'mensal';
                   }
                 ?>
-                <tr data-cost-row>
+                <tr data-cost-row data-cost-level="aggregator" data-cost-id="<?= e((string) $categoryId) ?>">
                   <td>
-                    <strong><?= e($catalogName) ?></strong>
-                    <div class="muted"><?= e($catalogMacroCategory) ?> · <?= e($catalogSubcategory !== '' ? $catalogSubcategory : '-') ?></div>
-                    <div class="muted"><?= e($catalogExpenseNature) ?> · <?= e($catalogParcel) ?> · <?= e($catalogPredictability) ?> · <?= e($catalogLinkage) ?></div>
+                    <strong><?= e($categoryName) ?></strong>
+                    <div class="muted"><?= e($categoryMacroCategory) ?> · <?= e($categorySubcategory !== '' ? $categorySubcategory : '-') ?></div>
+                    <div class="muted"><?= e($categoryExpenseNature) ?> · <?= e($categoryParcel) ?> · <?= e($categoryPredictability) ?> · <?= e($categoryLinkage) ?></div>
                   </td>
                   <td>
-                    <select name="items[<?= e((string) $catalogId) ?>][cost_type]" data-cost-type data-cost-editable>
+                    <select name="items[<?= e((string) $categoryId) ?>][cost_type]" data-cost-type data-cost-editable>
                       <?php foreach ($costPeriodicityOptions as $optionValue => $optionLabel): ?>
                         <option value="<?= e($optionValue) ?>" <?= $optionValue === $selectedType ? 'selected' : '' ?>><?= e($optionLabel) ?></option>
                       <?php endforeach; ?>
@@ -2385,7 +2807,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                       type="number"
                       min="0"
                       step="0.01"
-                      name="items[<?= e((string) $catalogId) ?>][amount]"
+                      name="items[<?= e((string) $categoryId) ?>][amount]"
                       value="<?= e($rowAmount) ?>"
                       placeholder="<?= e(match ($selectedType) {
                           'anual' => 'Ex.: 18000,00/ano',
@@ -2402,7 +2824,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                   <td>
                     <input
                       type="date"
-                      name="items[<?= e((string) $catalogId) ?>][start_date]"
+                      name="items[<?= e((string) $categoryId) ?>][start_date]"
                       value="<?= e($rowStartDate) ?>"
                       title="Data inicial de vigencia do custo"
                       autocomplete="off"
@@ -2416,7 +2838,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                     <input
                       type="text"
                       maxlength="500"
-                      name="items[<?= e((string) $catalogId) ?>][notes]"
+                      name="items[<?= e((string) $categoryId) ?>][notes]"
                       value="<?= e($rowNotes) ?>"
                       placeholder="Ex.: reajuste previsto para o periodo"
                       autocomplete="off"
@@ -2424,7 +2846,109 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                       data-cost-editable
                     >
                   </td>
+                  <td>
+                    <?php if ($children !== []): ?>
+                      <button type="button" class="btn btn-ghost" data-cost-expand-toggle="batch-<?= e((string) $categoryId) ?>" aria-expanded="false">Expandir filhos</button>
+                    <?php else: ?>
+                      <span class="muted">-</span>
+                    <?php endif; ?>
+                  </td>
                 </tr>
+                <?php if ($children !== []): ?>
+                  <tr id="cost-expand-batch-<?= e((string) $categoryId) ?>" class="cost-expand-row" hidden>
+                    <td colspan="8">
+                      <div class="table-wrap">
+                        <table class="cost-children-table">
+                          <thead>
+                            <tr>
+                              <th>Item filho</th>
+                              <th>Periodicidade</th>
+                              <th>Valor no período</th>
+                              <th>Início da vigência</th>
+                              <th>Valor anualizado</th>
+                              <th>Valor até fim do ano</th>
+                              <th>Observações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php foreach ($children as $childItem): ?>
+                              <?php
+                                $childId = (int) ($childItem['id'] ?? 0);
+                                if ($childId <= 0) {
+                                    continue;
+                                }
+                                $childName = trim((string) ($childItem['name'] ?? ('Item #' . $childId)));
+                                $childRows = is_array($costActiveRowsByCatalog[$childId] ?? null) ? $costActiveRowsByCatalog[$childId] : [];
+                                $childRow = is_array($childRows[0] ?? null) ? $childRows[0] : [];
+                                $childRawAmount = $childRow['amount'] ?? null;
+                                $childAmount = (is_numeric((string) $childRawAmount) && (float) $childRawAmount > 0.0)
+                                    ? number_format((float) $childRawAmount, 2, '.', '')
+                                    : '';
+                                $childStartDate = trim((string) ($childRow['start_date'] ?? ''));
+                                if ($childStartDate === '' || strtotime($childStartDate) === false) {
+                                    $childStartDate = $costProjectionStartDate;
+                                }
+                                $childNotes = trim((string) ($childRow['notes'] ?? ''));
+                                $childType = trim((string) ($childRow['cost_type'] ?? ($childItem['payment_periodicity'] ?? 'mensal')));
+                                if (!isset($costPeriodicityOptions[$childType])) {
+                                    $childType = 'mensal';
+                                }
+                              ?>
+                              <tr data-cost-row data-cost-level="child" data-cost-id="<?= e((string) $childId) ?>" data-parent-id="<?= e((string) $categoryId) ?>">
+                                <td>
+                                  <strong><?= e((string) ((int) ($childItem['cost_code'] ?? 0))) ?> - <?= e($childName) ?></strong>
+                                </td>
+                                <td>
+                                  <select name="items[<?= e((string) $childId) ?>][cost_type]" data-cost-type data-cost-editable>
+                                    <?php foreach ($costPeriodicityOptions as $optionValue => $optionLabel): ?>
+                                      <option value="<?= e($optionValue) ?>" <?= $optionValue === $childType ? 'selected' : '' ?>><?= e($optionLabel) ?></option>
+                                    <?php endforeach; ?>
+                                  </select>
+                                </td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    name="items[<?= e((string) $childId) ?>][amount]"
+                                    value="<?= e($childAmount) ?>"
+                                    inputmode="decimal"
+                                    autocomplete="off"
+                                    data-cost-amount
+                                    data-cost-editable
+                                  >
+                                </td>
+                                <td>
+                                  <input
+                                    type="date"
+                                    name="items[<?= e((string) $childId) ?>][start_date]"
+                                    value="<?= e($childStartDate) ?>"
+                                    autocomplete="off"
+                                    data-cost-start-date
+                                    data-cost-editable
+                                  >
+                                </td>
+                                <td class="is-numeric" data-cost-annualized>R$ 0,00</td>
+                                <td class="is-numeric" data-cost-year-end>R$ 0,00</td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    maxlength="500"
+                                    name="items[<?= e((string) $childId) ?>][notes]"
+                                    value="<?= e($childNotes) ?>"
+                                    autocomplete="off"
+                                    data-cost-notes
+                                    data-cost-editable
+                                  >
+                                </td>
+                              </tr>
+                            <?php endforeach; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                <?php endif; ?>
               <?php endforeach; ?>
             </tbody>
             <tfoot>
@@ -2435,6 +2959,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                 <td class="is-numeric" data-cost-total-annualized>R$ 0,00</td>
                 <td class="is-numeric" data-cost-total-year-end>R$ 0,00</td>
                 <td class="is-numeric" data-cost-total-items>0 item(ns)</td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
@@ -2448,6 +2973,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         </div>
         <p class="muted cost-batch-shortcuts">
           Atalhos: <strong>Ctrl/Cmd + S</strong> salva a nova versão, <strong>Enter</strong> vai para o próximo campo, <strong>Shift + Enter</strong> volta para o campo anterior.
+          Se houver valores em itens filhos, o valor da categoria agregadora correspondente e ignorado.
         </p>
       </form>
     </details>
@@ -2679,6 +3205,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
         <thead>
           <tr>
             <th>Tipo</th>
+            <th>Item de custo</th>
             <th>Título</th>
             <th>Competência</th>
             <th>Valor</th>
@@ -2706,6 +3233,21 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
             ?>
             <tr>
               <td><?= e($reimbursementTypeLabel((string) ($entry['entry_type'] ?? ''))) ?></td>
+              <td>
+                <?php
+                  $entryCatalogName = trim((string) ($entry['catalog_name'] ?? ''));
+                  $entryCatalogCode = (int) ($entry['catalog_cost_code'] ?? 0);
+                  $entryCatalogSubcategory = trim((string) ($entry['catalog_subcategory'] ?? ''));
+                  $entryCatalogMacro = $costMacroCategoryLabel((string) ($entry['catalog_macro_category'] ?? ''));
+                  $entryCatalogKind = (int) ($entry['catalog_is_aggregator'] ?? 0) === 1 ? 'Categoria agregadora' : 'Item filho';
+                ?>
+                <?php if ($entryCatalogName !== ''): ?>
+                  <strong><?= e((string) $entryCatalogCode) ?> - <?= e($entryCatalogName) ?></strong>
+                  <div class="muted"><?= e($entryCatalogKind) ?> · <?= e($entryCatalogMacro) ?> · <?= e($entryCatalogSubcategory !== '' ? $entryCatalogSubcategory : '-') ?></div>
+                <?php else: ?>
+                  <span class="muted">Nao vinculado</span>
+                <?php endif; ?>
+              </td>
               <td>
                 <strong><?= e((string) ($entry['title'] ?? '-')) ?></strong>
                 <?php if (trim((string) ($entry['notes'] ?? '')) !== ''): ?>
@@ -2771,7 +3313,178 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
 
   <?php if (($canManage ?? false) === true): ?>
     <details class="reimbursement-edit-mode">
-      <summary class="btn btn-outline">Adicionar/ajustar lançamentos reais</summary>
+      <summary class="btn btn-outline">Adicionar lançamentos reais em lote (10 categorias)</summary>
+      <form method="post" action="<?= e(url('/people/reimbursements/store')) ?>" class="reimbursement-batch-form" data-reimbursement-batch-form>
+        <?= csrf_field() ?>
+        <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
+        <input type="hidden" name="entry_mode" value="batch_table">
+        <div class="form-grid">
+          <div class="field">
+            <label for="reimbursement_batch_entry_type">Tipo</label>
+            <select id="reimbursement_batch_entry_type" name="entry_type">
+              <option value="boleto">Boleto</option>
+              <option value="pagamento">Pagamento</option>
+              <option value="ajuste">Ajuste</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="reimbursement_batch_status">Status</label>
+            <select id="reimbursement_batch_status" name="status">
+              <option value="pendente">Pendente</option>
+              <option value="pago">Pago</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="reimbursement_batch_reference_month">Competência</label>
+            <input id="reimbursement_batch_reference_month" name="reference_month" type="month">
+          </div>
+          <div class="field">
+            <label for="reimbursement_batch_due_date">Vencimento</label>
+            <input id="reimbursement_batch_due_date" name="due_date" type="date">
+          </div>
+          <div class="field">
+            <label for="reimbursement_batch_paid_at">Data do pagamento</label>
+            <input id="reimbursement_batch_paid_at" name="paid_at" type="date">
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="reimbursement-batch-table">
+            <thead>
+              <tr>
+                <th>Categoria agregadora</th>
+                <th>Valor</th>
+                <th>Observações</th>
+                <th>Detalhamento</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($costCatalogHierarchy as $group): ?>
+                <?php
+                  $category = is_array($group['category'] ?? null) ? $group['category'] : [];
+                  $children = is_array($group['children'] ?? null) ? $group['children'] : [];
+                  $categoryId = (int) ($category['id'] ?? 0);
+                  if ($categoryId <= 0) {
+                      continue;
+                  }
+                  $categoryName = trim((string) ($category['name'] ?? ('Categoria #' . $categoryId)));
+                  $categoryMacro = $costMacroCategoryLabel((string) ($category['macro_category'] ?? ''));
+                  $categoryCode = (int) ($category['cost_code'] ?? 0);
+                ?>
+                <tr data-reimbursement-row data-level="aggregator" data-id="<?= e((string) $categoryId) ?>">
+                  <td>
+                    <strong><?= e((string) $categoryCode) ?> - <?= e($categoryName) ?></strong>
+                    <div class="muted"><?= e($categoryMacro) ?></div>
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="batch_items[<?= e((string) $categoryId) ?>][amount]"
+                      placeholder="0,00"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      data-reimbursement-batch-amount
+                    >
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      maxlength="500"
+                      name="batch_items[<?= e((string) $categoryId) ?>][notes]"
+                      placeholder="Ex.: lançamento consolidado da categoria"
+                      autocomplete="off"
+                    >
+                  </td>
+                  <td>
+                    <?php if ($children !== []): ?>
+                      <button type="button" class="btn btn-ghost" data-cost-expand-toggle="effective-<?= e((string) $categoryId) ?>" aria-expanded="false">Expandir filhos</button>
+                    <?php else: ?>
+                      <span class="muted">-</span>
+                    <?php endif; ?>
+                  </td>
+                </tr>
+                <?php if ($children !== []): ?>
+                  <tr id="cost-expand-effective-<?= e((string) $categoryId) ?>" class="cost-expand-row" hidden>
+                    <td colspan="4">
+                      <div class="table-wrap">
+                        <table class="cost-children-table">
+                          <thead>
+                            <tr>
+                              <th>Item filho</th>
+                              <th>Valor</th>
+                              <th>Observações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php foreach ($children as $childItem): ?>
+                              <?php
+                                $childId = (int) ($childItem['id'] ?? 0);
+                                if ($childId <= 0) {
+                                    continue;
+                                }
+                                $childName = trim((string) ($childItem['name'] ?? ('Item #' . $childId)));
+                              ?>
+                              <tr data-reimbursement-row data-level="child" data-id="<?= e((string) $childId) ?>" data-parent-id="<?= e((string) $categoryId) ?>">
+                                <td>
+                                  <strong><?= e((string) ((int) ($childItem['cost_code'] ?? 0))) ?> - <?= e($childName) ?></strong>
+                                </td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    name="batch_items[<?= e((string) $childId) ?>][amount]"
+                                    placeholder="0,00"
+                                    inputmode="decimal"
+                                    autocomplete="off"
+                                    data-reimbursement-batch-amount
+                                  >
+                                </td>
+                                <td>
+                                  <input
+                                    type="text"
+                                    maxlength="500"
+                                    name="batch_items[<?= e((string) $childId) ?>][notes]"
+                                    placeholder="Ex.: detalhamento do filho"
+                                    autocomplete="off"
+                                  >
+                                </td>
+                              </tr>
+                            <?php endforeach; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    </td>
+                  </tr>
+                <?php endif; ?>
+              <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td><strong>Total em lote</strong></td>
+                <td class="is-numeric" data-reimbursement-batch-total>R$ 0,00</td>
+                <td class="is-numeric" data-reimbursement-batch-count>0 item(ns)</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Registrar lançamentos em lote</button>
+        </div>
+        <p class="muted cost-batch-shortcuts">
+          Preencha apenas as 10 categorias para visão macro, ou expanda e informe itens filhos para detalhamento.
+          Quando filhos tiverem valor, o valor da categoria agregadora correspondente será ignorado.
+        </p>
+      </form>
+    </details>
+
+    <details class="reimbursement-edit-mode">
+      <summary class="btn btn-outline">Adicionar lançamento unitário (manual/calculadora)</summary>
       <form method="post" action="<?= e(url('/people/reimbursements/store')) ?>" class="reimbursement-form">
         <?= csrf_field() ?>
         <input type="hidden" name="person_id" value="<?= e((string) $personId) ?>">
@@ -2790,6 +3503,32 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
               <option value="pendente">Pendente</option>
               <option value="pago">Pago</option>
               <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+          <div class="field field-wide">
+            <label for="reimbursement_cost_item_catalog_id">Item de custo (opcional)</label>
+            <select id="reimbursement_cost_item_catalog_id" name="cost_item_catalog_id">
+              <option value="0">Sem vinculo com catalogo</option>
+              <?php foreach ($costCatalogHierarchy as $group): ?>
+                <?php
+                  $category = is_array($group['category'] ?? null) ? $group['category'] : [];
+                  $children = is_array($group['children'] ?? null) ? $group['children'] : [];
+                  $categoryId = (int) ($category['id'] ?? 0);
+                ?>
+                <?php if ($categoryId > 0): ?>
+                  <option value="<?= e((string) $categoryId) ?>">
+                    [CAT] <?= e((string) ((int) ($category['cost_code'] ?? 0))) ?> - <?= e((string) ($category['name'] ?? 'Categoria')) ?>
+                  </option>
+                <?php endif; ?>
+                <?php foreach ($children as $childItem): ?>
+                  <?php $childId = (int) ($childItem['id'] ?? 0); ?>
+                  <?php if ($childId > 0): ?>
+                    <option value="<?= e((string) $childId) ?>">
+                      &nbsp;&nbsp;[FILHO] <?= e((string) ((int) ($childItem['cost_code'] ?? 0))) ?> - <?= e((string) ($childItem['name'] ?? 'Item')) ?>
+                    </option>
+                  <?php endif; ?>
+                <?php endforeach; ?>
+              <?php endforeach; ?>
             </select>
           </div>
           <div class="field field-wide">

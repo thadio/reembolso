@@ -38,7 +38,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Tipos de documento</h2>
       <p class="muted">Catálogo utilizado no dossiê documental e no mapeamento das etapas BPMN.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>

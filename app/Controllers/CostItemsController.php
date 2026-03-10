@@ -14,110 +14,117 @@ final class CostItemsController extends Controller
     public function index(Request $request): void
     {
         $query = (string) $request->input('q', '');
-        $linkage = (string) $request->input('linkage', '');
-        $reimbursability = (string) $request->input('reimbursability', (string) $request->input('reimbursable', ''));
-        $periodicity = (string) $request->input('periodicity', '');
         $macroCategory = (string) $request->input('macro_category', '');
-        $subcategory = (string) $request->input('subcategory', '');
-        $expenseNature = (string) $request->input('expense_nature', '');
-        $predictability = (string) $request->input('predictability', '');
-        $sort = (string) $request->input('sort', 'cost_code');
-        $dir = (string) $request->input('dir', 'asc');
-        $page = max(1, (int) $request->input('page', '1'));
-        $perPage = max(5, min(50, (int) $request->input('per_page', '20')));
+        $linkage = (string) $request->input('linkage', '');
+        $itemKind = (string) $request->input('item_kind', '');
 
-        $reimbursability = $this->normalizeReimbursabilityFilter($reimbursability);
+        if (!in_array($itemKind, ['', 'aggregator', 'child'], true)) {
+            $itemKind = '';
+        }
 
         if (!in_array($linkage, ['', '309', '510'], true)) {
             $linkage = '';
-        }
-
-        if (!in_array($periodicity, ['', 'mensal', 'anual', 'eventual', 'unico'], true)) {
-            $periodicity = '';
         }
 
         if (!in_array($macroCategory, ['', 'remuneracao_direta', 'encargos_obrigacoes_legais', 'beneficios_provisoes_indiretos'], true)) {
             $macroCategory = '';
         }
 
-        $allowedSubcategories = [
-            '',
-            'Remuneracao Base',
-            'Adicionais',
-            'Gratificacoes',
-            'Complementos',
-            'Beneficios',
-            'Encargos Sociais e Trabalhistas',
-            'Provisoes Trabalhistas',
-            'Remuneracoes Variaveis',
-            'Custos de Pessoal Indiretos',
-            'Cessao ou Cooperacao',
-        ];
-        if (!in_array($subcategory, $allowedSubcategories, true)) {
-            $subcategory = '';
-        }
+        $hierarchy = $this->service()->hierarchy($query);
+        if ($macroCategory !== '' || $linkage !== '' || $itemKind !== '') {
+            $filteredHierarchy = [];
+            foreach ($hierarchy as $group) {
+                $category = is_array($group['category'] ?? null) ? $group['category'] : [];
+                $children = is_array($group['children'] ?? null) ? $group['children'] : [];
 
-        if (!in_array($expenseNature, ['', 'remuneratoria', 'indenizatoria', 'encargos', 'provisoes'], true)) {
-            $expenseNature = '';
-        }
+                $categoryMatches = true;
+                if ($macroCategory !== '') {
+                    $categoryMatches = $categoryMatches
+                        && (string) ($category['macro_category'] ?? '') === $macroCategory;
+                }
+                if ($linkage !== '') {
+                    $categoryMatches = $categoryMatches
+                        && (string) ((int) ($category['linkage_code'] ?? 0)) === $linkage;
+                }
 
-        if (!in_array($predictability, ['', 'fixa', 'variavel', 'eventual'], true)) {
-            $predictability = '';
-        }
+                $filteredChildren = array_values(array_filter(
+                    $children,
+                    static function (array $child) use ($macroCategory, $linkage): bool {
+                        if ($macroCategory !== '' && (string) ($child['macro_category'] ?? '') !== $macroCategory) {
+                            return false;
+                        }
 
-        $result = $this->service()->paginate(
-            query: $query,
-            linkage: $linkage,
-            reimbursability: $reimbursability,
-            periodicity: $periodicity,
-            macroCategory: $macroCategory,
-            subcategory: $subcategory,
-            expenseNature: $expenseNature,
-            predictability: $predictability,
-            sort: $sort,
-            dir: $dir,
-            page: $page,
-            perPage: $perPage
-        );
+                        if ($linkage !== '' && (string) ((int) ($child['linkage_code'] ?? 0)) !== $linkage) {
+                            return false;
+                        }
+
+                        return true;
+                    }
+                ));
+
+                if ($itemKind === 'aggregator') {
+                    if ($categoryMatches) {
+                        $group['children'] = [];
+                        $group['children_count'] = 0;
+                        $filteredHierarchy[] = $group;
+                    }
+                    continue;
+                }
+
+                if ($itemKind === 'child') {
+                    if ($filteredChildren !== []) {
+                        $group['children'] = $filteredChildren;
+                        $group['children_count'] = count($filteredChildren);
+                        $filteredHierarchy[] = $group;
+                    }
+                    continue;
+                }
+
+                if ($categoryMatches || $filteredChildren !== []) {
+                    $group['children'] = $filteredChildren;
+                    $group['children_count'] = count($filteredChildren);
+                    $filteredHierarchy[] = $group;
+                }
+            }
+
+            $hierarchy = $filteredHierarchy;
+        }
 
         $this->view('cost_items/index', [
             'title' => 'Tipologia de Custos de Pessoal',
-            'items' => $result['items'],
-            'pagination' => [
-                'total' => $result['total'],
-                'page' => $result['page'],
-                'per_page' => $result['per_page'],
-                'pages' => $result['pages'],
-            ],
+            'hierarchy' => $hierarchy,
             'filters' => [
                 'q' => $query,
                 'linkage' => $linkage,
-                'reimbursability' => $reimbursability,
-                'periodicity' => $periodicity,
                 'macro_category' => $macroCategory,
-                'subcategory' => $subcategory,
-                'expense_nature' => $expenseNature,
-                'predictability' => $predictability,
-                'sort' => $sort,
-                'dir' => $dir,
-                'per_page' => $perPage,
+                'item_kind' => $itemKind,
             ],
             'canManage' => $this->app->auth()->hasPermission('cost_item.manage'),
             'linkageOptions' => $this->service()->linkageOptions(),
-            'reimbursabilityOptions' => $this->service()->reimbursabilityOptions(),
-            'periodicityOptions' => $this->service()->periodicityOptions(),
             'macroCategoryOptions' => $this->service()->macroCategoryOptions(),
-            'subcategoryOptions' => $this->service()->subcategoryOptions(),
-            'expenseNatureOptions' => $this->service()->expenseNatureOptions(),
-            'predictabilityOptions' => $this->service()->predictabilityOptions(),
+            'itemKindOptions' => $this->service()->itemKindOptions(),
         ]);
     }
 
     public function create(Request $request): void
     {
+        $item = $this->emptyItem();
+        $requestedKind = (string) $request->input('item_kind', 'child');
+        if (in_array($requestedKind, ['aggregator', 'child'], true)) {
+            $item['item_kind'] = $requestedKind;
+            $item['is_aggregator'] = $requestedKind === 'aggregator' ? 1 : 0;
+        }
+
+        $requestedParent = max(0, (int) $request->input('parent_cost_item_id', '0'));
+        if ($requestedParent > 0) {
+            $item['parent_cost_item_id'] = $requestedParent;
+        }
+
         $this->view('cost_items/create', [
             'title' => 'Novo Tipo de Custo',
-            'item' => $this->emptyItem(),
+            'item' => $item,
+            'itemKindOptions' => $this->service()->itemKindOptions(),
+            'aggregatorOptions' => $this->service()->aggregatorOptions(),
             'linkageOptions' => $this->service()->linkageOptions(),
             'reimbursabilityOptions' => $this->service()->reimbursabilityOptions(),
             'periodicityOptions' => $this->service()->periodicityOptions(),
@@ -188,6 +195,8 @@ final class CostItemsController extends Controller
         $this->view('cost_items/edit', [
             'title' => 'Editar Tipo de Custo',
             'item' => $item,
+            'itemKindOptions' => $this->service()->itemKindOptions(),
+            'aggregatorOptions' => $this->service()->aggregatorOptions(),
             'linkageOptions' => $this->service()->linkageOptions(),
             'reimbursabilityOptions' => $this->service()->reimbursabilityOptions(),
             'periodicityOptions' => $this->service()->periodicityOptions(),
@@ -255,6 +264,10 @@ final class CostItemsController extends Controller
     private function emptyItem(): array
     {
         return [
+            'parent_cost_item_id' => null,
+            'is_aggregator' => 0,
+            'hierarchy_sort' => '',
+            'item_kind' => 'child',
             'cost_code' => '',
             'name' => '',
             'type_description' => '',
@@ -268,18 +281,6 @@ final class CostItemsController extends Controller
             'linkage_code' => 309,
             'payment_periodicity' => 'mensal',
         ];
-    }
-
-    private function normalizeReimbursabilityFilter(string $value): string
-    {
-        $normalized = mb_strtolower(trim($value));
-
-        return match ($normalized) {
-            'reimbursable', 'reembolsavel' => 'reembolsavel',
-            'partial', 'partial_reimbursable', 'parcialmente_reembolsavel' => 'parcialmente_reembolsavel',
-            'non_reimbursable', 'nao_reembolsavel' => 'nao_reembolsavel',
-            default => '',
-        };
     }
 
     private function service(): CostItemCatalogService

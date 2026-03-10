@@ -158,7 +158,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Lotes de pagamento</h2>
       <p class="muted">Agrupamento de baixas para fechamento financeiro, rastreabilidade e governanca.</p>
     </div>
     <div class="actions-inline">

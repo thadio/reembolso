@@ -8,7 +8,6 @@ $isEdit = false;
 ?>
 <div class="header-row">
   <div>
-    <h2>Novo espelho de custo</h2>
     <p class="muted">Cadastre espelho por pessoa/competencia com vinculo opcional ao boleto.</p>
   </div>
 </div>

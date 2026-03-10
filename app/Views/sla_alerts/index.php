@@ -101,7 +101,6 @@ $controlStatusBadge = static function (string $value): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Painel de pendencias por SLA</h2>
       <p class="muted">Acompanhamento de etapas em risco e vencidas com regras configuraveis por status.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>

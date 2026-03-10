@@ -73,6 +73,16 @@ final class OrgansController extends Controller
 
     public function importCsv(Request $request): void
     {
+        $returnTo = (string) $request->input('return_to', '/organs');
+        if (
+            $returnTo !== '/organs'
+            && !str_starts_with($returnTo, '/organs?')
+            && $returnTo !== '/bulk-imports'
+            && !str_starts_with($returnTo, '/bulk-imports?')
+        ) {
+            $returnTo = '/organs';
+        }
+
         $validateOnly = (string) $request->input('validate_only', '0') === '1';
         $file = is_array($_FILES['csv_file'] ?? null) ? $_FILES['csv_file'] : null;
 
@@ -93,11 +103,11 @@ final class OrgansController extends Controller
             }
 
             flash('error', implode(' ', $errors));
-            $this->redirect('/organs');
+            $this->redirect($returnTo);
         }
 
         flash('success', (string) ($result['message'] ?? 'Importação concluída.'));
-        $this->redirect('/organs');
+        $this->redirect($returnTo);
     }
 
     public function show(Request $request): void

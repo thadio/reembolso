@@ -68,6 +68,7 @@ final class ReimbursementRepository
                 r.id,
                 r.person_id,
                 r.assignment_id,
+                r.cost_item_catalog_id,
                 r.entry_type,
                 r.status,
                 r.title,
@@ -80,8 +81,19 @@ final class ReimbursementRepository
                 r.created_by,
                 r.created_at,
                 r.updated_at,
+                c.cost_code AS catalog_cost_code,
+                c.name AS catalog_name,
+                c.parent_cost_item_id AS catalog_parent_cost_item_id,
+                c.is_aggregator AS catalog_is_aggregator,
+                c.macro_category AS catalog_macro_category,
+                c.subcategory AS catalog_subcategory,
+                c.expense_nature AS catalog_expense_nature,
+                c.reimbursability AS catalog_reimbursability,
+                c.predictability AS catalog_predictability,
+                c.linkage_code AS catalog_linkage_code,
                 u.name AS created_by_name
              FROM reimbursement_entries r
+             LEFT JOIN cost_item_catalog c ON c.id = r.cost_item_catalog_id
              LEFT JOIN users u ON u.id = r.created_by
              WHERE r.person_id = :person_id
                AND r.deleted_at IS NULL
@@ -108,6 +120,7 @@ final class ReimbursementRepository
                 r.id,
                 r.person_id,
                 r.assignment_id,
+                r.cost_item_catalog_id,
                 r.entry_type,
                 r.status,
                 r.title,
@@ -120,8 +133,19 @@ final class ReimbursementRepository
                 r.created_by,
                 r.created_at,
                 r.updated_at,
+                c.cost_code AS catalog_cost_code,
+                c.name AS catalog_name,
+                c.parent_cost_item_id AS catalog_parent_cost_item_id,
+                c.is_aggregator AS catalog_is_aggregator,
+                c.macro_category AS catalog_macro_category,
+                c.subcategory AS catalog_subcategory,
+                c.expense_nature AS catalog_expense_nature,
+                c.reimbursability AS catalog_reimbursability,
+                c.predictability AS catalog_predictability,
+                c.linkage_code AS catalog_linkage_code,
                 u.name AS created_by_name
              FROM reimbursement_entries r
+             LEFT JOIN cost_item_catalog c ON c.id = r.cost_item_catalog_id
              LEFT JOIN users u ON u.id = r.created_by
              WHERE r.id = :id
                AND r.person_id = :person_id
@@ -141,6 +165,7 @@ final class ReimbursementRepository
     public function createEntry(
         int $personId,
         ?int $assignmentId,
+        ?int $costItemCatalogId,
         string $entryType,
         string $status,
         string $title,
@@ -156,6 +181,7 @@ final class ReimbursementRepository
             'INSERT INTO reimbursement_entries (
                 person_id,
                 assignment_id,
+                cost_item_catalog_id,
                 entry_type,
                 status,
                 title,
@@ -172,6 +198,7 @@ final class ReimbursementRepository
              ) VALUES (
                 :person_id,
                 :assignment_id,
+                :cost_item_catalog_id,
                 :entry_type,
                 :status,
                 :title,
@@ -191,6 +218,7 @@ final class ReimbursementRepository
         $stmt->execute([
             'person_id' => $personId,
             'assignment_id' => $assignmentId,
+            'cost_item_catalog_id' => $costItemCatalogId,
             'entry_type' => $entryType,
             'status' => $status,
             'title' => $title,

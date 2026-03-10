@@ -221,6 +221,16 @@ final class PeopleController extends Controller
 
     public function importCsv(Request $request): void
     {
+        $returnTo = (string) $request->input('return_to', '/people');
+        if (
+            $returnTo !== '/people'
+            && !str_starts_with($returnTo, '/people?')
+            && $returnTo !== '/bulk-imports'
+            && !str_starts_with($returnTo, '/bulk-imports?')
+        ) {
+            $returnTo = '/people';
+        }
+
         $validateOnly = (string) $request->input('validate_only', '0') === '1';
         $file = is_array($_FILES['csv_file'] ?? null) ? $_FILES['csv_file'] : null;
 
@@ -241,7 +251,7 @@ final class PeopleController extends Controller
             }
 
             flash('error', implode(' ', $errors));
-            $this->redirect('/people');
+            $this->redirect($returnTo);
         }
 
         if (!$validateOnly) {
@@ -257,7 +267,7 @@ final class PeopleController extends Controller
         }
 
         flash('success', (string) ($result['message'] ?? 'Importacao concluida.'));
-        $this->redirect('/people');
+        $this->redirect($returnTo);
     }
 
     public function show(Request $request): void
@@ -1058,7 +1068,7 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=finance');
         }
 
         flash('success', $result['message']);
@@ -1066,7 +1076,7 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=finance');
     }
 
     public function markReimbursementPaid(Request $request): void
@@ -1096,7 +1106,7 @@ final class PeopleController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/people/show?id=' . $personId);
+            $this->redirect('/people/show?id=' . $personId . '&tab=finance');
         }
 
         flash('success', $result['message']);
@@ -1104,7 +1114,7 @@ final class PeopleController extends Controller
             flash('error', implode(' ', $result['warnings']));
         }
 
-        $this->redirect('/people/show?id=' . $personId);
+        $this->redirect('/people/show?id=' . $personId . '&tab=finance');
     }
 
     public function storeProcessComment(Request $request): void
@@ -1731,6 +1741,7 @@ final class PeopleController extends Controller
     {
         return new ReimbursementService(
             new ReimbursementRepository($this->app->db()),
+            new CostItemCatalogRepository($this->app->db()),
             $this->app->audit(),
             $this->app->events()
         );
