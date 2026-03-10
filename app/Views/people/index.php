@@ -118,7 +118,6 @@ $formatMoney = static function (float $value): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2><?= e($listTitle) ?></h2>
       <p class="muted"><?= e($listSubtitle) ?></p>
     </div>
     <div class="actions-inline">
@@ -131,19 +130,6 @@ $formatMoney = static function (float $value): string {
       <?php endif; ?>
     </div>
   </div>
-
-  <?php if (($canManage ?? false) === true): ?>
-    <form method="post" action="<?= e(url('/people/import-csv')) ?>" enctype="multipart/form-data" class="filters-row">
-      <?= csrf_field() ?>
-      <input type="file" name="csv_file" accept=".csv,text/csv,text/plain" required>
-      <label class="muted" style="display:flex; align-items:center; gap:.35rem;">
-        <input type="checkbox" name="validate_only" value="1">
-        Apenas validar (sem gravar)
-      </label>
-      <button type="submit" class="btn btn-outline">Importar CSV</button>
-      <span class="muted">Cabecalho minimo: <code>name, cpf, organ</code> (aceita aliases: <code>nome, orgao</code>).</span>
-    </form>
-  <?php endif; ?>
 
   <form method="get" action="<?= e(url('/people')) ?>" class="filters-row filters-people">
     <input type="text" name="q" value="<?= e((string) ($filters['q'] ?? '')) ?>" placeholder="Nome, CPF, SIAPE, órgão, SEI">

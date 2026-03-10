@@ -71,7 +71,6 @@ $typeLabel = static function (string $type): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Conciliacao avancada do espelho</h2>
       <p class="muted">
         <?= e((string) ($mirror['title'] ?? 'Espelho')) ?> ·
         <?= e((string) ($mirror['person_name'] ?? '-')) ?> ·

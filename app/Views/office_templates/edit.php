@@ -9,7 +9,6 @@ $showVersionFields = false;
 ?>
 <div class="header-row">
   <div>
-    <h2>Editar template</h2>
     <p class="muted">Atualize chave, tipo e status. O conteudo HTML e versionado no detalhe do template.</p>
   </div>
 </div>

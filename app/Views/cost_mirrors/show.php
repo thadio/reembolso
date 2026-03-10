@@ -185,34 +185,6 @@ $status = (string) ($mirror['status'] ?? '');
     </form>
   </div>
 
-  <div class="card">
-    <div class="header-row">
-      <div>
-        <h3>Importar itens por CSV</h3>
-        <p class="muted">Cabecalhos aceitos: item_name, amount, quantity, unit_amount, item_code, notes.</p>
-      </div>
-    </div>
-
-    <form method="post" action="<?= e(url('/cost-mirrors/items/import-csv')) ?>" enctype="multipart/form-data" class="form-grid">
-      <?= csrf_field() ?>
-      <input type="hidden" name="mirror_id" value="<?= e((string) ($mirror['id'] ?? 0)) ?>">
-
-      <div class="field field-wide">
-        <label for="csv_file">Arquivo CSV *</label>
-        <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv,text/plain" required>
-      </div>
-
-      <div class="field field-wide">
-        <p class="muted">
-          Exemplo: <code>item_name;amount;quantity;unit_amount;item_code;notes</code>
-        </p>
-      </div>
-
-      <div class="form-actions field-wide">
-        <button type="submit" class="btn btn-primary">Importar CSV</button>
-      </div>
-    </form>
-  </div>
 <?php endif; ?>
 
 <div class="card">

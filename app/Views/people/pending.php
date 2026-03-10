@@ -115,7 +115,6 @@ $statusBadgeClass = static function (string $value): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Central de pendencias</h2>
       <p class="muted">Consolida pendencias automaticas de documentos, divergencias e retornos por pessoa.</p>
     </div>
     <div class="actions-inline">

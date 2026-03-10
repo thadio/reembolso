@@ -116,7 +116,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Boletos estruturados</h2>
       <p class="muted">Controle por orgao, competencia, metadados e rateio por pessoa.</p>
     </div>
     <div class="actions-inline">

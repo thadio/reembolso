@@ -36,7 +36,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Unidades organizacionais MTE (UORG)</h2>
       <p class="muted">Cadastro de UORGs para uso nos campos de origem e destino no MTE.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>

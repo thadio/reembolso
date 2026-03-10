@@ -17,7 +17,6 @@ $formatDate = static function (?string $value): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Configuracao de regras de SLA</h2>
       <p class="muted">Defina o limiar de risco e vencimento por etapa do pipeline, com notificacao opcional por email.</p>
     </div>
     <a class="btn btn-outline" href="<?= e(url('/sla-alerts')) ?>">Voltar ao painel</a>

@@ -9,7 +9,6 @@ $showVersionFields = true;
 ?>
 <div class="header-row">
   <div>
-    <h2>Novo template de oficio</h2>
     <p class="muted">Cadastre metadados e publique a versao inicial do template em HTML.</p>
   </div>
 </div>

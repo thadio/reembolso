@@ -7,7 +7,6 @@ $passwordRulesSummary = (string) ($passwordRulesSummary ?? '');
 <div class="card" style="max-width: 720px;">
   <div class="header-row">
     <div>
-      <h2>Trocar senha</h2>
       <p class="muted">Atualize sua senha de acesso com validacao da senha atual.</p>
     </div>
     <div class="actions-inline">

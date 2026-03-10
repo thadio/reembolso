@@ -75,7 +75,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>CDOs</h2>
       <p class="muted">Controle de valor total, alocado e saldo por CDO.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>

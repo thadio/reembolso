@@ -95,7 +95,6 @@ $sensitivityBadgeClass = static function (string $level): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Busca global</h2>
       <p class="muted">Consulta unificada por CPF, SEI, DOU, orgao e documento.</p>
     </div>
     <div class="actions-inline">

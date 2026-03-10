@@ -46,7 +46,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Usuarios e acessos</h2>
       <p class="muted">Gestao de contas, status e papeis de acesso.</p>
     </div>
     <?php if (($canManage ?? false) === true): ?>

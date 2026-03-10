@@ -8,7 +8,6 @@ $isEdit = false;
 ?>
 <div class="header-row">
   <div>
-    <h2>Novo boleto</h2>
     <p class="muted">Cadastre o boleto por orgao, competencia e vencimento, com PDF e metadados.</p>
   </div>
 </div>

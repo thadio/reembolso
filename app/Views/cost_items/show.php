@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 $item = is_array($item ?? null) ? $item : [];
 $itemId = (int) ($item['id'] ?? 0);
+$isAggregator = (int) ($item['is_aggregator'] ?? 0) === 1;
 
 $linkageLabel = static function (int $code): string {
     return $code === 510
@@ -72,7 +73,7 @@ $calculationBaseLabel = static function (string $value): string {
   <div class="header-row">
     <div>
       <h2><?= e((string) ($item['name'] ?? 'Tipo de custo')) ?></h2>
-      <p class="muted">Dados completos da tipologia de custos de pessoal usada no planejamento financeiro.</p>
+      <p class="muted"><?= $isAggregator ? 'Categoria agregadora' : 'Item filho de categoria agregadora' ?></p>
     </div>
     <div class="actions-inline">
       <a class="btn btn-outline" href="<?= e(url('/cost-items')) ?>">Voltar</a>
@@ -84,9 +85,12 @@ $calculationBaseLabel = static function (string $value): string {
 
   <div class="details-grid">
     <div><strong>Codigo:</strong> <?= e((string) ($item['cost_code'] ?? '-')) ?></div>
+    <div><strong>Tipo:</strong> <?= $isAggregator ? 'Categoria agregadora' : 'Item filho' ?></div>
+    <div><strong>Ordem hierarquica:</strong> <?= e((string) ((int) ($item['hierarchy_sort'] ?? 0))) ?></div>
+    <div><strong>Categoria pai:</strong> <?= e($isAggregator ? '-' : ((string) ($item['parent_name'] ?? '-'))) ?></div>
     <div><strong>Categoria macro:</strong> <?= e($macroLabel((string) ($item['macro_category'] ?? ''))) ?></div>
     <div><strong>Subcategoria:</strong> <?= e((string) ($item['subcategory'] ?? '-')) ?></div>
-    <div><strong>Tipo de verba:</strong> <?= e((string) ($item['name'] ?? '-')) ?></div>
+    <div><strong>Nome:</strong> <?= e((string) ($item['name'] ?? '-')) ?></div>
     <div><strong>Descricao:</strong> <?= e((string) ($item['type_description'] ?? '-')) ?></div>
     <div><strong>Natureza da despesa:</strong> <?= e($expenseNatureLabel((string) ($item['expense_nature'] ?? ''))) ?></div>
     <div><strong>Base de calculo:</strong> <?= e($calculationBaseLabel((string) ($item['calculation_base'] ?? ''))) ?></div>

@@ -90,7 +90,6 @@ $metricsSummary = static function (array $metrics): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Observabilidade operacional (RNF-07)</h2>
       <p class="muted">Painel estruturado com saude tecnica, severidade de logs, recorrencias e frescor de snapshot KPI.</p>
     </div>
   </div>

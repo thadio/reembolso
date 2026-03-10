@@ -48,6 +48,8 @@ final class BudgetService
      *   summary: array<string, int|float|string>,
      *   projection: array<string, mixed>,
      *   cycles: array<int, array<string, mixed>>,
+     *   year_cycles: array<int, array<string, mixed>>,
+     *   year_dependencies: array<string, mixed>,
      *   organs: array<int, array<string, mixed>>,
      *   modalities: array<int, array<string, mixed>>,
      *   parameters: array<int, array<string, mixed>>,
@@ -108,6 +110,8 @@ final class BudgetService
             insufficiencyRisks: $insufficiencyRisks,
             offenders: $offenders
         );
+        $yearCycles = $this->budget->listCyclesByYear($normalizedYear);
+        $yearDependencies = $this->buildYearDependencySummary($yearCycles);
 
         return [
             'cycle' => $cycle,
@@ -131,6 +135,8 @@ final class BudgetService
             ],
             'projection' => $projection,
             'cycles' => $this->budget->listCycles($normalizedFinancialNature),
+            'year_cycles' => $yearCycles,
+            'year_dependencies' => $yearDependencies,
             'organs' => $this->budget->activeOrgans(),
             'modalities' => $this->budget->activeModalities(),
             'parameters' => $this->budget->orgParameters(),
@@ -747,6 +753,144 @@ final class BudgetService
 
     /**
      * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, year?: int, financial_nature?: string}
+     */
+    public function deleteAnnualBudgetYear(array $input, int $userId, string $ip, string $userAgent): array
+    {
+        $year = $this->parseYear($input['year'] ?? $input['cycle_year'] ?? null);
+        $preferredNature = $this->normalizeFinancialNature((string) ($input['financial_nature'] ?? 'despesa_reembolso'));
+
+        if ($year === null) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel remover os ciclos do ano.',
+                'errors' => ['Ano do ciclo invalido (use um valor entre 2000 e 2100).'],
+                'financial_nature' => $preferredNature,
+            ];
+        }
+
+        $cycles = $this->budget->listCyclesByYear($year);
+        if ($cycles === []) {
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel remover os ciclos do ano.',
+                'errors' => ['Nenhum ciclo encontrado para o ano informado.'],
+                'year' => $year,
+                'financial_nature' => $preferredNature,
+            ];
+        }
+
+        $deletedCycles = 0;
+        $deletedScenarios = 0;
+        $deletedScenarioParameters = 0;
+
+        try {
+            $this->budget->beginTransaction();
+
+            foreach ($cycles as $cycle) {
+                $cycleId = max(0, (int) ($cycle['id'] ?? 0));
+                if ($cycleId <= 0) {
+                    continue;
+                }
+
+                $dependencies = $this->budget->cycleDependencies($cycleId);
+                $scenariosCount = (int) ($dependencies['scenarios_count'] ?? 0);
+                $scenarioParametersCount = (int) ($dependencies['scenario_parameters_count'] ?? 0);
+
+                if ($scenarioParametersCount > 0) {
+                    $deletedScenarioParameters += $this->budget->deleteScenarioParametersByCycle($cycleId);
+                }
+
+                if ($scenariosCount > 0) {
+                    $deletedScenarios += $this->budget->deleteScenariosByCycle($cycleId);
+                }
+
+                $deleted = $this->budget->deleteCycle($cycleId);
+                if (!$deleted) {
+                    throw new \RuntimeException('Falha ao remover um dos ciclos do ano.');
+                }
+
+                $deletedCycles++;
+
+                $this->audit->log(
+                    entity: 'budget_cycle',
+                    entityId: $cycleId,
+                    action: 'delete',
+                    beforeData: $cycle,
+                    afterData: null,
+                    metadata: [
+                        'bulk_year_delete' => $year,
+                        'removed_scenario_parameters' => $scenarioParametersCount,
+                        'removed_scenarios' => $scenariosCount,
+                    ],
+                    userId: $userId,
+                    ip: $ip,
+                    userAgent: $userAgent
+                );
+
+                $this->events->recordEvent(
+                    entity: 'budget',
+                    type: 'budget.cycle_deleted',
+                    payload: [
+                        'budget_cycle_id' => $cycleId,
+                        'cycle_year' => (int) ($cycle['cycle_year'] ?? $year),
+                        'financial_nature' => (string) ($cycle['financial_nature'] ?? 'despesa_reembolso'),
+                        'bulk_year_delete' => $year,
+                        'removed_scenario_parameters' => $scenarioParametersCount,
+                        'removed_scenarios' => $scenariosCount,
+                    ],
+                    entityId: $cycleId,
+                    userId: $userId
+                );
+            }
+
+            $this->budget->commit();
+        } catch (\Throwable $exception) {
+            $this->budget->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Nao foi possivel remover os ciclos do ano.',
+                'errors' => ['Falha ao remover um ou mais ciclos do ano informado.'],
+                'year' => $year,
+                'financial_nature' => $preferredNature,
+            ];
+        }
+
+        $remainingPreferred = $this->budget->listCycles($preferredNature);
+        $redirectYear = (int) ($remainingPreferred[0]['cycle_year'] ?? date('Y'));
+        $redirectNature = $preferredNature;
+
+        if ($remainingPreferred === []) {
+            $fallbackNature = $preferredNature === 'receita_reembolso' ? 'despesa_reembolso' : 'receita_reembolso';
+            $remainingFallback = $this->budget->listCycles($fallbackNature);
+            if ($remainingFallback !== []) {
+                $redirectYear = (int) ($remainingFallback[0]['cycle_year'] ?? date('Y'));
+                $redirectNature = $fallbackNature;
+            }
+        }
+
+        if ($redirectYear < 2000 || $redirectYear > 2100) {
+            $redirectYear = (int) date('Y');
+        }
+
+        return [
+            'ok' => true,
+            'message' => sprintf(
+                'Ano %d removido com sucesso (%d ciclo(s), %d simulacao(oes), %d parametro(s)).',
+                $year,
+                $deletedCycles,
+                $deletedScenarios,
+                $deletedScenarioParameters
+            ),
+            'errors' => [],
+            'year' => $redirectYear,
+            'financial_nature' => $redirectNature,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
      * @return array{ok: bool, message: string, errors: array<int, string>}
      */
     public function upsertScenarioParameter(int $year, array $input, int $userId, string $ip, string $userAgent): array
@@ -1094,6 +1238,46 @@ final class BudgetService
         }
 
         return $alerts;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $yearCycles
+     * @return array{
+     *   cycles_count: int,
+     *   scenarios_count: int,
+     *   scenario_parameters_count: int,
+     *   financial_natures: array<int, string>,
+     *   missing_financial_natures: array<int, string>
+     * }
+     */
+    private function buildYearDependencySummary(array $yearCycles): array
+    {
+        $scenariosCount = 0;
+        $scenarioParametersCount = 0;
+        $naturesMap = [];
+
+        foreach ($yearCycles as $cycle) {
+            $scenariosCount += max(0, (int) ($cycle['scenarios_count'] ?? 0));
+            $scenarioParametersCount += max(0, (int) ($cycle['scenario_parameters_count'] ?? 0));
+
+            $nature = $this->parseFinancialNature($cycle['financial_nature'] ?? null, allowDefault: false);
+            if ($nature === null) {
+                continue;
+            }
+
+            $naturesMap[$nature] = $nature;
+        }
+
+        $financialNatures = array_values($naturesMap);
+        $missingNatures = array_values(array_diff(self::ALLOWED_FINANCIAL_NATURES, $financialNatures));
+
+        return [
+            'cycles_count' => count($yearCycles),
+            'scenarios_count' => $scenariosCount,
+            'scenario_parameters_count' => $scenarioParametersCount,
+            'financial_natures' => $financialNatures,
+            'missing_financial_natures' => $missingNatures,
+        ];
     }
 
     private function normalizeYear(int $year): int

@@ -8,7 +8,6 @@ $isEdit = true;
 ?>
 <div class="header-row">
   <div>
-    <h2>Editar usuario</h2>
     <p class="muted">Atualize dados, status da conta e papeis vinculados.</p>
   </div>
   <div class="actions-inline">

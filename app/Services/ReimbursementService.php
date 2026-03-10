@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Repositories\CostItemCatalogRepository;
 use App\Repositories\ReimbursementRepository;
 
 final class ReimbursementService
@@ -21,6 +22,7 @@ final class ReimbursementService
 
     public function __construct(
         private ReimbursementRepository $entries,
+        private CostItemCatalogRepository $catalogItems,
         private AuditService $audit,
         private EventService $events
     ) {
@@ -48,7 +50,22 @@ final class ReimbursementService
      */
     public function createEntry(int $personId, array $input, int $userId, string $ip, string $userAgent): array
     {
+        if ($this->isBatchTableMode($input)) {
+            return $this->createBatchFromTable($personId, $input, $userId, $ip, $userAgent);
+        }
+
+        return $this->createSingleEntry($personId, $input, $userId, $ip, $userAgent);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, warnings: array<int, string>}
+     */
+    private function createSingleEntry(int $personId, array $input, int $userId, string $ip, string $userAgent): array
+    {
         $entryType = mb_strtolower(trim((string) ($input['entry_type'] ?? 'boleto')));
+        $catalogId = max(0, (int) ($input['cost_item_catalog_id'] ?? 0));
+        $catalogItem = $catalogId > 0 ? $this->catalogItems->findActiveById($catalogId) : null;
         $title = trim((string) ($input['title'] ?? ''));
         $manualAmount = $this->parseMoney($input['amount'] ?? null);
         $calculation = $this->resolveCalculation($input, $manualAmount);
@@ -92,6 +109,14 @@ final class ReimbursementService
             $errors[] = 'Status do lançamento inválido.';
         }
 
+        if ($catalogId > 0 && $catalogItem === null) {
+            $errors[] = 'Item de custo (efetivo) inexistente ou inativo no catálogo.';
+        }
+
+        if ($title === '' && $catalogItem !== null) {
+            $title = trim((string) ($catalogItem['name'] ?? ''));
+        }
+
         if ($title === '' || mb_strlen($title) < 3) {
             $errors[] = 'Título do lançamento é obrigatório (mínimo 3 caracteres).';
         }
@@ -129,6 +154,7 @@ final class ReimbursementService
             $entryId = $this->entries->createEntry(
                 personId: $personId,
                 assignmentId: $assignmentId,
+                costItemCatalogId: $catalogId > 0 ? $catalogId : null,
                 entryType: $entryType,
                 status: $status,
                 title: mb_substr($title, 0, 190),
@@ -144,6 +170,7 @@ final class ReimbursementService
             $afterData = [
                 'person_id' => $personId,
                 'assignment_id' => $assignmentId,
+                'cost_item_catalog_id' => $catalogId > 0 ? $catalogId : null,
                 'entry_type' => $entryType,
                 'status' => $status,
                 'title' => mb_substr($title, 0, 190),
@@ -164,6 +191,10 @@ final class ReimbursementService
                     'notes' => $notes,
                     'calculated' => $calculation['enabled'],
                     'formula' => $calculation['formula_label'],
+                    'catalog_cost_code' => (int) ($catalogItem['cost_code'] ?? 0),
+                    'catalog_item_name' => (string) ($catalogItem['name'] ?? ''),
+                    'catalog_is_aggregator' => (int) ($catalogItem['is_aggregator'] ?? 0),
+                    'catalog_parent_cost_item_id' => (int) ($catalogItem['parent_cost_item_id'] ?? 0),
                 ],
                 userId: $userId,
                 ip: $ip,
@@ -181,6 +212,7 @@ final class ReimbursementService
                     'due_date' => $dueDate,
                     'paid_at' => $paidAt,
                     'calculated' => $calculation['enabled'],
+                    'cost_item_catalog_id' => $catalogId > 0 ? $catalogId : null,
                 ],
                 entityId: $personId,
                 userId: $userId
@@ -203,6 +235,173 @@ final class ReimbursementService
             'message' => $calculation['enabled']
                 ? 'Lançamento financeiro registrado com cálculo automático.'
                 : 'Lançamento financeiro registrado com sucesso.',
+            'errors' => [],
+            'warnings' => $warnings,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{ok: bool, message: string, errors: array<int, string>, warnings: array<int, string>}
+     */
+    private function createBatchFromTable(int $personId, array $input, int $userId, string $ip, string $userAgent): array
+    {
+        $entryType = mb_strtolower(trim((string) ($input['entry_type'] ?? 'boleto')));
+        $statusInput = $this->clean($input['status'] ?? null);
+        $status = $statusInput !== null
+            ? mb_strtolower($statusInput)
+            : ($entryType === 'pagamento' ? 'pago' : 'pendente');
+        $referenceMonthRaw = $this->clean($input['reference_month'] ?? null);
+        $dueDateRaw = $this->clean($input['due_date'] ?? null);
+        $paidAtRaw = $this->clean($input['paid_at'] ?? null);
+        $referenceMonth = $this->normalizeReferenceMonth($referenceMonthRaw);
+        $dueDate = $this->normalizeDate($dueDateRaw);
+        $paidAt = $this->normalizeDateTime($paidAtRaw);
+
+        if ($status === 'cancelado') {
+            $paidAt = null;
+        } elseif ($paidAt !== null && $status === 'pendente') {
+            $status = 'pago';
+        }
+        if ($status === 'pago' && $paidAt === null) {
+            $paidAt = date('Y-m-d H:i:s');
+        }
+        if ($status !== 'pago') {
+            $paidAt = null;
+        }
+
+        $parsedRows = $this->parseBatchTableRows($input);
+        $errors = $parsedRows['errors'];
+        $warnings = $parsedRows['warnings'];
+        $rows = $parsedRows['rows'];
+
+        if (!in_array($entryType, self::ALLOWED_TYPES, true)) {
+            $errors[] = 'Tipo de lançamento inválido.';
+        }
+
+        if (!in_array($status, self::ALLOWED_STATUSES, true)) {
+            $errors[] = 'Status do lançamento inválido.';
+        }
+
+        if ($referenceMonthRaw !== null && $referenceMonth === null) {
+            $errors[] = 'Competência inválida.';
+        }
+
+        if ($dueDateRaw !== null && $dueDate === null) {
+            $errors[] = 'Data de vencimento inválida.';
+        }
+
+        if ($paidAtRaw !== null && $paidAt === null) {
+            $errors[] = 'Data de pagamento inválida.';
+        }
+
+        if ($rows === []) {
+            $errors[] = 'Informe ao menos um valor maior que zero na tabela de custos efetivos.';
+        }
+
+        if ($errors !== []) {
+            return [
+                'ok' => false,
+                'message' => 'Não foi possível registrar lançamentos financeiros.',
+                'errors' => $errors,
+                'warnings' => $warnings,
+            ];
+        }
+
+        $referenceMonthLabel = $referenceMonth !== null
+            ? date('m/Y', strtotime($referenceMonth) ?: time())
+            : null;
+
+        try {
+            $this->entries->beginTransaction();
+
+            $createdCount = 0;
+            foreach ($rows as $row) {
+                $catalogId = (int) ($row['catalog_id'] ?? 0);
+                $itemName = trim((string) ($row['item_name'] ?? ('Item #' . $catalogId)));
+                $title = $itemName;
+                if ($referenceMonthLabel !== null) {
+                    $title .= ' - ' . $referenceMonthLabel;
+                }
+
+                $entryId = $this->entries->createEntry(
+                    personId: $personId,
+                    assignmentId: null,
+                    costItemCatalogId: $catalogId > 0 ? $catalogId : null,
+                    entryType: $entryType,
+                    status: $status,
+                    title: mb_substr($title, 0, 190),
+                    amount: (string) ($row['amount'] ?? '0.00'),
+                    referenceMonth: $referenceMonth,
+                    dueDate: $dueDate,
+                    paidAt: $paidAt,
+                    notes: isset($row['notes']) ? (string) $row['notes'] : null,
+                    calculationMemory: null,
+                    createdBy: $userId
+                );
+
+                $createdCount++;
+
+                $this->audit->log(
+                    entity: 'reimbursement_entry',
+                    entityId: $entryId,
+                    action: 'create.batch_table',
+                    beforeData: null,
+                    afterData: [
+                        'person_id' => $personId,
+                        'cost_item_catalog_id' => $catalogId > 0 ? $catalogId : null,
+                        'entry_type' => $entryType,
+                        'status' => $status,
+                        'title' => mb_substr($title, 0, 190),
+                        'amount' => (string) ($row['amount'] ?? '0.00'),
+                        'reference_month' => $referenceMonth,
+                        'due_date' => $dueDate,
+                        'paid_at' => $paidAt,
+                    ],
+                    metadata: [
+                        'notes' => (string) ($row['notes'] ?? ''),
+                        'source' => 'batch_hierarchy_table',
+                        'is_aggregator' => (int) ($row['is_aggregator'] ?? 0),
+                        'parent_cost_item_id' => (int) ($row['parent_cost_item_id'] ?? 0),
+                    ],
+                    userId: $userId,
+                    ip: $ip,
+                    userAgent: $userAgent
+                );
+
+                $this->events->recordEvent(
+                    entity: 'person',
+                    type: $status === 'pago' ? 'reimbursement.entry_paid_created' : 'reimbursement.entry_created',
+                    payload: [
+                        'entry_id' => $entryId,
+                        'entry_type' => $entryType,
+                        'status' => $status,
+                        'amount' => (string) ($row['amount'] ?? '0.00'),
+                        'due_date' => $dueDate,
+                        'paid_at' => $paidAt,
+                        'cost_item_catalog_id' => $catalogId > 0 ? $catalogId : null,
+                        'source' => 'batch_hierarchy_table',
+                    ],
+                    entityId: $personId,
+                    userId: $userId
+                );
+            }
+
+            $this->entries->commit();
+        } catch (\Throwable $exception) {
+            $this->entries->rollBack();
+
+            return [
+                'ok' => false,
+                'message' => 'Não foi possível registrar lançamentos financeiros.',
+                'errors' => ['Falha ao persistir os lançamentos em lote. Tente novamente.'],
+                'warnings' => $warnings,
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'message' => 'Lançamentos financeiros registrados com sucesso (' . count($rows) . ' item(ns)).',
             'errors' => [],
             'warnings' => $warnings,
         ];
@@ -322,6 +521,190 @@ final class ReimbursementService
             'boletos_count' => max(0, (int) ($raw['boletos_count'] ?? 0)),
             'payments_count' => max(0, (int) ($raw['payments_count'] ?? 0)),
             'adjustments_count' => max(0, (int) ($raw['adjustments_count'] ?? 0)),
+        ];
+    }
+
+    /** @param array<string, mixed> $input */
+    private function isBatchTableMode(array $input): bool
+    {
+        $mode = mb_strtolower(trim((string) ($input['entry_mode'] ?? '')));
+        if ($mode === 'batch_table') {
+            return true;
+        }
+
+        return is_array($input['batch_items'] ?? null);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{errors: array<int, string>, warnings: array<int, string>, rows: array<int, array<string, mixed>>}
+     */
+    private function parseBatchTableRows(array $input): array
+    {
+        $rowsInput = is_array($input['batch_items'] ?? null) ? $input['batch_items'] : [];
+        $catalogItems = $this->catalogItems->activeList();
+
+        $errors = [];
+        $warnings = [];
+        $rows = [];
+
+        if ($catalogItems === []) {
+            return [
+                'errors' => ['Nenhum item de custo ativo encontrado no catálogo.'],
+                'warnings' => [],
+                'rows' => [],
+            ];
+        }
+
+        $aggregators = [];
+        $aggregatorIds = [];
+        $childrenByParent = [];
+
+        foreach ($catalogItems as $catalogItem) {
+            $catalogId = (int) ($catalogItem['id'] ?? 0);
+            if ($catalogId <= 0) {
+                continue;
+            }
+
+            $isAggregator = (int) ($catalogItem['is_aggregator'] ?? 0) === 1;
+            if ($isAggregator) {
+                $aggregators[] = $catalogItem;
+                $aggregatorIds[$catalogId] = true;
+                continue;
+            }
+
+            $parentId = (int) ($catalogItem['parent_cost_item_id'] ?? 0);
+            if ($parentId > 0) {
+                $childrenByParent[$parentId][] = $catalogItem;
+                continue;
+            }
+
+            $parsedStandalone = $this->parseSingleBatchTableRow($catalogItem, $rowsInput);
+            if ($parsedStandalone['errors'] !== []) {
+                foreach ($parsedStandalone['errors'] as $error) {
+                    $errors[] = $error;
+                }
+            }
+            if (is_array($parsedStandalone['row'])) {
+                $rows[] = $parsedStandalone['row'];
+            }
+        }
+
+        foreach ($aggregators as $aggregator) {
+            $aggregatorId = (int) ($aggregator['id'] ?? 0);
+            if ($aggregatorId <= 0) {
+                continue;
+            }
+
+            $parsedAggregator = $this->parseSingleBatchTableRow($aggregator, $rowsInput);
+            if ($parsedAggregator['errors'] !== []) {
+                foreach ($parsedAggregator['errors'] as $error) {
+                    $errors[] = $error;
+                }
+            }
+
+            $children = is_array($childrenByParent[$aggregatorId] ?? null) ? $childrenByParent[$aggregatorId] : [];
+            $parsedChildRows = [];
+
+            foreach ($children as $child) {
+                $parsedChild = $this->parseSingleBatchTableRow($child, $rowsInput);
+                if ($parsedChild['errors'] !== []) {
+                    foreach ($parsedChild['errors'] as $error) {
+                        $errors[] = $error;
+                    }
+                }
+                if (is_array($parsedChild['row'])) {
+                    $parsedChildRows[] = $parsedChild['row'];
+                }
+            }
+
+            if ($parsedChildRows !== []) {
+                foreach ($parsedChildRows as $parsedChildRow) {
+                    $rows[] = $parsedChildRow;
+                }
+
+                if (is_array($parsedAggregator['row'])) {
+                    $warnings[] = 'Valor informado na categoria "'
+                        . (string) ($aggregator['name'] ?? 'Categoria')
+                        . '" foi ignorado porque existem itens filhos detalhados.';
+                }
+                continue;
+            }
+
+            if (is_array($parsedAggregator['row'])) {
+                $rows[] = $parsedAggregator['row'];
+            }
+        }
+
+        foreach ($childrenByParent as $parentId => $orphans) {
+            if ($parentId <= 0 || isset($aggregatorIds[$parentId])) {
+                continue;
+            }
+
+            foreach ($orphans as $orphan) {
+                $parsedOrphan = $this->parseSingleBatchTableRow($orphan, $rowsInput);
+                if ($parsedOrphan['errors'] !== []) {
+                    foreach ($parsedOrphan['errors'] as $error) {
+                        $errors[] = $error;
+                    }
+                }
+                if (is_array($parsedOrphan['row'])) {
+                    $rows[] = $parsedOrphan['row'];
+                }
+            }
+        }
+
+        return [
+            'errors' => $errors,
+            'warnings' => array_values(array_unique($warnings)),
+            'rows' => $rows,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $catalogItem
+     * @param array<string|int, mixed> $rowsInput
+     * @return array{errors: array<int, string>, row: ?array<string, mixed>}
+     */
+    private function parseSingleBatchTableRow(array $catalogItem, array $rowsInput): array
+    {
+        $catalogId = (int) ($catalogItem['id'] ?? 0);
+        if ($catalogId <= 0) {
+            return [
+                'errors' => [],
+                'row' => null,
+            ];
+        }
+
+        $rawRow = $rowsInput[$catalogId] ?? $rowsInput[(string) $catalogId] ?? null;
+        $rowInput = is_array($rawRow) ? $rawRow : [];
+
+        $amount = $this->parseMoney($rowInput['amount'] ?? null);
+        if ($amount === null || (float) $amount <= 0.0) {
+            return [
+                'errors' => [],
+                'row' => null,
+            ];
+        }
+
+        $itemName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
+        if ($itemName === '') {
+            return [
+                'errors' => ['Item de custo efetivo inválido no catálogo.'],
+                'row' => null,
+            ];
+        }
+
+        return [
+            'errors' => [],
+            'row' => [
+                'catalog_id' => $catalogId,
+                'parent_cost_item_id' => (int) ($catalogItem['parent_cost_item_id'] ?? 0),
+                'is_aggregator' => (int) ($catalogItem['is_aggregator'] ?? 0),
+                'item_name' => mb_substr($itemName, 0, 190),
+                'amount' => $amount,
+                'notes' => $this->clean($rowInput['notes'] ?? null),
+            ],
         ];
     }
 

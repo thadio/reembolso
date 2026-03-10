@@ -67,7 +67,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Metadados formais de processo</h2>
       <p class="muted">Controle formal de oficio, DOU e data oficial de entrada no MTE.</p>
     </div>
     <?php if ($canManage): ?>

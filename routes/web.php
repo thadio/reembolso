@@ -3,12 +3,14 @@
 declare(strict_types=1);
 
 use App\Controllers\AuthController;
+use App\Controllers\BulkImportsController;
 use App\Controllers\BudgetController;
 use App\Controllers\CdosController;
 use App\Controllers\CostMirrorReconciliationController;
 use App\Controllers\CostMirrorsController;
 use App\Controllers\CostItemsController;
 use App\Controllers\DashboardController;
+use App\Controllers\DependencyInspectorController;
 use App\Controllers\DocumentTypesController;
 use App\Controllers\GlobalSearchController;
 use App\Controllers\HealthController;
@@ -60,11 +62,13 @@ $router->post('/lgpd/retention/run', [LgpdController::class, 'runRetention'], ['
 $router->get('/security', [SecurityController::class, 'index'], ['auth', 'permission:security.view']);
 $router->post('/security/update', [SecurityController::class, 'update'], ['auth', 'permission:security.manage', 'csrf']);
 $router->get('/ops/health-panel', [OpsHealthPanelController::class, 'index'], ['auth', 'permission:security.view']);
+$router->get('/integrity/dependencies', [DependencyInspectorController::class, 'index'], ['auth', 'permission:security.view']);
 $router->get('/budget', [BudgetController::class, 'index'], ['auth', 'permission:budget.view']);
 $router->post('/budget/simulate', [BudgetController::class, 'simulate'], ['auth', 'permission:budget.simulate', 'csrf']);
 $router->post('/budget/cycles/store', [BudgetController::class, 'storeCycle'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->post('/budget/cycles/update', [BudgetController::class, 'updateCycle'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->post('/budget/cycles/delete', [BudgetController::class, 'destroyCycle'], ['auth', 'permission:budget.manage', 'csrf']);
+$router->post('/budget/cycles/delete-year', [BudgetController::class, 'destroyYearCycles'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->post('/budget/scenario-parameters/upsert', [BudgetController::class, 'upsertScenarioParameter'], ['auth', 'permission:budget.manage', 'csrf']);
 $router->get('/cdos', [CdosController::class, 'index'], ['auth', 'permission:cdo.view']);
 $router->get('/cdos/create', [CdosController::class, 'create'], ['auth', 'permission:cdo.manage']);
@@ -100,7 +104,7 @@ $router->get('/cost-mirrors/edit', [CostMirrorsController::class, 'edit'], ['aut
 $router->post('/cost-mirrors/update', [CostMirrorsController::class, 'update'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->post('/cost-mirrors/delete', [CostMirrorsController::class, 'destroy'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->post('/cost-mirrors/items/store', [CostMirrorsController::class, 'storeItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
-$router->post('/cost-mirrors/items/import-csv', [CostMirrorsController::class, 'importCsv'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
+$router->post('/cost-mirrors/items/import-csv', [CostMirrorsController::class, 'importCsv'], ['auth', 'permission:cost_mirror.manage', 'permission:cost_mirror.import_bulk', 'csrf']);
 $router->post('/cost-mirrors/items/delete', [CostMirrorsController::class, 'destroyItem'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
 $router->get('/cost-mirrors/reconciliation/show', [CostMirrorReconciliationController::class, 'show'], ['auth', 'permission:cost_mirror.view']);
 $router->post('/cost-mirrors/reconciliation/run', [CostMirrorReconciliationController::class, 'run'], ['auth', 'permission:cost_mirror.manage', 'csrf']);
@@ -136,10 +140,11 @@ $router->get('/reports/export/csv', [ReportsController::class, 'exportCsv'], ['a
 $router->get('/reports/export/pdf', [ReportsController::class, 'exportPdf'], ['auth', 'permission:report.view']);
 $router->get('/reports/export/zip', [ReportsController::class, 'exportZip'], ['auth', 'permission:report.view']);
 $router->get('/reports/export/audit-zip', [ReportsController::class, 'exportAuditZip'], ['auth', 'permission:report.view']);
+$router->get('/bulk-imports', [BulkImportsController::class, 'index'], ['auth', 'permission:bulk_import.view']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);
-$router->post('/people/import-csv', [PeopleController::class, 'importCsv'], ['auth', 'permission:people.manage', 'csrf']);
+$router->post('/people/import-csv', [PeopleController::class, 'importCsv'], ['auth', 'permission:people.manage', 'permission:people.import_bulk', 'csrf']);
 $router->get('/people/show', [PeopleController::class, 'show'], ['auth', 'permission:people.view']);
 $router->get('/people/pending', [PendingCenterController::class, 'index'], ['auth', 'permission:people.view']);
 $router->post('/people/pending/status', [PendingCenterController::class, 'updateStatus'], ['auth', 'permission:people.manage', 'csrf']);
@@ -205,7 +210,7 @@ $router->post('/mte-destinations/delete', [MteDestinationsController::class, 'de
 $router->get('/organs', [OrgansController::class, 'index'], ['auth', 'permission:organs.view']);
 $router->get('/organs/create', [OrgansController::class, 'create'], ['auth', 'permission:organs.manage']);
 $router->post('/organs/store', [OrgansController::class, 'store'], ['auth', 'permission:organs.manage', 'csrf']);
-$router->post('/organs/import-csv', [OrgansController::class, 'importCsv'], ['auth', 'permission:organs.manage', 'csrf']);
+$router->post('/organs/import-csv', [OrgansController::class, 'importCsv'], ['auth', 'permission:organs.manage', 'permission:organs.import_bulk', 'csrf']);
 $router->get('/organs/show', [OrgansController::class, 'show'], ['auth', 'permission:organs.view']);
 $router->get('/organs/audit/export', [OrgansController::class, 'exportAudit'], ['auth', 'permission:audit.view']);
 $router->get('/organs/edit', [OrgansController::class, 'edit'], ['auth', 'permission:organs.manage']);

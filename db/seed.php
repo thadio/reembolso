@@ -47,12 +47,16 @@ $permissions = [
     ['name' => 'cost_item.manage', 'description' => 'Gerenciar catalogo de itens de custo'],
     ['name' => 'organs.view', 'description' => 'Visualizar órgãos'],
     ['name' => 'organs.manage', 'description' => 'Gerenciar cadastro de órgãos'],
+    ['name' => 'bulk_import.view', 'description' => 'Acessar central de importacoes em lote'],
+    ['name' => 'people.import_bulk', 'description' => 'Executar importacao em lote de pessoas via CSV'],
+    ['name' => 'organs.import_bulk', 'description' => 'Executar importacao em lote de orgaos via CSV'],
+    ['name' => 'cost_mirror.import_bulk', 'description' => 'Executar importacao em lote de itens de espelho via CSV'],
     ['name' => 'audit.view', 'description' => 'Visualizar trilha de auditoria'],
     ['name' => 'admin.manage', 'description' => 'Gerenciar usuários e parâmetros'],
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'users.view', 'users.manage', 'security.view', 'security.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'people.documents.sensitive', 'mte_destinations.view', 'mte_destinations.manage', 'cost_item.view', 'cost_item.manage', 'organs.view', 'organs.manage', 'audit.view', 'admin.manage'],
+    'sist_admin' => ['dashboard.view', 'users.view', 'users.manage', 'security.view', 'security.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'people.documents.sensitive', 'mte_destinations.view', 'mte_destinations.manage', 'cost_item.view', 'cost_item.manage', 'organs.view', 'organs.manage', 'bulk_import.view', 'people.import_bulk', 'organs.import_bulk', 'cost_mirror.import_bulk', 'audit.view', 'admin.manage'],
     'admin' => ['dashboard.view', 'users.view', 'users.manage', 'security.view', 'security.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'people.documents.sensitive', 'mte_destinations.view', 'mte_destinations.manage', 'cost_item.view', 'cost_item.manage', 'organs.view', 'organs.manage', 'audit.view'],
     'user' => ['dashboard.view', 'people.view', 'mte_destinations.view', 'organs.view'],
 ];
@@ -170,6 +174,15 @@ try {
             ]);
         }
     }
+
+    $db->exec(
+        "DELETE rp
+         FROM role_permissions rp
+         INNER JOIN roles r ON r.id = rp.role_id
+         INNER JOIN permissions p ON p.id = rp.permission_id
+         WHERE p.name IN ('bulk_import.view', 'people.import_bulk', 'organs.import_bulk', 'cost_mirror.import_bulk')
+           AND r.name <> 'sist_admin'"
+    );
 
     $upsertCatalog = static function (string $table, array $rows) use ($db): void {
         $stmt = $db->prepare(

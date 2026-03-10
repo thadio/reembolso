@@ -357,17 +357,18 @@ final class CostPlanService
                 'ok' => false,
                 'message' => 'Não foi possível salvar os custos da tabela.',
                 'errors' => $parsed['errors'],
-                'warnings' => [],
+                'warnings' => $parsed['warnings'],
             ];
         }
 
         $rows = $parsed['rows'];
+        $warnings = $parsed['warnings'];
         if ($rows === []) {
             return [
                 'ok' => false,
                 'message' => 'Não foi possível salvar os custos da tabela.',
                 'errors' => ['Informe ao menos um custo maior que zero para salvar a versão.'],
-                'warnings' => [],
+                'warnings' => $warnings,
             ];
         }
 
@@ -514,7 +515,7 @@ final class CostPlanService
             'ok' => true,
             'message' => 'Versão V' . $nextVersion . ' salva automaticamente com ' . count($rows) . ' item(ns).',
             'errors' => [],
-            'warnings' => [],
+            'warnings' => $warnings,
         ];
     }
 
@@ -572,21 +573,27 @@ final class CostPlanService
 
     /**
      * @param array<string, mixed> $input
-     * @return array{errors: array<int, string>, rows: array<int, array<string, mixed>>}
+     * @return array{errors: array<int, string>, warnings: array<int, string>, rows: array<int, array<string, mixed>>}
      */
     private function parseTableRows(array $input): array
     {
         $rowsInput = is_array($input['items'] ?? null) ? $input['items'] : [];
         $catalogItems = $this->catalogItems->activeList();
         $errors = [];
+        $warnings = [];
         $rows = [];
 
         if ($catalogItems === []) {
             return [
                 'errors' => ['Nenhum item de custo ativo encontrado no catálogo.'],
+                'warnings' => [],
                 'rows' => [],
             ];
         }
+
+        $aggregators = [];
+        $aggregatorIds = [];
+        $childrenByParent = [];
 
         foreach ($catalogItems as $catalogItem) {
             $catalogId = (int) ($catalogItem['id'] ?? 0);
@@ -594,58 +601,171 @@ final class CostPlanService
                 continue;
             }
 
-            $rowInput = [];
-            $rawRow = $rowsInput[$catalogId] ?? $rowsInput[(string) $catalogId] ?? null;
-            if (is_array($rawRow)) {
-                $rowInput = $rawRow;
-            }
-
-            $amount = $this->parseMoney($rowInput['amount'] ?? null);
-            if ($amount === null || (float) $amount <= 0.0) {
+            $isAggregator = (int) ($catalogItem['is_aggregator'] ?? 0) === 1;
+            if ($isAggregator) {
+                $aggregators[] = $catalogItem;
+                $aggregatorIds[$catalogId] = true;
                 continue;
             }
 
-            $itemName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
-            $catalogCostType = mb_strtolower(trim((string) ($catalogItem['payment_periodicity'] ?? '')));
-            $requestedCostType = mb_strtolower(trim((string) ($rowInput['cost_type'] ?? '')));
-            $costType = $requestedCostType !== '' ? $requestedCostType : $catalogCostType;
-            if (!in_array($costType, self::ALLOWED_COST_TYPES, true)) {
-                $errors[] = 'Periodicidade inválida para o item "' . $itemName . '".';
+            $parentId = (int) ($catalogItem['parent_cost_item_id'] ?? 0);
+            if ($parentId > 0) {
+                $childrenByParent[$parentId][] = $catalogItem;
                 continue;
             }
 
-            $startDateRaw = $this->clean($rowInput['start_date'] ?? null);
-            $endDateRaw = $this->clean($rowInput['end_date'] ?? null);
-            $notes = $this->clean($rowInput['notes'] ?? null);
-
-            $startDate = $this->normalizeDate($startDateRaw);
-            if ($startDateRaw !== null && $startDate === null) {
-                $errors[] = 'Data de início inválida para o item "' . $itemName . '".';
+            $parsedStandalone = $this->parseCatalogTableRow($catalogItem, $rowsInput);
+            if ($parsedStandalone['errors'] !== []) {
+                foreach ($parsedStandalone['errors'] as $error) {
+                    $errors[] = $error;
+                }
             }
-
-            $endDate = $this->normalizeDate($endDateRaw);
-            if ($endDateRaw !== null && $endDate === null) {
-                $errors[] = 'Data de fim inválida para o item "' . $itemName . '".';
+            if (is_array($parsedStandalone['row'])) {
+                $rows[] = $parsedStandalone['row'];
             }
+        }
 
-            if ($startDate !== null && $endDate !== null && strtotime($endDate) < strtotime($startDate)) {
-                $errors[] = 'Data de fim deve ser igual ou posterior ao início para o item "' . $itemName . '".';
-            }
-
-            if ($startDateRaw !== null && $startDate === null) {
+        foreach ($aggregators as $aggregator) {
+            $aggregatorId = (int) ($aggregator['id'] ?? 0);
+            if ($aggregatorId <= 0) {
                 continue;
             }
 
-            if ($endDateRaw !== null && $endDate === null) {
+            $parsedAggregator = $this->parseCatalogTableRow($aggregator, $rowsInput);
+            if ($parsedAggregator['errors'] !== []) {
+                foreach ($parsedAggregator['errors'] as $error) {
+                    $errors[] = $error;
+                }
+            }
+
+            $children = is_array($childrenByParent[$aggregatorId] ?? null) ? $childrenByParent[$aggregatorId] : [];
+            $parsedChildRows = [];
+
+            foreach ($children as $child) {
+                $parsedChild = $this->parseCatalogTableRow($child, $rowsInput);
+                if ($parsedChild['errors'] !== []) {
+                    foreach ($parsedChild['errors'] as $error) {
+                        $errors[] = $error;
+                    }
+                }
+                if (is_array($parsedChild['row'])) {
+                    $parsedChildRows[] = $parsedChild['row'];
+                }
+            }
+
+            if ($parsedChildRows !== []) {
+                foreach ($parsedChildRows as $parsedChildRow) {
+                    $rows[] = $parsedChildRow;
+                }
+
+                if (is_array($parsedAggregator['row'])) {
+                    $warnings[] = 'Valor informado na categoria "'
+                        . (string) ($aggregator['name'] ?? 'Categoria')
+                        . '" foi ignorado porque existem itens filhos detalhados.';
+                }
                 continue;
             }
 
-            if ($startDate !== null && $endDate !== null && strtotime($endDate) < strtotime($startDate)) {
+            if (is_array($parsedAggregator['row'])) {
+                $rows[] = $parsedAggregator['row'];
+            }
+        }
+
+        foreach ($childrenByParent as $parentId => $orphans) {
+            if ($parentId <= 0 || isset($aggregatorIds[$parentId])) {
                 continue;
             }
 
-            $rows[] = [
+            foreach ($orphans as $orphan) {
+                $parsedOrphan = $this->parseCatalogTableRow($orphan, $rowsInput);
+                if ($parsedOrphan['errors'] !== []) {
+                    foreach ($parsedOrphan['errors'] as $error) {
+                        $errors[] = $error;
+                    }
+                }
+                if (is_array($parsedOrphan['row'])) {
+                    $rows[] = $parsedOrphan['row'];
+                }
+            }
+        }
+
+        return [
+            'errors' => $errors,
+            'warnings' => array_values(array_unique($warnings)),
+            'rows' => $rows,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $catalogItem
+     * @param array<string|int, mixed> $rowsInput
+     * @return array{errors: array<int, string>, row: ?array<string, mixed>}
+     */
+    private function parseCatalogTableRow(array $catalogItem, array $rowsInput): array
+    {
+        $catalogId = (int) ($catalogItem['id'] ?? 0);
+        if ($catalogId <= 0) {
+            return [
+                'errors' => [],
+                'row' => null,
+            ];
+        }
+
+        $rowInput = [];
+        $rawRow = $rowsInput[$catalogId] ?? $rowsInput[(string) $catalogId] ?? null;
+        if (is_array($rawRow)) {
+            $rowInput = $rawRow;
+        }
+
+        $amount = $this->parseMoney($rowInput['amount'] ?? null);
+        if ($amount === null || (float) $amount <= 0.0) {
+            return [
+                'errors' => [],
+                'row' => null,
+            ];
+        }
+
+        $itemName = trim((string) ($catalogItem['name'] ?? ('Item #' . $catalogId)));
+        $catalogCostType = mb_strtolower(trim((string) ($catalogItem['payment_periodicity'] ?? '')));
+        $requestedCostType = mb_strtolower(trim((string) ($rowInput['cost_type'] ?? '')));
+        $costType = $requestedCostType !== '' ? $requestedCostType : $catalogCostType;
+
+        $errors = [];
+        if (!in_array($costType, self::ALLOWED_COST_TYPES, true)) {
+            $errors[] = 'Periodicidade inválida para o item "' . $itemName . '".';
+        }
+
+        $startDateRaw = $this->clean($rowInput['start_date'] ?? null);
+        $endDateRaw = $this->clean($rowInput['end_date'] ?? null);
+        $notes = $this->clean($rowInput['notes'] ?? null);
+
+        $startDate = $this->normalizeDate($startDateRaw);
+        if ($startDateRaw !== null && $startDate === null) {
+            $errors[] = 'Data de início inválida para o item "' . $itemName . '".';
+        }
+
+        $endDate = $this->normalizeDate($endDateRaw);
+        if ($endDateRaw !== null && $endDate === null) {
+            $errors[] = 'Data de fim inválida para o item "' . $itemName . '".';
+        }
+
+        if ($startDate !== null && $endDate !== null && strtotime($endDate) < strtotime($startDate)) {
+            $errors[] = 'Data de fim deve ser igual ou posterior ao início para o item "' . $itemName . '".';
+        }
+
+        if ($errors !== []) {
+            return [
+                'errors' => $errors,
+                'row' => null,
+            ];
+        }
+
+        return [
+            'errors' => [],
+            'row' => [
                 'catalog_id' => $catalogId,
+                'parent_catalog_id' => (int) ($catalogItem['parent_cost_item_id'] ?? 0),
+                'is_aggregator' => (int) ($catalogItem['is_aggregator'] ?? 0),
                 'item_name' => $itemName,
                 'cost_type' => $costType,
                 'amount' => $amount,
@@ -664,12 +784,7 @@ final class CostPlanService
                 'is_reimbursable' => (int) ($catalogItem['is_reimbursable'] ?? 0),
                 'payment_periodicity' => (string) ($catalogItem['payment_periodicity'] ?? ''),
                 'selected_periodicity' => $costType,
-            ];
-        }
-
-        return [
-            'errors' => $errors,
-            'rows' => $rows,
+            ],
         ];
     }
 

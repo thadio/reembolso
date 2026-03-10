@@ -8,7 +8,6 @@ $isEdit = false;
 ?>
 <div class="header-row">
   <div>
-    <h2>Novo metadado formal</h2>
     <p class="muted">Registre numero/protocolo de oficio, publicacao DOU e entrada oficial no MTE.</p>
   </div>
 </div>

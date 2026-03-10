@@ -9,7 +9,6 @@ $rolePermissionMap = $rolePermissionMap ?? [];
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Papeis e permissoes</h2>
       <p class="muted">Vincule permissoes por papel para refletir os acessos dos usuarios.</p>
     </div>
     <div class="actions-inline">

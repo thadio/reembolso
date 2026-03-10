@@ -8,7 +8,6 @@ $isEdit = false;
 ?>
 <div class="header-row">
   <div>
-    <h2>Novo CDO</h2>
     <p class="muted">Cadastre o credito disponivel para vinculacao de pessoas.</p>
   </div>
 </div>

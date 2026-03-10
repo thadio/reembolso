@@ -8,7 +8,6 @@ $isEdit = false;
 ?>
 <div class="header-row">
   <div>
-    <h2>Nova unidade organizacional MTE (UORG)</h2>
     <p class="muted">Cadastre UORGs para uso no cadastro de pessoas (origem/destino MTE).</p>
   </div>
 </div>

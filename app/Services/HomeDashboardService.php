@@ -54,6 +54,8 @@ final class HomeDashboardService
         $availableBalance = round(max(0.0, (float) ($summary['available_amount'] ?? ($totalBudget - $spentYearToDate))), 2);
         $executionPercent = $totalBudget > 0.0 ? round(($spentYearToDate / $totalBudget) * 100, 2) : 0.0;
         $budgetLimitPerMonth = $totalBudget > 0.0 ? round($totalBudget / 12, 2) : 0.0;
+        $projectedBalanceYearEnd = round((float) ($projection['annual_balance_current_year'] ?? 0.0), 2);
+        $projectedSpentNextYear = round(max(0.0, (float) ($summary['projected_next_year'] ?? 0.0)), 2);
 
         $monthlyChart = [];
         for ($month = 1; $month <= 12; $month++) {
@@ -99,6 +101,8 @@ final class HomeDashboardService
                 'committed_amount' => round($committedAmount, 2),
                 'available_balance' => $availableBalance,
                 'execution_percent' => $executionPercent,
+                'projected_balance_year_end' => $projectedBalanceYearEnd,
+                'projected_spent_next_year' => $projectedSpentNextYear,
             ],
             'monthly_chart' => $monthlyChart,
             'people_projection' => $peopleProjection,

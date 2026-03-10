@@ -67,7 +67,6 @@ $nextDir = static function (string $column) use ($sort, $dir): string {
 <div class="card">
   <div class="header-row">
     <div>
-      <h2>Templates de oficio</h2>
       <p class="muted">Catalogo versionado para gerar oficios com merge de variaveis.</p>
     </div>
     <?php if ($canManage): ?>

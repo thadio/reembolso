@@ -9,36 +9,27 @@ $canViewDashboard = in_array('dashboard.view', $authPermissions, true);
 $canViewUsers = in_array('users.view', $authPermissions, true);
 $canManageUsers = in_array('users.manage', $authPermissions, true);
 $canViewSecurity = in_array('security.view', $authPermissions, true);
-$canManageSecurity = in_array('security.manage', $authPermissions, true);
 $canViewOpsPanel = $canViewSecurity;
 $canViewLgpd = in_array('lgpd.view', $authPermissions, true);
-$canManageLgpd = in_array('lgpd.manage', $authPermissions, true);
 $canViewBudget = in_array('budget.view', $authPermissions, true);
-$canManageBudget = in_array('budget.manage', $authPermissions, true);
 $canViewPeople = in_array('people.view', $authPermissions, true);
 $canManagePeople = in_array('people.manage', $authPermissions, true);
 $canViewMteDestinations = in_array('mte_destinations.view', $authPermissions, true);
-$canManageMteDestinations = in_array('mte_destinations.manage', $authPermissions, true);
 $canViewDocumentTypes = in_array('document_type.view', $authPermissions, true);
 $canManageDocumentTypes = in_array('document_type.manage', $authPermissions, true);
 $canViewCostItems = in_array('cost_item.view', $authPermissions, true);
 $canManageCostItems = in_array('cost_item.manage', $authPermissions, true);
 $canViewOrgans = in_array('organs.view', $authPermissions, true);
-$canManageOrgans = in_array('organs.manage', $authPermissions, true);
 $canViewCdos = in_array('cdo.view', $authPermissions, true);
-$canManageCdos = in_array('cdo.manage', $authPermissions, true);
 $canViewInvoices = in_array('invoice.view', $authPermissions, true);
-$canManageInvoices = in_array('invoice.manage', $authPermissions, true);
 $canViewCostMirrors = in_array('cost_mirror.view', $authPermissions, true);
-$canManageCostMirrors = in_array('cost_mirror.manage', $authPermissions, true);
 $canViewOfficeTemplates = in_array('office_template.view', $authPermissions, true);
-$canManageOfficeTemplates = in_array('office_template.manage', $authPermissions, true);
 $canViewProcessMeta = in_array('process_meta.view', $authPermissions, true);
-$canManageProcessMeta = in_array('process_meta.manage', $authPermissions, true);
 $canViewSla = in_array('sla.view', $authPermissions, true);
 $canManageSla = in_array('sla.manage', $authPermissions, true);
 $canViewReports = in_array('report.view', $authPermissions, true);
-$canUseGlobalSearch = $canViewPeople || $canViewOrgans || $canViewProcessMeta;
+$canViewBulkImports = in_array('bulk_import.view', $authPermissions, true);
+$canUseGlobalSearch = $canViewPeople;
 $movementBucketFilter = mb_strtolower(trim((string) ($_GET['movement_bucket'] ?? '')));
 if (!in_array($movementBucketFilter, ['entrando', 'saindo'], true)) {
     $movementBucketFilter = '';
@@ -176,6 +167,14 @@ $renderMenuIcon = static function (string $icon): string {
                 . '<path d="M12 8v8"></path>'
                 . '<path d="M8 12h8"></path>';
             break;
+        case 'import_batch':
+            $body = '<rect x="3" y="4" width="18" height="16" rx="2"></rect>'
+                . '<path d="M12 8v8"></path>'
+                . '<path d="M8 12l4 4 4-4"></path>'
+                . '<path d="M7 4v-1"></path>'
+                . '<path d="M12 4v-1"></path>'
+                . '<path d="M17 4v-1"></path>';
+            break;
         case 'key':
             $body = '<circle cx="8" cy="15" r="3"></circle>'
                 . '<path d="M11 15h10"></path>'
@@ -190,9 +189,11 @@ $renderMenuIcon = static function (string $icon): string {
     return '<svg viewBox="0 0 24 24" role="presentation" focusable="false">' . $body . '</svg>';
 };
 
-$primaryMenuItems = [];
+$menuSections = [];
+
+$panelMenuItems = [];
 if ($canViewDashboard) {
-    $primaryMenuItems[] = [
+    $panelMenuItems[] = [
         'label' => 'Dashboard',
         'href' => '/dashboard',
         'icon' => 'dashboard',
@@ -200,7 +201,7 @@ if ($canViewDashboard) {
     ];
 }
 if ($canUseGlobalSearch) {
-    $primaryMenuItems[] = [
+    $panelMenuItems[] = [
         'label' => 'Busca global',
         'href' => '/global-search',
         'icon' => 'search',
@@ -208,67 +209,26 @@ if ($canUseGlobalSearch) {
     ];
 }
 if ($canViewBudget) {
-    $primaryMenuItems[] = [
+    $panelMenuItems[] = [
         'label' => 'Orçamento',
         'href' => '/budget',
         'icon' => 'budget',
         'active' => str_starts_with($path, '/budget'),
     ];
 }
-if ($canViewMteDestinations) {
-    $primaryMenuItems[] = [
-        'label' => 'UORG MTE',
-        'href' => '/mte-destinations',
-        'icon' => 'mte_destination',
-        'active' => str_starts_with($path, '/mte-destinations'),
-    ];
-}
-if ($canViewDocumentTypes || $canManageDocumentTypes) {
-    $primaryMenuItems[] = [
-        'label' => 'Tipos de documento',
-        'href' => '/document-types',
-        'icon' => 'document_type',
-        'active' => str_starts_with($path, '/document-types'),
-    ];
-}
-if ($canViewCostItems || $canManageCostItems) {
-    $primaryMenuItems[] = [
-        'label' => 'Itens de custo',
-        'href' => '/cost-items',
-        'icon' => 'cost_item',
-        'active' => str_starts_with($path, '/cost-items'),
-    ];
-}
-if ($canViewOrgans) {
-    $primaryMenuItems[] = [
-        'label' => 'Órgãos',
-        'href' => '/organs',
-        'icon' => 'organs',
-        'active' => str_starts_with($path, '/organs'),
-    ];
-}
-if ($canManagePeople) {
-    $primaryMenuItems[] = [
-        'label' => 'Fluxos BPMN',
-        'href' => '/pipeline-flows',
-        'icon' => 'workflow',
-        'active' => str_starts_with($path, '/pipeline-flows'),
-    ];
-}
-if ($canViewSla) {
-    $primaryMenuItems[] = [
-        'label' => 'SLA',
-        'href' => '/sla-alerts',
-        'icon' => 'sla',
-        'active' => str_starts_with($path, '/sla-alerts'),
-    ];
-}
 if ($canViewReports) {
-    $primaryMenuItems[] = [
-        'label' => 'Relatorios',
+    $panelMenuItems[] = [
+        'label' => 'Relatórios',
         'href' => '/reports',
         'icon' => 'report',
         'active' => str_starts_with($path, '/reports'),
+    ];
+}
+if ($panelMenuItems !== []) {
+    $menuSections[] = [
+        'title' => 'Painel',
+        'icon' => 'dashboard',
+        'items' => $panelMenuItems,
     ];
 }
 
@@ -276,12 +236,13 @@ $peopleMenuItems = [];
 if ($canViewPeople) {
     $isPeopleModule = str_starts_with($path, '/people');
     $isPeopleList = $path === '/people';
+    $isPeoplePending = str_starts_with($path, '/people/pending');
 
     $peopleMenuItems[] = [
         'label' => 'Todas as pessoas',
         'href' => '/people',
         'icon' => 'people',
-        'active' => $isPeopleModule && (!$isPeopleList || $movementBucketFilter === ''),
+        'active' => $isPeopleModule && !$isPeoplePending && (!$isPeopleList || $movementBucketFilter === ''),
     ];
     $peopleMenuItems[] = [
         'label' => 'Pessoas entrando',
@@ -295,9 +256,54 @@ if ($canViewPeople) {
         'icon' => 'outbound',
         'active' => $isPeopleList && $movementBucketFilter === 'saindo',
     ];
+    $peopleMenuItems[] = [
+        'label' => 'Central de pendências',
+        'href' => '/people/pending',
+        'icon' => 'workflow',
+        'active' => $isPeoplePending,
+    ];
+}
+if ($canViewOrgans) {
+    $peopleMenuItems[] = [
+        'label' => 'Órgãos',
+        'href' => '/organs',
+        'icon' => 'organs',
+        'active' => str_starts_with($path, '/organs'),
+    ];
+}
+if ($canViewMteDestinations) {
+    $peopleMenuItems[] = [
+        'label' => 'UORG MTE',
+        'href' => '/mte-destinations',
+        'icon' => 'mte_destination',
+        'active' => str_starts_with($path, '/mte-destinations'),
+    ];
+}
+if ($peopleMenuItems !== []) {
+    $menuSections[] = [
+        'title' => 'Pessoas e estrutura',
+        'icon' => 'people',
+        'items' => $peopleMenuItems,
+    ];
 }
 
 $documentMenuItems = [];
+if ($canViewDocumentTypes || $canManageDocumentTypes) {
+    $documentMenuItems[] = [
+        'label' => 'Tipos de documento',
+        'href' => '/document-types',
+        'icon' => 'document_type',
+        'active' => str_starts_with($path, '/document-types'),
+    ];
+}
+if ($canViewCostItems || $canManageCostItems) {
+    $documentMenuItems[] = [
+        'label' => 'Itens de custo',
+        'href' => '/cost-items',
+        'icon' => 'cost_item',
+        'active' => str_starts_with($path, '/cost-items'),
+    ];
+}
 if ($canViewCdos) {
     $documentMenuItems[] = [
         'label' => 'CDOs',
@@ -311,7 +317,13 @@ if ($canViewInvoices) {
         'label' => 'Boletos',
         'href' => '/invoices',
         'icon' => 'invoice',
-        'active' => str_starts_with($path, '/invoices'),
+        'active' => str_starts_with($path, '/invoices') && !str_starts_with($path, '/invoices/payment-batches'),
+    ];
+    $documentMenuItems[] = [
+        'label' => 'Lotes de pagamento',
+        'href' => '/invoices/payment-batches',
+        'icon' => 'invoice',
+        'active' => str_starts_with($path, '/invoices/payment-batches'),
     ];
 }
 if ($canViewCostMirrors) {
@@ -324,7 +336,7 @@ if ($canViewCostMirrors) {
 }
 if ($canViewOfficeTemplates) {
     $documentMenuItems[] = [
-        'label' => 'Oficios',
+        'label' => 'Ofícios',
         'href' => '/office-templates',
         'icon' => 'office_template',
         'active' => str_starts_with($path, '/office-templates') || str_starts_with($path, '/office-documents'),
@@ -338,22 +350,93 @@ if ($canViewProcessMeta) {
         'active' => str_starts_with($path, '/process-meta'),
     ];
 }
+if ($documentMenuItems !== []) {
+    $menuSections[] = [
+        'title' => 'Documentos e custos',
+        'icon' => 'cdo',
+        'items' => $documentMenuItems,
+    ];
+}
+
+$bulkImportMenuItems = [];
+if ($canViewBulkImports) {
+    $bulkImportMenuItems[] = [
+        'label' => 'Central de importacoes',
+        'href' => '/bulk-imports',
+        'icon' => 'import_batch',
+        'active' => str_starts_with($path, '/bulk-imports'),
+    ];
+}
+if ($bulkImportMenuItems !== []) {
+    $menuSections[] = [
+        'title' => 'Importacoes em lote',
+        'icon' => 'import_batch',
+        'items' => $bulkImportMenuItems,
+    ];
+}
+
+$flowMenuItems = [];
+if ($canManagePeople) {
+    $flowMenuItems[] = [
+        'label' => 'Fluxos BPMN',
+        'href' => '/pipeline-flows',
+        'icon' => 'workflow',
+        'active' => str_starts_with($path, '/pipeline-flows'),
+    ];
+}
+if ($canViewSla) {
+    $flowMenuItems[] = [
+        'label' => 'SLA',
+        'href' => '/sla-alerts',
+        'icon' => 'sla',
+        'active' => str_starts_with($path, '/sla-alerts') && $path !== '/sla-alerts/rules',
+    ];
+}
+if ($canManageSla) {
+    $flowMenuItems[] = [
+        'label' => 'Regras SLA',
+        'href' => '/sla-alerts/rules',
+        'icon' => 'sla',
+        'active' => $path === '/sla-alerts/rules',
+    ];
+}
+if ($flowMenuItems !== []) {
+    $menuSections[] = [
+        'title' => 'Fluxos e controle',
+        'icon' => 'workflow',
+        'items' => $flowMenuItems,
+    ];
+}
 
 $systemMenuItems = [];
 if ($canViewUsers) {
     $systemMenuItems[] = [
-        'label' => 'Usuarios',
+        'label' => 'Usuários',
         'href' => '/users',
         'icon' => 'users_admin',
-        'active' => str_starts_with($path, '/users'),
+        'active' => str_starts_with($path, '/users') && $path !== '/users/password' && !str_starts_with($path, '/users/roles'),
+    ];
+}
+if ($canManageUsers) {
+    $systemMenuItems[] = [
+        'label' => 'Papéis e permissões',
+        'href' => '/users/roles',
+        'icon' => 'key',
+        'active' => str_starts_with($path, '/users/roles'),
     ];
 }
 if ($canViewSecurity) {
     $systemMenuItems[] = [
-        'label' => 'Seguranca',
+        'label' => 'Segurança',
         'href' => '/security',
         'icon' => 'security',
         'active' => str_starts_with($path, '/security'),
+    ];
+    $systemMenuItems[] = [
+        'label' => 'Dependências',
+        'href' => '/integrity/dependencies',
+        'icon' => 'security',
+        'active' => str_starts_with($path, '/integrity/dependencies'),
     ];
 }
 if ($canViewOpsPanel) {
@@ -372,135 +455,19 @@ if ($canViewLgpd) {
         'active' => str_starts_with($path, '/lgpd'),
     ];
 }
-
-$menuGroups = [];
-if ($peopleMenuItems !== []) {
-    $menuGroups[] = ['title' => 'Pessoas', 'items' => $peopleMenuItems];
-}
-if ($documentMenuItems !== []) {
-    $menuGroups[] = ['title' => 'Documentos', 'items' => $documentMenuItems];
-}
-if ($systemMenuItems !== []) {
-    $menuGroups[] = ['title' => 'Sistema', 'items' => $systemMenuItems];
-}
-
-$quickMenuItems = [];
-if ($canManagePeople) {
-    $quickMenuItems[] = [
-        'label' => 'Nova pessoa',
-        'href' => '/people/create',
-        'icon' => 'plus',
-        'active' => $path === '/people/create',
-    ];
-    $quickMenuItems[] = [
-        'label' => 'Novo fluxo BPMN',
-        'href' => '/pipeline-flows/create',
-        'icon' => 'plus',
-        'active' => $path === '/pipeline-flows/create',
-    ];
-}
-if ($canManageUsers) {
-    $quickMenuItems[] = [
-        'label' => 'Novo usuario',
-        'href' => '/users/create',
-        'icon' => 'plus',
-        'active' => $path === '/users/create',
-    ];
-}
-if ($canManageSecurity) {
-    $quickMenuItems[] = [
-        'label' => 'Seguranca',
-        'href' => '/security',
-        'icon' => 'plus',
-        'active' => str_starts_with($path, '/security'),
-    ];
-}
-if ($canManageLgpd) {
-    $quickMenuItems[] = [
-        'label' => 'LGPD',
-        'href' => '/lgpd',
-        'icon' => 'plus',
-        'active' => str_starts_with($path, '/lgpd'),
-    ];
-}
-if ($canManageMteDestinations) {
-    $quickMenuItems[] = [
-        'label' => 'Nova UORG MTE',
-        'href' => '/mte-destinations/create',
-        'icon' => 'plus',
-        'active' => $path === '/mte-destinations/create',
-    ];
-}
-if ($canManageBudget) {
-    $quickMenuItems[] = [
-        'label' => 'Simular contratação',
-        'href' => '/budget',
-        'icon' => 'plus',
-        'active' => str_starts_with($path, '/budget'),
-    ];
-}
-if ($canManageOrgans) {
-    $quickMenuItems[] = [
-        'label' => 'Novo órgão',
-        'href' => '/organs/create',
-        'icon' => 'plus',
-        'active' => $path === '/organs/create',
-    ];
-}
-if ($canManageCdos) {
-    $quickMenuItems[] = [
-        'label' => 'Novo CDO',
-        'href' => '/cdos/create',
-        'icon' => 'plus',
-        'active' => $path === '/cdos/create',
-    ];
-}
-if ($canManageInvoices) {
-    $quickMenuItems[] = [
-        'label' => 'Novo boleto',
-        'href' => '/invoices/create',
-        'icon' => 'plus',
-        'active' => $path === '/invoices/create',
-    ];
-}
-if ($canManageCostMirrors) {
-    $quickMenuItems[] = [
-        'label' => 'Novo espelho',
-        'href' => '/cost-mirrors/create',
-        'icon' => 'plus',
-        'active' => $path === '/cost-mirrors/create',
-    ];
-}
-if ($canManageOfficeTemplates) {
-    $quickMenuItems[] = [
-        'label' => 'Novo oficio',
-        'href' => '/office-templates/create',
-        'icon' => 'plus',
-        'active' => $path === '/office-templates/create',
-    ];
-}
-if ($canManageProcessMeta) {
-    $quickMenuItems[] = [
-        'label' => 'Novo processo',
-        'href' => '/process-meta/create',
-        'icon' => 'plus',
-        'active' => $path === '/process-meta/create',
-    ];
-}
-if ($canManageSla) {
-    $quickMenuItems[] = [
-        'label' => 'Regras SLA',
-        'href' => '/sla-alerts/rules',
-        'icon' => 'plus',
-        'active' => $path === '/sla-alerts/rules',
-    ];
-}
 if ($isAuthenticated) {
-    $quickMenuItems[] = [
+    $systemMenuItems[] = [
         'label' => 'Trocar senha',
         'href' => '/users/password',
         'icon' => 'key',
         'active' => $path === '/users/password',
+    ];
+}
+if ($systemMenuItems !== []) {
+    $menuSections[] = [
+        'title' => 'Administração',
+        'icon' => 'users_admin',
+        'items' => $systemMenuItems,
     ];
 }
 ?>
@@ -521,38 +488,34 @@ if ($isAuthenticated) {
         <strong><?= e($appName ?? 'Reembolso') ?></strong>
       </div>
       <nav class="menu">
-        <?php foreach ($primaryMenuItems as $item): ?>
-          <a class="menu-item <?= ($item['active'] ?? false) ? 'is-active' : '' ?>" href="<?= e(url((string) ($item['href'] ?? '/dashboard'))) ?>">
-            <span class="menu-item-content">
-              <span class="menu-icon" aria-hidden="true"><?= $renderMenuIcon((string) ($item['icon'] ?? 'dashboard')) ?></span>
-              <span><?= e((string) ($item['label'] ?? 'Módulo')) ?></span>
-            </span>
-          </a>
+        <?php foreach ($menuSections as $section): ?>
+          <?php
+            $sectionItems = is_array($section['items'] ?? null) ? $section['items'] : [];
+            $sectionIsActive = false;
+            foreach ($sectionItems as $sectionItem) {
+                if (($sectionItem['active'] ?? false) === true) {
+                    $sectionIsActive = true;
+                    break;
+                }
+            }
+          ?>
+          <section class="menu-section <?= $sectionIsActive ? 'is-active' : '' ?>">
+            <p class="menu-section-title">
+              <span class="menu-icon" aria-hidden="true"><?= $renderMenuIcon((string) ($section['icon'] ?? 'dashboard')) ?></span>
+              <span><?= e((string) ($section['title'] ?? 'Seção')) ?></span>
+            </p>
+            <div class="menu-section-items">
+              <?php foreach ($sectionItems as $item): ?>
+                <a class="menu-item menu-item-level2 <?= ($item['active'] ?? false) ? 'is-active' : '' ?>" href="<?= e(url((string) ($item['href'] ?? '/dashboard'))) ?>">
+                  <span class="menu-item-content">
+                    <span class="menu-icon" aria-hidden="true"><?= $renderMenuIcon((string) ($item['icon'] ?? 'dashboard')) ?></span>
+                    <span><?= e((string) ($item['label'] ?? 'Módulo')) ?></span>
+                  </span>
+                </a>
+              <?php endforeach; ?>
+            </div>
+          </section>
         <?php endforeach; ?>
-
-        <?php foreach ($menuGroups as $group): ?>
-          <p class="menu-group-title"><?= e((string) ($group['title'] ?? 'Grupo')) ?></p>
-          <?php foreach ((array) ($group['items'] ?? []) as $item): ?>
-            <a class="menu-item menu-item-sub <?= ($item['active'] ?? false) ? 'is-active' : '' ?>" href="<?= e(url((string) ($item['href'] ?? '/dashboard'))) ?>">
-              <span class="menu-item-content">
-                <span class="menu-icon" aria-hidden="true"><?= $renderMenuIcon((string) ($item['icon'] ?? 'dashboard')) ?></span>
-                <span><?= e((string) ($item['label'] ?? 'Módulo')) ?></span>
-              </span>
-            </a>
-          <?php endforeach; ?>
-        <?php endforeach; ?>
-
-        <?php if ($quickMenuItems !== []): ?>
-          <p class="menu-group-title">Ações rápidas</p>
-          <?php foreach ($quickMenuItems as $item): ?>
-            <a class="menu-item menu-item-quick <?= ($item['active'] ?? false) ? 'is-active' : '' ?>" href="<?= e(url((string) ($item['href'] ?? '/dashboard'))) ?>">
-              <span class="menu-item-content">
-                <span class="menu-icon" aria-hidden="true"><?= $renderMenuIcon((string) ($item['icon'] ?? 'plus')) ?></span>
-                <span><?= e((string) ($item['label'] ?? 'Ação')) ?></span>
-              </span>
-            </a>
-          <?php endforeach; ?>
-        <?php endif; ?>
       </nav>
       <form method="post" action="<?= e(url('/logout')) ?>" class="logout-form">
         <?= csrf_field() ?>
@@ -562,7 +525,7 @@ if ($isAuthenticated) {
     <main class="main-content">
       <header class="topbar">
         <div>
-          <p class="topbar-title"><?= e($title ?? '') ?></p>
+          <h1 class="topbar-title"><?= e($title ?? '') ?></h1>
           <p class="topbar-subtitle">Usuário: <?= e($authUser['name'] ?? 'N/A') ?></p>
         </div>
       </header>

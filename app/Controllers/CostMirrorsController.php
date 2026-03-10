@@ -236,9 +236,22 @@ final class CostMirrorsController extends Controller
     public function importCsv(Request $request): void
     {
         $mirrorId = (int) $request->input('mirror_id', '0');
+        $defaultReturnTo = $mirrorId > 0 ? '/cost-mirrors/show?id=' . $mirrorId : '/cost-mirrors';
+        $returnTo = (string) $request->input('return_to', $defaultReturnTo);
+        if (
+            $returnTo !== '/bulk-imports'
+            && !str_starts_with($returnTo, '/bulk-imports?')
+            && $returnTo !== $defaultReturnTo
+        ) {
+            $returnTo = $defaultReturnTo;
+        }
+        if ($returnTo === '/bulk-imports' && $mirrorId > 0) {
+            $returnTo = '/bulk-imports?mirror_id=' . $mirrorId;
+        }
+
         if ($mirrorId <= 0) {
             flash('error', 'Espelho invalido para importacao CSV.');
-            $this->redirect('/cost-mirrors');
+            $this->redirect($returnTo);
         }
 
         $file = is_array($_FILES['csv_file'] ?? null) ? $_FILES['csv_file'] : null;
@@ -253,11 +266,11 @@ final class CostMirrorsController extends Controller
 
         if (!$result['ok']) {
             flash('error', implode(' ', $result['errors']));
-            $this->redirect('/cost-mirrors/show?id=' . $mirrorId);
+            $this->redirect($returnTo);
         }
 
         flash('success', $result['message']);
-        $this->redirect('/cost-mirrors/show?id=' . $mirrorId);
+        $this->redirect($returnTo);
     }
 
     public function destroyItem(Request $request): void

@@ -114,6 +114,8 @@ final class DashboardController extends Controller
                 'committed_amount' => 0.0,
                 'available_balance' => 0.0,
                 'execution_percent' => 0.0,
+                'projected_balance_year_end' => 0.0,
+                'projected_spent_next_year' => 0.0,
             ],
             'monthly_chart' => $monthlyChart,
             'people_projection' => $peopleProjection,
