@@ -56,7 +56,7 @@ $formatMonth = static function (?string $value): string {
       </div>
 
       <div class="field field-wide">
-        <label style="display:flex; align-items:center; gap:.45rem;">
+        <label class="inline-check-sm">
           <input type="checkbox" name="validate_only" value="1">
           Apenas validar (sem gravar)
         </label>
@@ -88,7 +88,7 @@ $formatMonth = static function (?string $value): string {
       </div>
 
       <div class="field field-wide">
-        <label style="display:flex; align-items:center; gap:.45rem;">
+        <label class="inline-check-sm">
           <input type="checkbox" name="validate_only" value="1">
           Apenas validar (sem gravar)
         </label>

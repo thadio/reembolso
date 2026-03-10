@@ -87,12 +87,21 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
 
     return '';
 };
+
+$isEditMode = ($isEdit ?? false) === true;
 ?>
 <div class="card">
-  <form method="post" action="<?= e($action) ?>" class="form-grid">
+  <form method="post" action="<?= e($action) ?>" class="form-grid people-form-grid">
     <?= csrf_field() ?>
     <?php if (($isEdit ?? false) === true): ?>
       <input type="hidden" name="id" value="<?= e((string) ($person['id'] ?? '')) ?>">
+    <?php endif; ?>
+
+    <?php if (!$isEditMode): ?>
+      <div class="field field-wide people-create-section-heading">
+        <h3>1. Movimentação e enquadramento</h3>
+        <p class="muted">Defina direção, órgão de contraparte, natureza financeira automática, lotação MTE e período previsto.</p>
+      </div>
     <?php endif; ?>
 
     <?php $selectedOrgan = (int) old('organ_id', (string) ($person['organ_id'] ?? '0')); ?>
@@ -111,7 +120,7 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
 
     <div class="field field-wide">
       <label>Direção do movimento *</label>
-      <div class="chips-row" id="movement_direction_group">
+      <div class="chips-row movement-direction-group" id="movement_direction_group">
         <?php $directionIndex = 0; ?>
         <?php foreach ($movementDirectionOptions as $option): ?>
           <?php
@@ -289,6 +298,13 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
       <p class="muted">Para movimentações com término previsto, substituída automaticamente quando houver data efetiva.</p>
     </div>
 
+    <?php if (!$isEditMode): ?>
+      <div class="field field-wide people-create-section-heading">
+        <h3>2. Dados pessoais e vínculo administrativo</h3>
+        <p class="muted">Preencha identificação da pessoa e os dados administrativos usados no pipeline, relatórios e filtros.</p>
+      </div>
+    <?php endif; ?>
+
     <div class="field field-wide">
       <label for="name">Nome completo *</label>
       <input id="name" name="name" type="text" value="<?= e(old('name', (string) ($person['name'] ?? ''))) ?>" required>
@@ -373,6 +389,13 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
       </select>
     </div>
 
+    <?php if (!$isEditMode): ?>
+      <div class="field field-wide people-create-section-heading">
+        <h3>3. Complementos e observações</h3>
+        <p class="muted">Esses campos são opcionais, mas ajudam na busca global, acompanhamento e priorização operacional.</p>
+      </div>
+    <?php endif; ?>
+
     <div class="field">
       <label for="sei_process_number">Nº processo SEI</label>
       <input id="sei_process_number" name="sei_process_number" type="text" value="<?= e(old('sei_process_number', (string) ($person['sei_process_number'] ?? ''))) ?>">
@@ -389,9 +412,12 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
       <textarea id="notes" name="notes" rows="4"><?= e(old('notes', (string) ($person['notes'] ?? ''))) ?></textarea>
     </div>
 
-    <div class="form-actions field-wide">
+    <div class="form-actions field-wide people-form-actions">
       <a class="btn btn-outline" href="<?= e(url('/people')) ?>">Cancelar</a>
       <button type="submit" class="btn btn-primary"><?= e($submitLabel ?? 'Salvar') ?></button>
+      <?php if (!$isEditMode): ?>
+        <p class="muted people-create-submit-note">Antes de salvar, valide direção do movimento, órgão de contraparte, motivo e fluxo BPMN.</p>
+      <?php endif; ?>
     </div>
   </form>
 </div>

@@ -150,6 +150,9 @@ final class CostPlanRepository
                 c.linkage_code AS catalog_linkage_code,
                 c.is_reimbursable AS catalog_is_reimbursable,
                 c.payment_periodicity AS catalog_payment_periodicity,
+                c.parent_cost_item_id AS catalog_parent_cost_item_id,
+                c.is_aggregator AS catalog_is_aggregator,
+                c.hierarchy_sort AS catalog_hierarchy_sort,
                 u.name AS created_by_name
              FROM cost_plan_items i
              LEFT JOIN cost_item_catalog c ON c.id = i.cost_item_catalog_id

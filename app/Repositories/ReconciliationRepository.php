@@ -83,7 +83,7 @@ final class ReconciliationRepository
                AND r.deleted_at IS NULL
                AND r.status IN ("pendente", "pago")
              ORDER BY
-               COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)) DESC,
+               r.competence_effective DESC,
                r.id DESC
              LIMIT :limit'
         );

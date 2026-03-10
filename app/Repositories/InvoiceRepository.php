@@ -88,8 +88,15 @@ final class InvoiceRepository
 
         $referenceMonth = trim((string) ($filters['reference_month'] ?? ''));
         if ($referenceMonth !== '') {
-            $where .= ' AND DATE_FORMAT(i.reference_month, "%Y-%m") = :reference_month';
-            $params['reference_month'] = $referenceMonth;
+            $referenceRange = $this->monthRange($referenceMonth);
+            if ($referenceRange === null) {
+                $where .= ' AND 1 = 0';
+            } else {
+                $where .= ' AND i.reference_month >= :reference_month_start
+                    AND i.reference_month < :reference_month_end';
+                $params['reference_month_start'] = $referenceRange['start'];
+                $params['reference_month_end'] = $referenceRange['end'];
+            }
         }
 
         $financialNature = trim((string) ($filters['financial_nature'] ?? ''));
@@ -392,8 +399,15 @@ final class InvoiceRepository
 
         $referenceMonth = trim((string) ($filters['reference_month'] ?? ''));
         if ($referenceMonth !== '') {
-            $where .= ' AND DATE_FORMAT(pb.reference_month, "%Y-%m") = :reference_month';
-            $params['reference_month'] = $referenceMonth;
+            $referenceRange = $this->monthRange($referenceMonth);
+            if ($referenceRange === null) {
+                $where .= ' AND 1 = 0';
+            } else {
+                $where .= ' AND pb.reference_month >= :reference_month_start
+                    AND pb.reference_month < :reference_month_end';
+                $params['reference_month_start'] = $referenceRange['start'];
+                $params['reference_month_end'] = $referenceRange['end'];
+            }
         }
 
         $organId = (int) ($filters['organ_id'] ?? 0);
@@ -605,8 +619,15 @@ final class InvoiceRepository
 
         $referenceMonth = trim((string) ($filters['reference_month'] ?? ''));
         if ($referenceMonth !== '') {
-            $where .= ' AND DATE_FORMAT(i.reference_month, "%Y-%m") = :reference_month';
-            $params['reference_month'] = $referenceMonth;
+            $referenceRange = $this->monthRange($referenceMonth);
+            if ($referenceRange === null) {
+                $where .= ' AND 1 = 0';
+            } else {
+                $where .= ' AND i.reference_month >= :reference_month_start
+                    AND i.reference_month < :reference_month_end';
+                $params['reference_month_start'] = $referenceRange['start'];
+                $params['reference_month_end'] = $referenceRange['end'];
+            }
         }
 
         $financialNature = trim((string) ($filters['financial_nature'] ?? ''));
@@ -743,6 +764,25 @@ final class InvoiceRepository
         $stmt->execute();
 
         return $stmt->fetchAll();
+    }
+
+    /** @return array{start: string, end: string}|null */
+    private function monthRange(string $value): ?array
+    {
+        $month = trim($value);
+        if ($month === '' || preg_match('/^\d{4}-\d{2}$/', $month) !== 1) {
+            return null;
+        }
+
+        $start = \DateTimeImmutable::createFromFormat('!Y-m', $month);
+        if (!$start instanceof \DateTimeImmutable) {
+            return null;
+        }
+
+        return [
+            'start' => $start->format('Y-m-01'),
+            'end' => $start->modify('+1 month')->format('Y-m-01'),
+        ];
     }
 
     /** @return array<string, mixed>|null */

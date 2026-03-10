@@ -89,7 +89,7 @@ $typeLabel = static function (string $type): string {
     </div>
   </div>
 
-  <div class="actions-inline" style="margin-top:10px;">
+  <div class="actions-inline sp-top-md">
     <?php if ($canManage && !$isLocked): ?>
       <form method="post" action="<?= e(url('/cost-mirrors/reconciliation/run')) ?>">
         <?= csrf_field() ?>

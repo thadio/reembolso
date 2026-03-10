@@ -470,6 +470,27 @@ if ($systemMenuItems !== []) {
         'items' => $systemMenuItems,
     ];
 }
+
+$normalizedPath = trim($path, '/');
+$pathParts = $normalizedPath === '' ? [] : explode('/', $normalizedPath);
+$rawModuleSlug = (string) ($pathParts[0] ?? 'dashboard');
+$rawPageSlug = (string) ($pathParts[1] ?? 'index');
+
+$sanitizeSlug = static function (string $value, string $fallback): string {
+    $slug = preg_replace('/[^a-z0-9_-]+/i', '-', mb_strtolower(trim($value)));
+    $slug = trim((string) $slug, '-');
+
+    return $slug === '' ? $fallback : $slug;
+};
+
+$moduleSlug = $sanitizeSlug($rawModuleSlug, 'dashboard');
+$pageSlug = $sanitizeSlug($rawPageSlug, 'index');
+$bodyClasses = [
+    'app-body',
+    $isAuthenticated ? 'is-authenticated' : 'is-guest',
+    'module-' . $moduleSlug,
+    'page-' . $moduleSlug . '-' . $pageSlug,
+];
 ?>
 <!doctype html>
 <html lang="pt-BR">
@@ -479,7 +500,7 @@ if ($systemMenuItems !== []) {
   <title><?= e($title ?? $appName ?? 'Reembolso') ?></title>
   <link rel="stylesheet" href="<?= e(url('/assets/css/app.css')) ?>">
 </head>
-<body>
+<body class="<?= e(implode(' ', $bodyClasses)) ?>">
 <?php if ($isAuthenticated): ?>
   <div class="app-shell">
     <aside class="sidebar">

@@ -587,17 +587,25 @@ final class PendingCenterRepository
 
         $responsibleId = max(0, (int) ($filters['responsible_id'] ?? 0));
         if ($responsibleId > 0) {
-            $where .= ' AND COALESCE(pi.assigned_user_id, a.assigned_user_id, 0) = :responsible_id';
-            $params['responsible_id'] = $responsibleId;
+            $where .= ' AND (
+                pi.assigned_user_id = :responsible_id_direct
+                OR (pi.assigned_user_id IS NULL AND a.assigned_user_id = :responsible_id_fallback)
+            )';
+            $params['responsible_id_direct'] = $responsibleId;
+            $params['responsible_id_fallback'] = $responsibleId;
         }
 
         $queueScope = mb_strtolower(trim((string) ($filters['queue_scope'] ?? 'all')));
         $queueUserId = max(0, (int) ($filters['queue_user_id'] ?? 0));
         if ($queueScope === 'mine' && $queueUserId > 0) {
-            $where .= ' AND COALESCE(pi.assigned_user_id, a.assigned_user_id, 0) = :queue_user_id';
-            $params['queue_user_id'] = $queueUserId;
+            $where .= ' AND (
+                pi.assigned_user_id = :queue_user_id_direct
+                OR (pi.assigned_user_id IS NULL AND a.assigned_user_id = :queue_user_id_fallback)
+            )';
+            $params['queue_user_id_direct'] = $queueUserId;
+            $params['queue_user_id_fallback'] = $queueUserId;
         } elseif ($queueScope === 'unassigned') {
-            $where .= ' AND COALESCE(pi.assigned_user_id, a.assigned_user_id) IS NULL';
+            $where .= ' AND pi.assigned_user_id IS NULL AND a.assigned_user_id IS NULL';
         }
 
         return $where;

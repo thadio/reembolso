@@ -252,7 +252,7 @@ final class CostItemsController extends Controller
         );
 
         if (!$deleted) {
-            flash('error', 'Tipo de custo nao encontrado ou ja removido.');
+            flash('error', 'Tipo de custo nao encontrado, ja removido ou possui itens filhos ativos.');
             $this->redirect('/cost-items');
         }
 

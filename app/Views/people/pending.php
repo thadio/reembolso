@@ -289,7 +289,7 @@ $statusBadgeClass = static function (string $value): string {
               <td class="actions-cell">
                 <a class="btn btn-ghost" href="<?= e(url('/people/show?id=' . (int) ($item['person_id'] ?? 0))) ?>">Abrir perfil</a>
                 <?php if ($canManage): ?>
-                  <form method="post" action="<?= e(url('/people/pending/status')) ?>" class="actions-inline" style="margin-top:.4rem;">
+                  <form method="post" action="<?= e(url('/people/pending/status')) ?>" class="actions-inline sp-top-xs">
                     <?= csrf_field() ?>
                     <input type="hidden" name="pending_id" value="<?= e((string) ((int) ($item['id'] ?? 0))) ?>">
                     <input type="hidden" name="status" value="<?= $itemStatus === 'resolvida' ? 'aberta' : 'resolvida' ?>">

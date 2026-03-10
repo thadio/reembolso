@@ -45,23 +45,42 @@ final class DashboardRepository
                         WHEN i.id IS NULL THEN 0
                         WHEN i.cost_type = "mensal"
                              AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
-                             AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                             AND (
+                                i.end_date IS NULL
+                                OR i.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                             )
                              AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= LAST_DAY(CURDATE()))
-                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                             AND (
+                                COALESCE(a.effective_end_date, a.requested_end_date) IS NULL
+                                OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                             )
                         THEN i.amount
                         WHEN i.cost_type = "anual"
                              AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
-                             AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                             AND (
+                                i.end_date IS NULL
+                                OR i.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                             )
                              AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= LAST_DAY(CURDATE()))
-                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                             AND (
+                                COALESCE(a.effective_end_date, a.requested_end_date) IS NULL
+                                OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                             )
                         THEN i.amount / 12
                         WHEN i.cost_type IN ("eventual", "unico")
                              AND (
-                               (i.start_date IS NOT NULL AND DATE_FORMAT(i.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
-                               OR (i.start_date IS NULL AND DATE_FORMAT(i.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                               (i.start_date IS NOT NULL
+                                AND i.start_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                AND i.start_date < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
+                               OR (i.start_date IS NULL
+                                AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                AND i.created_at < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
                              )
                              AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= LAST_DAY(CURDATE()))
-                             AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                             AND (
+                                COALESCE(a.effective_end_date, a.requested_end_date) IS NULL
+                                OR COALESCE(a.effective_end_date, a.requested_end_date) >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                             )
                         THEN i.amount
                         ELSE 0
                     END
@@ -75,7 +94,8 @@ final class DashboardRepository
                 (SELECT IFNULL(SUM(
                     CASE
                         WHEN r.status IN ("pendente", "pago")
-                             AND DATE_FORMAT(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)), "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")
+                             AND r.competence_effective >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                             AND r.competence_effective < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH)
                         THEN r.amount
                         ELSE 0
                     END
@@ -86,7 +106,8 @@ final class DashboardRepository
                 (SELECT IFNULL(SUM(
                     CASE
                         WHEN r.status = "pago"
-                             AND DATE_FORMAT(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)), "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m")
+                             AND r.competence_effective >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                             AND r.competence_effective < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH)
                         THEN r.amount
                         ELSE 0
                     END

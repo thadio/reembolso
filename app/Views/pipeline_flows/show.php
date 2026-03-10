@@ -196,7 +196,7 @@ if (!is_string($diagramPayloadJson)) {
               <td class="actions-cell">
                 <details>
                   <summary>Editar etapa</summary>
-                  <form method="post" action="<?= e(url('/pipeline-flows/steps/upsert')) ?>" class="form-grid" style="margin-top:8px;">
+                  <form method="post" action="<?= e(url('/pipeline-flows/steps/upsert')) ?>" class="form-grid sp-top-sm">
                     <?= csrf_field() ?>
                     <input type="hidden" name="flow_id" value="<?= e((string) ((int) ($flow['id'] ?? 0))) ?>">
                     <input type="hidden" name="status_id" value="<?= e((string) $statusId) ?>">
@@ -276,7 +276,7 @@ if (!is_string($diagramPayloadJson)) {
     </div>
   <?php endif; ?>
 
-  <div class="card" style="margin-top: 14px;">
+  <div class="card sp-top-xl">
     <div class="header-row">
       <div>
         <h4>Adicionar etapa</h4>
@@ -462,7 +462,7 @@ if (!is_string($diagramPayloadJson)) {
                     <button type="submit" class="btn btn-outline">Salvar transição</button>
                   </div>
                 </form>
-                <form method="post" action="<?= e(url('/pipeline-flows/transitions/delete')) ?>" onsubmit="return confirm('Remover esta transição?');" style="margin-top:8px;">
+                <form method="post" action="<?= e(url('/pipeline-flows/transitions/delete')) ?>" onsubmit="return confirm('Remover esta transição?');" class="sp-top-sm">
                   <?= csrf_field() ?>
                   <input type="hidden" name="flow_id" value="<?= e((string) ((int) ($flow['id'] ?? 0))) ?>">
                   <input type="hidden" name="transition_id" value="<?= e((string) $transitionId) ?>">
@@ -476,7 +476,7 @@ if (!is_string($diagramPayloadJson)) {
     </div>
   <?php endif; ?>
 
-  <div class="card" style="margin-top: 14px;">
+  <div class="card sp-top-xl">
     <div class="header-row">
       <div>
         <h4>Adicionar transição</h4>

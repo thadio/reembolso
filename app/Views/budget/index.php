@@ -330,7 +330,7 @@ $yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ??
       <p>Sem dados para montar serie mensal de projecao.</p>
     </div>
   <?php else: ?>
-    <div class="table-wrap" style="margin-top:12px;">
+    <div class="table-wrap sp-top-lg">
       <table>
         <thead>
           <tr>
@@ -435,11 +435,11 @@ $yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ??
   </div>
 
   <?php if ($yearCycles === []): ?>
-    <div class="empty-state" style="margin-top: 12px;">
+    <div class="empty-state sp-top-lg">
       <p>Sem ciclos cadastrados para o ano selecionado.</p>
     </div>
   <?php else: ?>
-    <div class="table-wrap" style="margin-top: 12px;">
+    <div class="table-wrap sp-top-lg">
       <table>
         <thead>
           <tr>
@@ -484,7 +484,7 @@ $yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ??
           $year
       );
     ?>
-    <form method="post" action="<?= e(url('/budget/cycles/delete-year')) ?>" class="actions-cell" style="margin-top: 12px;" onsubmit="<?= e($deleteYearConfirmation) ?>">
+    <form method="post" action="<?= e(url('/budget/cycles/delete-year')) ?>" class="actions-cell sp-top-lg" onsubmit="<?= e($deleteYearConfirmation) ?>">
       <?= csrf_field() ?>
       <input type="hidden" name="year" value="<?= e((string) $year) ?>">
       <input type="hidden" name="financial_nature" value="<?= e($financialNature) ?>">
@@ -547,7 +547,7 @@ $yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ??
         <p>Nenhum ciclo anual de orcamento foi cadastrado ate o momento.</p>
       </div>
     <?php else: ?>
-      <div class="table-wrap" style="margin-top:12px;">
+      <div class="table-wrap sp-top-lg">
         <table>
           <thead>
             <tr>
@@ -605,7 +605,7 @@ $yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ??
                       name="cycle_total_budget"
                       value="<?= e($cycleTotalBudgetInput) ?>"
                       required
-                      style="max-width:160px;"
+                      class="w-max-160"
                     >
                     <button type="submit" class="btn btn-outline">Salvar</button>
                   </form>
@@ -775,7 +775,7 @@ $yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ??
         <p>Nenhuma regra de simulacao cadastrada para este ciclo.</p>
       </div>
     <?php else: ?>
-      <div class="table-wrap" style="margin-top:12px;">
+      <div class="table-wrap sp-top-lg">
         <table>
           <thead>
             <tr>
@@ -953,7 +953,7 @@ $yearMissingNatures = is_array($yearDependencies['missing_financial_natures'] ??
     </p>
 
     <?php if ($simulationMatrix !== []): ?>
-      <div class="table-wrap" style="margin-top:12px;">
+      <div class="table-wrap sp-top-lg">
         <table>
           <thead>
             <tr>

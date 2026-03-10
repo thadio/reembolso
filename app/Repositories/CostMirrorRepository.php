@@ -99,8 +99,15 @@ final class CostMirrorRepository
 
         $referenceMonth = trim((string) ($filters['reference_month'] ?? ''));
         if ($referenceMonth !== '') {
-            $where .= ' AND DATE_FORMAT(cm.reference_month, "%Y-%m") = :reference_month';
-            $params['reference_month'] = $referenceMonth;
+            $referenceRange = $this->monthRange($referenceMonth);
+            if ($referenceRange === null) {
+                $where .= ' AND 1 = 0';
+            } else {
+                $where .= ' AND cm.reference_month >= :reference_month_start
+                    AND cm.reference_month < :reference_month_end';
+                $params['reference_month_start'] = $referenceRange['start'];
+                $params['reference_month_end'] = $referenceRange['end'];
+            }
         }
 
         $countStmt = $this->db->prepare(
@@ -339,7 +346,12 @@ final class CostMirrorRepository
         }
 
         if ($referenceMonth !== null && trim($referenceMonth) !== '') {
-            $sql .= ' AND DATE_FORMAT(i.reference_month, "%Y-%m") = :reference_month';
+            $referenceRange = $this->monthRange($referenceMonth);
+            if ($referenceRange === null) {
+                return [];
+            }
+            $sql .= ' AND i.reference_month >= :reference_month_start
+                AND i.reference_month < :reference_month_end';
         }
 
         $sql .= ' ORDER BY i.reference_month DESC, i.due_date DESC, i.id DESC LIMIT :limit';
@@ -349,12 +361,36 @@ final class CostMirrorRepository
             $stmt->bindValue(':organ_id', $organId, PDO::PARAM_INT);
         }
         if ($referenceMonth !== null && trim($referenceMonth) !== '') {
-            $stmt->bindValue(':reference_month', $referenceMonth);
+            $referenceRange = $this->monthRange($referenceMonth);
+            if ($referenceRange === null) {
+                return [];
+            }
+            $stmt->bindValue(':reference_month_start', $referenceRange['start']);
+            $stmt->bindValue(':reference_month_end', $referenceRange['end']);
         }
         $stmt->bindValue(':limit', max(1, min(1000, $limit)), PDO::PARAM_INT);
         $stmt->execute();
 
         return $stmt->fetchAll();
+    }
+
+    /** @return array{start: string, end: string}|null */
+    private function monthRange(string $value): ?array
+    {
+        $month = trim($value);
+        if ($month === '' || preg_match('/^\d{4}-\d{2}$/', $month) !== 1) {
+            return null;
+        }
+
+        $start = \DateTimeImmutable::createFromFormat('!Y-m', $month);
+        if (!$start instanceof \DateTimeImmutable) {
+            return null;
+        }
+
+        return [
+            'start' => $start->format('Y-m-01'),
+            'end' => $start->modify('+1 month')->format('Y-m-01'),
+        ];
     }
 
     /** @return array<string, mixed>|null */

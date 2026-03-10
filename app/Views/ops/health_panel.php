@@ -235,7 +235,7 @@ $metricsSummary = static function (array $metrics): string {
 
     <?php $topMessages = is_array($logSeverity['top_messages'] ?? null) ? $logSeverity['top_messages'] : []; ?>
     <?php if ($topMessages !== []): ?>
-      <div class="table-wrap" style="margin-top: 12px;">
+      <div class="table-wrap sp-top-lg">
         <table>
           <thead>
             <tr>
@@ -269,7 +269,7 @@ $metricsSummary = static function (array $metrics): string {
   <p class="muted">Log da aplicacao: <?= e((string) ($appLog['path'] ?? '-')) ?></p>
 
   <?php if ($commands !== []): ?>
-    <div class="table-wrap" style="margin-top: 12px;">
+    <div class="table-wrap sp-top-lg">
       <table>
         <thead>
           <tr>

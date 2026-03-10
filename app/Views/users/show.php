@@ -69,7 +69,7 @@ $passwordRulesSummary = (string) ($passwordRulesSummary ?? '');
       </div>
     </div>
 
-    <div class="actions-inline" style="margin-bottom: 12px;">
+    <div class="actions-inline sp-bottom-lg">
       <form method="post" action="<?= e(url('/users/toggle-active')) ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="id" value="<?= e((string) ($user['id'] ?? 0)) ?>">

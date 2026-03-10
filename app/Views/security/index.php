@@ -18,17 +18,17 @@ $boolChecked = static function (mixed $value): string {
     </div>
   </div>
 
-  <div class="card" style="margin-top: 12px;">
+  <div class="card sp-top-lg">
     <p><strong>Regras atuais de senha:</strong> <?= e($passwordRulesSummary) ?></p>
     <?php if (!$canManage): ?>
       <p class="muted">Visualizacao em modo somente leitura. Solicite permissao <code>security.manage</code> para alterar.</p>
     <?php endif; ?>
   </div>
 
-  <form method="post" action="<?= e(url('/security/update')) ?>" class="form-grid" style="margin-top: 16px;">
+  <form method="post" action="<?= e(url('/security/update')) ?>" class="form-grid sp-top-lg">
     <?= csrf_field() ?>
 
-    <fieldset class="form-fieldset" style="grid-column: 1 / -1;">
+    <fieldset class="form-fieldset grid-full">
       <legend>Politica de senha</legend>
       <div class="form-grid">
         <div class="field">
@@ -76,7 +76,7 @@ $boolChecked = static function (mixed $value): string {
       </div>
     </fieldset>
 
-    <fieldset class="form-fieldset" style="grid-column: 1 / -1;">
+    <fieldset class="form-fieldset grid-full">
       <legend>Bloqueio de login</legend>
       <div class="form-grid">
         <div class="field">
@@ -96,7 +96,7 @@ $boolChecked = static function (mixed $value): string {
       </div>
     </fieldset>
 
-    <fieldset class="form-fieldset" style="grid-column: 1 / -1;">
+    <fieldset class="form-fieldset grid-full">
       <legend>Hardening de upload</legend>
       <div class="form-grid">
         <div class="field">
@@ -107,7 +107,7 @@ $boolChecked = static function (mixed $value): string {
     </fieldset>
 
     <?php if ($canManage): ?>
-      <div class="form-actions" style="grid-column: 1 / -1;">
+      <div class="form-actions grid-full">
         <button type="submit" class="btn btn-primary">Salvar configuracoes</button>
       </div>
     <?php endif; ?>
