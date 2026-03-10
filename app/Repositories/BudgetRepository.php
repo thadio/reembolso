@@ -469,16 +469,26 @@ final class BudgetRepository
                             CASE
                                 WHEN cpi.cost_type = "mensal"
                                      AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
-                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                     AND (
+                                        cpi.end_date IS NULL
+                                        OR cpi.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                     )
                                 THEN cpi.amount
                                 WHEN cpi.cost_type = "anual"
                                      AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
-                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                     AND (
+                                        cpi.end_date IS NULL
+                                        OR cpi.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                     )
                                 THEN cpi.amount / 12
                                 WHEN cpi.cost_type IN ("eventual", "unico")
                                      AND (
-                                        (cpi.start_date IS NOT NULL AND DATE_FORMAT(cpi.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
-                                        OR (cpi.start_date IS NULL AND DATE_FORMAT(cpi.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                                        (cpi.start_date IS NOT NULL
+                                         AND cpi.start_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                         AND cpi.start_date < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
+                                        OR (cpi.start_date IS NULL
+                                         AND cpi.created_at >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                         AND cpi.created_at < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
                                      )
                                 THEN cpi.amount
                                 ELSE 0
@@ -552,16 +562,26 @@ final class BudgetRepository
                             CASE
                                 WHEN cpi.cost_type = "mensal"
                                      AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
-                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                     AND (
+                                        cpi.end_date IS NULL
+                                        OR cpi.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                     )
                                 THEN cpi.amount
                                 WHEN cpi.cost_type = "anual"
                                      AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
-                                     AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                     AND (
+                                        cpi.end_date IS NULL
+                                        OR cpi.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                     )
                                 THEN cpi.amount / 12
                                 WHEN cpi.cost_type IN ("eventual", "unico")
                                      AND (
-                                        (cpi.start_date IS NOT NULL AND DATE_FORMAT(cpi.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
-                                        OR (cpi.start_date IS NULL AND DATE_FORMAT(cpi.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                                        (cpi.start_date IS NOT NULL
+                                         AND cpi.start_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                         AND cpi.start_date < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
+                                        OR (cpi.start_date IS NULL
+                                         AND cpi.created_at >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                         AND cpi.created_at < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
                                      )
                                 THEN cpi.amount
                                 ELSE 0
@@ -816,16 +836,26 @@ final class BudgetRepository
                         CASE
                             WHEN cpi.cost_type = "mensal"
                                  AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                 AND (
+                                    cpi.end_date IS NULL
+                                    OR cpi.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                 )
                             THEN cpi.amount
                             WHEN cpi.cost_type = "anual"
                                  AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(CURDATE()))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                                 AND (
+                                    cpi.end_date IS NULL
+                                    OR cpi.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                 )
                             THEN cpi.amount / 12
                             WHEN cpi.cost_type IN ("eventual", "unico")
                                  AND (
-                                    (cpi.start_date IS NOT NULL AND DATE_FORMAT(cpi.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
-                                    OR (cpi.start_date IS NULL AND DATE_FORMAT(cpi.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                                    (cpi.start_date IS NOT NULL
+                                     AND cpi.start_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                     AND cpi.start_date < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
+                                    OR (cpi.start_date IS NULL
+                                     AND cpi.created_at >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                                     AND cpi.created_at < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
                                  )
                             THEN cpi.amount
                             ELSE 0
@@ -848,6 +878,8 @@ final class BudgetRepository
     public function financialSnapshot(int $year, string $financialNature = 'despesa_reembolso'): array
     {
         $normalizedNature = $this->normalizeFinancialNature($financialNature);
+        $yearStart = sprintf('%04d-01-01', $year);
+        $yearEndExclusive = sprintf('%04d-01-01', $year + 1);
         $nextYear = $year + 1;
         $nextYearStart = sprintf('%04d-01-01', $nextYear);
         $nextYearEnd = sprintf('%04d-12-31', $nextYear);
@@ -860,27 +892,29 @@ final class BudgetRepository
                  WHERE p.deleted_at IS NULL
                    AND p.financial_nature = :financial_nature_paid_invoices
                    AND i.financial_nature = :financial_nature_paid_invoices_invoice
-                   AND YEAR(p.payment_date) = :year_paid_invoices) AS paid_invoices_amount,
+                   AND p.payment_date >= :year_start_paid_invoices
+                   AND p.payment_date < :year_end_paid_invoices) AS paid_invoices_amount,
                 (SELECT IFNULL(SUM(r.amount), 0)
                  FROM reimbursement_entries r
-                 INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                  WHERE r.deleted_at IS NULL
                    AND r.financial_nature = :financial_nature_paid_reimbursements
                    AND r.status = "pago"
-                   AND YEAR(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at))) = :year_paid_reimbursements) AS paid_reimbursements_amount,
+                   AND r.paid_competence_effective >= :year_start_paid_reimbursements
+                   AND r.paid_competence_effective < :year_end_paid_reimbursements) AS paid_reimbursements_amount,
                 (SELECT IFNULL(SUM(GREATEST(i.total_amount - i.paid_amount, 0)), 0)
                  FROM invoices i
                  WHERE i.deleted_at IS NULL
                    AND i.financial_nature = :financial_nature_committed_invoices
                    AND i.status <> "cancelado"
-                   AND YEAR(i.reference_month) = :year_committed_invoices) AS committed_invoices_amount,
+                   AND i.reference_month >= :year_start_committed_invoices
+                   AND i.reference_month < :year_end_committed_invoices) AS committed_invoices_amount,
                 (SELECT IFNULL(SUM(r.amount), 0)
                  FROM reimbursement_entries r
-                 INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                  WHERE r.deleted_at IS NULL
                    AND r.financial_nature = :financial_nature_committed_reimbursements
                    AND r.status = "pendente"
-                   AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :year_committed_reimbursements) AS committed_reimbursements_amount,
+                   AND r.competence_effective >= :year_start_committed_reimbursements
+                   AND r.competence_effective < :year_end_committed_reimbursements) AS committed_reimbursements_amount,
                 (SELECT IFNULL(SUM(
                     CASE
                         WHEN cpi.cost_type = "mensal"
@@ -908,13 +942,17 @@ final class BudgetRepository
         $stmt->execute([
             'financial_nature_paid_invoices' => $normalizedNature,
             'financial_nature_paid_invoices_invoice' => $normalizedNature,
-            'year_paid_invoices' => $year,
+            'year_start_paid_invoices' => $yearStart,
+            'year_end_paid_invoices' => $yearEndExclusive,
             'financial_nature_paid_reimbursements' => $normalizedNature,
-            'year_paid_reimbursements' => $year,
+            'year_start_paid_reimbursements' => $yearStart,
+            'year_end_paid_reimbursements' => $yearEndExclusive,
             'financial_nature_committed_invoices' => $normalizedNature,
-            'year_committed_invoices' => $year,
+            'year_start_committed_invoices' => $yearStart,
+            'year_end_committed_invoices' => $yearEndExclusive,
             'financial_nature_committed_reimbursements' => $normalizedNature,
-            'year_committed_reimbursements' => $year,
+            'year_start_committed_reimbursements' => $yearStart,
+            'year_end_committed_reimbursements' => $yearEndExclusive,
             'next_year_start_mensal_cost' => $nextYearStart,
             'next_year_end_mensal_cost' => $nextYearEnd,
             'next_year_start_mensal_assignment' => $nextYearStart,
@@ -938,6 +976,9 @@ final class BudgetRepository
         $yearLiteral = (int) $year;
         $monthStartExpr = 'STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")';
         $monthEndExpr = 'LAST_DAY(' . $monthStartExpr . ')';
+        $monthNextExpr = 'DATE_ADD(' . $monthStartExpr . ', INTERVAL 1 MONTH)';
+        $yearStart = sprintf('%04d-01-01', $year);
+        $yearEndExclusive = sprintf('%04d-01-01', $year + 1);
 
         $stmt = $this->db->prepare(
             'SELECT
@@ -955,19 +996,21 @@ final class BudgetRepository
                     WHERE p.deleted_at IS NULL
                       AND p.financial_nature = :projection_financial_nature_exec_payments
                       AND i.financial_nature = :projection_financial_nature_exec_payments_invoice
-                      AND YEAR(p.payment_date) = :projection_year_exec_payments
+                      AND p.payment_date >= :projection_year_start_exec_payments
+                      AND p.payment_date < :projection_year_end_exec_payments
                     GROUP BY MONTH(p.payment_date)
 
                     UNION ALL
 
-                    SELECT MONTH(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at))) AS month_number, SUM(r.amount) AS amount
+                    SELECT MONTH(r.paid_competence_effective) AS month_number, SUM(r.amount) AS amount
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
                       AND r.financial_nature = :projection_financial_nature_exec_reimbursement
                       AND r.status = "pago"
-                      AND YEAR(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at))) = :projection_year_exec_reimbursement
-                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.paid_at), DATE(r.created_at)))
+                      AND r.paid_competence_effective >= :projection_year_start_exec_reimbursement
+                      AND r.paid_competence_effective < :projection_year_end_exec_reimbursement
+                    GROUP BY MONTH(r.paid_competence_effective)
                 ) src
                 GROUP BY src.month_number
              ) exec_tot ON exec_tot.month_number = m.month_number
@@ -979,19 +1022,21 @@ final class BudgetRepository
                     WHERE i.deleted_at IS NULL
                       AND i.financial_nature = :projection_financial_nature_committed_invoices
                       AND i.status <> "cancelado"
-                      AND YEAR(i.reference_month) = :projection_year_committed_invoices
+                      AND i.reference_month >= :projection_year_start_committed_invoices
+                      AND i.reference_month < :projection_year_end_committed_invoices
                     GROUP BY MONTH(i.reference_month)
 
                     UNION ALL
 
-                    SELECT MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) AS month_number, SUM(r.amount) AS amount
+                    SELECT MONTH(r.competence_effective) AS month_number, SUM(r.amount) AS amount
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
                       AND r.financial_nature = :projection_financial_nature_committed_reimbursement
                       AND r.status = "pendente"
-                      AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :projection_year_committed_reimbursement
-                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at)))
+                      AND r.competence_effective >= :projection_year_start_committed_reimbursement
+                      AND r.competence_effective < :projection_year_end_committed_reimbursement
+                    GROUP BY MONTH(r.competence_effective)
                 ) src
                 GROUP BY src.month_number
              ) comm_tot ON comm_tot.month_number = m.month_number
@@ -1013,7 +1058,14 @@ final class BudgetRepository
                                  AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')
                             THEN cpi.amount / 12
                             WHEN cpi.cost_type IN ("eventual", "unico")
-                                 AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(' . $monthStartExpr . ', "%Y-%m")
+                                 AND (
+                                    (cpi.start_date IS NOT NULL
+                                     AND cpi.start_date >= ' . $monthStartExpr . '
+                                     AND cpi.start_date < ' . $monthNextExpr . ')
+                                    OR (cpi.start_date IS NULL
+                                     AND cpi.created_at >= ' . $monthStartExpr . '
+                                     AND cpi.created_at < ' . $monthNextExpr . ')
+                                 )
                                  AND (COALESCE(a.effective_start_date, a.target_start_date) IS NULL OR COALESCE(a.effective_start_date, a.target_start_date) <= ' . $monthEndExpr . ')
                                  AND (COALESCE(a.effective_end_date, a.requested_end_date) IS NULL OR COALESCE(a.effective_end_date, a.requested_end_date) >= ' . $monthStartExpr . ')
                             THEN cpi.amount
@@ -1033,13 +1085,17 @@ final class BudgetRepository
         $stmt->execute([
             'projection_financial_nature_exec_payments' => $normalizedNature,
             'projection_financial_nature_exec_payments_invoice' => $normalizedNature,
-            'projection_year_exec_payments' => $year,
+            'projection_year_start_exec_payments' => $yearStart,
+            'projection_year_end_exec_payments' => $yearEndExclusive,
             'projection_financial_nature_exec_reimbursement' => $normalizedNature,
-            'projection_year_exec_reimbursement' => $year,
+            'projection_year_start_exec_reimbursement' => $yearStart,
+            'projection_year_end_exec_reimbursement' => $yearEndExclusive,
             'projection_financial_nature_committed_invoices' => $normalizedNature,
-            'projection_year_committed_invoices' => $year,
+            'projection_year_start_committed_invoices' => $yearStart,
+            'projection_year_end_committed_invoices' => $yearEndExclusive,
             'projection_financial_nature_committed_reimbursement' => $normalizedNature,
-            'projection_year_committed_reimbursement' => $year,
+            'projection_year_start_committed_reimbursement' => $yearStart,
+            'projection_year_end_committed_reimbursement' => $yearEndExclusive,
         ]);
 
         return $stmt->fetchAll();

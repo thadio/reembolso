@@ -320,15 +320,15 @@ $decodeRunSummary = static function (mixed $payload): array {
               </td>
               <?php if ($canManage): ?>
                 <td>
-                  <input
-                    form="<?= e($formId) ?>"
-                    type="number"
-                    name="retention_days"
-                    min="0"
-                    max="3650"
-                    value="<?= e((string) ((int) ($policy['retention_days'] ?? 0))) ?>"
-                    style="max-width: 120px;"
-                  >
+                    <input
+                      form="<?= e($formId) ?>"
+                      type="number"
+                      name="retention_days"
+                      min="0"
+                      max="3650"
+                      value="<?= e((string) ((int) ($policy['retention_days'] ?? 0))) ?>"
+                      class="w-max-120"
+                    >
                 </td>
                 <td>
                     <?php if ($supportsAnonymization): ?>
@@ -339,7 +339,7 @@ $decodeRunSummary = static function (mixed $payload): array {
                         min="1"
                         max="3650"
                         value="<?= e((string) ((int) ($policy['anonymize_after_days'] ?? 0))) ?>"
-                        style="max-width: 120px;"
+                        class="w-max-120"
                       >
                     <?php else: ?>
                       <span class="muted">N/A</span>
@@ -347,7 +347,7 @@ $decodeRunSummary = static function (mixed $payload): array {
                     <?php endif; ?>
                 </td>
                 <td>
-                    <select form="<?= e($formId) ?>" name="is_active" style="max-width: 130px;">
+                    <select form="<?= e($formId) ?>" name="is_active" class="w-max-130">
                       <option value="1" <?= $isActive ? 'selected' : '' ?>>Ativa</option>
                       <option value="0" <?= !$isActive ? 'selected' : '' ?>>Inativa</option>
                     </select>
@@ -382,7 +382,7 @@ $decodeRunSummary = static function (mixed $payload): array {
   <?php endif; ?>
 
   <?php if ($canManage): ?>
-    <div class="header-row" style="margin-top: 16px;">
+    <div class="header-row sp-top-xl">
       <div>
         <h4>Executar rotina LGPD</h4>
         <p class="muted">Use preview para validar os volumes antes da aplicacao definitiva.</p>
@@ -454,6 +454,6 @@ $decodeRunSummary = static function (mixed $payload): array {
   <?php endif; ?>
 
   <?php if (is_array($latestRun)): ?>
-    <p class="muted" style="margin-top: 10px;">Ultima execucao: <?= e($formatDateTime((string) ($latestRun['created_at'] ?? ''))) ?> (<?= e((string) ($latestRun['run_mode'] ?? '-')) ?>).</p>
+    <p class="muted sp-top-md">Ultima execucao: <?= e($formatDateTime((string) ($latestRun['created_at'] ?? ''))) ?> (<?= e((string) ($latestRun['run_mode'] ?? '-')) ?>).</p>
   <?php endif; ?>
 </div>

@@ -146,16 +146,26 @@ final class PeopleRepository
         $monthlyEquivalentExpr = 'CASE
             WHEN i.cost_type = "mensal"
                  AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
-                 AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                 AND (
+                    i.end_date IS NULL
+                    OR i.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                 )
             THEN i.amount
             WHEN i.cost_type = "anual"
                  AND (i.start_date IS NULL OR i.start_date <= LAST_DAY(CURDATE()))
-                 AND (i.end_date IS NULL OR i.end_date >= DATE_FORMAT(CURDATE(), "%Y-%m-01"))
+                 AND (
+                    i.end_date IS NULL
+                    OR i.end_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                 )
             THEN i.amount / 12
             WHEN i.cost_type IN ("eventual", "unico")
                  AND (
-                    (i.start_date IS NOT NULL AND DATE_FORMAT(i.start_date, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
-                    OR (i.start_date IS NULL AND DATE_FORMAT(i.created_at, "%Y-%m") = DATE_FORMAT(CURDATE(), "%Y-%m"))
+                    (i.start_date IS NOT NULL
+                     AND i.start_date >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                     AND i.start_date < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
+                    OR (i.start_date IS NULL
+                     AND i.created_at >= DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY)
+                     AND i.created_at < DATE_ADD(DATE_SUB(CURDATE(), INTERVAL DAYOFMONTH(CURDATE()) - 1 DAY), INTERVAL 1 MONTH))
                  )
             THEN i.amount
             ELSE 0

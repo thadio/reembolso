@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 $passwordRulesSummary = (string) ($passwordRulesSummary ?? '');
 ?>
-<div class="card" style="max-width: 720px;">
+<div class="card w-max-720">
   <div class="header-row">
     <div>
       <p class="muted">Atualize sua senha de acesso com validacao da senha atual.</p>

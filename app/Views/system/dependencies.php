@@ -50,7 +50,7 @@ foreach (['name', 'title', 'code'] as $candidate) {
     </div>
   </div>
 
-  <form method="get" action="<?= e(url('/integrity/dependencies')) ?>" class="form-grid" style="margin-top: 12px;">
+  <form method="get" action="<?= e(url('/integrity/dependencies')) ?>" class="form-grid sp-top-lg">
     <div class="field field-wide">
       <label for="entity">Entidade</label>
       <select id="entity" name="entity" required>
@@ -91,7 +91,7 @@ foreach (['name', 'title', 'code'] as $candidate) {
       <p>Nenhuma entidade mapeada para diagnostico.</p>
     </div>
   <?php else: ?>
-    <div class="table-wrap" style="margin-top: 12px;">
+    <div class="table-wrap sp-top-lg">
       <table>
         <thead>
           <tr>
@@ -147,7 +147,7 @@ foreach (['name', 'title', 'code'] as $candidate) {
         </p>
       </div>
     <?php else: ?>
-      <p class="muted" style="margin-bottom: 10px;">
+      <p class="muted sp-bottom-md">
         Entidade <strong><?= e((string) ($inspectionEntity['label'] ?? '')) ?></strong>
         · ID <strong><?= e((string) ($inspectionRecord['id'] ?? '-')) ?></strong>
         <?php if ($recordLabel !== ''): ?>
@@ -175,11 +175,11 @@ foreach (['name', 'title', 'code'] as $candidate) {
       </div>
 
       <?php if ($inspectionDependencies === []): ?>
-        <div class="empty-state" style="margin-top: 12px;">
+        <div class="empty-state sp-top-lg">
           <p>Sem dependencias FK recebidas para este registro.</p>
         </div>
       <?php else: ?>
-        <div class="table-wrap" style="margin-top: 12px;">
+        <div class="table-wrap sp-top-lg">
           <table>
             <thead>
               <tr>
@@ -216,7 +216,7 @@ foreach (['name', 'title', 'code'] as $candidate) {
         </div>
       <?php endif; ?>
 
-      <div class="actions-cell" style="margin-top: 12px;">
+      <div class="actions-cell sp-top-lg">
         <?php if (is_string($inspectionEntity['list_path'] ?? null) && (string) $inspectionEntity['list_path'] !== ''): ?>
           <a class="btn btn-outline" href="<?= e(url((string) $inspectionEntity['list_path'])) ?>">Abrir lista da entidade</a>
         <?php endif; ?>

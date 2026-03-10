@@ -1472,6 +1472,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           consumedRows[rowId] = true;
           return;
         }
+        row.removeAttribute('title');
 
         var metric = rowMetrics[rowId];
         if (!metric) {
@@ -3267,7 +3268,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                     $adjustmentAmountMem = (float) ($entryCalculation['adjustment_amount'] ?? 0);
                     $totalMem = (float) ($entryCalculation['total'] ?? 0);
                   ?>
-                  <details style="margin-top:8px;">
+                  <details class="sp-top-sm">
                     <summary>Memória de cálculo</summary>
                     <div class="muted">
                       Base <?= e($formatMoney($base)) ?> + Transporte <?= e($formatMoney($transporte)) ?> + Hospedagem <?= e($formatMoney($hospedagem)) ?> + Alimentação <?= e($formatMoney($alimentacao)) ?> + Outros <?= e($formatMoney($outros)) ?>
@@ -3536,7 +3537,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
             <input id="reimbursement_title" name="title" type="text" minlength="3" maxlength="190" required placeholder="Ex.: Boleto órgão de origem - março/2026">
           </div>
           <div class="field field-wide">
-            <label for="reimbursement_use_calculator" style="display:flex; align-items:center; gap:8px;">
+            <label for="reimbursement_use_calculator" class="inline-check">
               <input id="reimbursement_use_calculator" name="use_calculator" type="checkbox" value="1">
               Usar calculadora automática com memória de cálculo
             </label>
@@ -3601,7 +3602,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     </details>
   <?php endif; ?>
 
-  <div style="margin-top: 14px;">
+  <div class="sp-top-xl">
     <h4>Memórias de cálculo recentes</h4>
     <?php if ($reimbursementCalculationMemories === []): ?>
       <p class="muted">Nenhuma memória de cálculo registrada.</p>
@@ -3696,7 +3697,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           </select>
         </div>
         <div class="field">
-          <label for="process_comment_pinned" style="display:flex; align-items:center; gap:8px;">
+          <label for="process_comment_pinned" class="inline-check">
             <input type="hidden" name="is_pinned" value="0">
             <input id="process_comment_pinned" name="is_pinned" type="checkbox" value="1">
             Fixar comentario no topo
@@ -3759,7 +3760,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                   </select>
                 </div>
                 <div class="field">
-                  <label for="comment_pinned_<?= e((string) $commentId) ?>" style="display:flex; align-items:center; gap:8px;">
+                  <label for="comment_pinned_<?= e((string) $commentId) ?>" class="inline-check">
                     <input type="hidden" name="is_pinned" value="0">
                     <input id="comment_pinned_<?= e((string) $commentId) ?>" name="is_pinned" type="checkbox" value="1" <?= $isPinned ? 'checked' : '' ?>>
                     Fixado
@@ -3897,7 +3898,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
           <input id="admin_timeline_note_event_at" name="event_at" type="datetime-local" value="<?= e(date('Y-m-d\TH:i')) ?>">
         </div>
         <div class="field">
-          <label for="admin_timeline_note_pinned" style="display:flex; align-items:center; gap:8px;">
+          <label for="admin_timeline_note_pinned" class="inline-check">
             <input type="hidden" name="is_pinned" value="0">
             <input id="admin_timeline_note_pinned" name="is_pinned" type="checkbox" value="1">
             Fixar na timeline
@@ -4005,7 +4006,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                   <input id="admin_timeline_event_at_<?= e((string) $entryNoteId) ?>" name="event_at" type="datetime-local" value="<?= e($entryEventAtInput) ?>">
                 </div>
                 <div class="field">
-                  <label for="admin_timeline_pinned_<?= e((string) $entryNoteId) ?>" style="display:flex; align-items:center; gap:8px;">
+                  <label for="admin_timeline_pinned_<?= e((string) $entryNoteId) ?>" class="inline-check">
                     <input type="hidden" name="is_pinned" value="0">
                     <input id="admin_timeline_pinned_<?= e((string) $entryNoteId) ?>" name="is_pinned" type="checkbox" value="1" <?= $entryIsPinned ? 'checked' : '' ?>>
                     Fixado

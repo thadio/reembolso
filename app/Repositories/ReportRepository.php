@@ -221,14 +221,15 @@ final class ReportRepository
     public function financialDataset(array $filters): array
     {
         $year = (int) ($filters['year'] ?? (int) date('Y'));
-        $monthFrom = (int) ($filters['month_from'] ?? 1);
-        $monthTo = (int) ($filters['month_to'] ?? 12);
+        $monthFrom = max(1, min(12, (int) ($filters['month_from'] ?? 1)));
+        $monthTo = max(1, min(12, (int) ($filters['month_to'] ?? 12)));
         $organId = (int) ($filters['organ_id'] ?? 0);
 
-        $forecastMap = $this->forecastByMonth($year, $organId);
-        $effectiveMap = $this->effectiveByMonth($year, $organId);
-        $paidMap = $this->paidByMonth($year, $organId);
-        $payableMap = $this->payableByMonth($year, $organId);
+        if ($monthFrom > $monthTo) {
+            [$monthFrom, $monthTo] = [$monthTo, $monthFrom];
+        }
+
+        $snapshotByMonth = $this->ensureFinancialSnapshotRows($year, $organId);
 
         $months = [];
         $forecastTotal = 0.0;
@@ -237,10 +238,11 @@ final class ReportRepository
         $payableTotal = 0.0;
 
         for ($month = $monthFrom; $month <= $monthTo; $month++) {
-            $forecast = (float) ($forecastMap[$month] ?? 0.0);
-            $effective = (float) ($effectiveMap[$month] ?? 0.0);
-            $paid = (float) ($paidMap[$month] ?? 0.0);
-            $payable = (float) ($payableMap[$month] ?? 0.0);
+            $snapshot = $snapshotByMonth[$month] ?? [];
+            $forecast = (float) ($snapshot['forecast_amount'] ?? 0.0);
+            $effective = (float) ($snapshot['effective_amount'] ?? 0.0);
+            $paid = (float) ($snapshot['paid_amount'] ?? 0.0);
+            $payable = (float) ($snapshot['payable_amount'] ?? 0.0);
 
             $forecastTotal += $forecast;
             $effectiveTotal += $effective;
@@ -283,14 +285,15 @@ final class ReportRepository
     public function financialStatusDataset(array $filters): array
     {
         $year = (int) ($filters['year'] ?? (int) date('Y'));
-        $monthFrom = (int) ($filters['month_from'] ?? 1);
-        $monthTo = (int) ($filters['month_to'] ?? 12);
+        $monthFrom = max(1, min(12, (int) ($filters['month_from'] ?? 1)));
+        $monthTo = max(1, min(12, (int) ($filters['month_to'] ?? 12)));
         $organId = (int) ($filters['organ_id'] ?? 0);
 
-        $openMap = $this->openFinancialStatusByMonth($year, $organId);
-        $overdueMap = $this->overdueFinancialStatusByMonth($year, $organId);
-        $paidMap = $this->paidFinancialStatusByMonth($year, $organId);
-        $reconciledMap = $this->reconciledFinancialStatusByMonth($year, $organId);
+        if ($monthFrom > $monthTo) {
+            [$monthFrom, $monthTo] = [$monthTo, $monthFrom];
+        }
+
+        $snapshotByMonth = $this->ensureFinancialSnapshotRows($year, $organId);
 
         $months = [];
         $openCountTotal = 0;
@@ -303,14 +306,15 @@ final class ReportRepository
         $reconciledAmountTotal = 0.0;
 
         for ($month = $monthFrom; $month <= $monthTo; $month++) {
-            $openCount = max(0, (int) ($openMap[$month]['count'] ?? 0));
-            $openAmount = max(0.0, (float) ($openMap[$month]['amount'] ?? 0.0));
-            $overdueCount = max(0, (int) ($overdueMap[$month]['count'] ?? 0));
-            $overdueAmount = max(0.0, (float) ($overdueMap[$month]['amount'] ?? 0.0));
-            $paidCount = max(0, (int) ($paidMap[$month]['count'] ?? 0));
-            $paidAmount = max(0.0, (float) ($paidMap[$month]['amount'] ?? 0.0));
-            $reconciledCount = max(0, (int) ($reconciledMap[$month]['count'] ?? 0));
-            $reconciledAmount = max(0.0, (float) ($reconciledMap[$month]['amount'] ?? 0.0));
+            $snapshot = $snapshotByMonth[$month] ?? [];
+            $openCount = max(0, (int) ($snapshot['open_count'] ?? 0));
+            $openAmount = max(0.0, (float) ($snapshot['open_amount'] ?? 0.0));
+            $overdueCount = max(0, (int) ($snapshot['overdue_count'] ?? 0));
+            $overdueAmount = max(0.0, (float) ($snapshot['overdue_amount'] ?? 0.0));
+            $paidCount = max(0, (int) ($snapshot['paid_count'] ?? 0));
+            $paidAmount = max(0.0, (float) ($snapshot['paid_status_amount'] ?? 0.0));
+            $reconciledCount = max(0, (int) ($snapshot['reconciled_count'] ?? 0));
+            $reconciledAmount = max(0.0, (float) ($snapshot['reconciled_amount'] ?? 0.0));
 
             $openCountTotal += $openCount;
             $openAmountTotal += $openAmount;
@@ -538,6 +542,7 @@ final class ReportRepository
                 a.id,
                 a.entity,
                 a.entity_id,
+                a.scope_organ_id,
                 a.action,
                 a.before_data,
                 a.after_data,
@@ -814,21 +819,31 @@ final class ReportRepository
     private function forecastByMonth(int $year, int $organId): array
     {
         $yearLiteral = max(2000, min(2100, $year));
+        $monthStartExpr = 'STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")';
+        $monthEndExpr = 'LAST_DAY(' . $monthStartExpr . ')';
+        $monthNextExpr = 'DATE_ADD(' . $monthStartExpr . ', INTERVAL 1 MONTH)';
 
         $sql = 'SELECT
                     mm.month_number,
                     IFNULL(SUM(
                         CASE
                             WHEN cpi.cost_type = "mensal"
-                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= ' . $monthEndExpr . ')
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= ' . $monthStartExpr . ')
                             THEN cpi.amount
                             WHEN cpi.cost_type = "anual"
-                                 AND (cpi.start_date IS NULL OR cpi.start_date <= LAST_DAY(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d")))
-                                 AND (cpi.end_date IS NULL OR cpi.end_date >= STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"))
+                                 AND (cpi.start_date IS NULL OR cpi.start_date <= ' . $monthEndExpr . ')
+                                 AND (cpi.end_date IS NULL OR cpi.end_date >= ' . $monthStartExpr . ')
                             THEN cpi.amount / 12
                             WHEN cpi.cost_type IN ("eventual", "unico")
-                                 AND DATE_FORMAT(COALESCE(cpi.start_date, DATE(cpi.created_at)), "%Y-%m") = DATE_FORMAT(STR_TO_DATE(CONCAT(' . $yearLiteral . ', "-", LPAD(mm.month_number, 2, "0"), "-01"), "%Y-%m-%d"), "%Y-%m")
+                                 AND (
+                                    (cpi.start_date IS NOT NULL
+                                     AND cpi.start_date >= ' . $monthStartExpr . '
+                                     AND cpi.start_date < ' . $monthNextExpr . ')
+                                    OR (cpi.start_date IS NULL
+                                     AND cpi.created_at >= ' . $monthStartExpr . '
+                                     AND cpi.created_at < ' . $monthNextExpr . ')
+                                 )
                             THEN cpi.amount
                             ELSE 0
                         END
@@ -857,31 +872,37 @@ final class ReportRepository
     /** @return array<int, float> */
     private function effectiveByMonth(int $year, int $organId): array
     {
+        $range = $this->yearRange($year);
+
         $sql = 'SELECT src.month_number, SUM(src.amount) AS total
                 FROM (
                     SELECT MONTH(i.reference_month) AS month_number, SUM(i.total_amount) AS amount
                     FROM invoices i
                     WHERE i.deleted_at IS NULL
                       AND i.status <> "cancelado"
-                      AND YEAR(i.reference_month) = :year_invoices'
+                      AND i.reference_month >= :year_start_invoices
+                      AND i.reference_month < :year_end_invoices'
                     . ($organId > 0 ? ' AND i.organ_id = :organ_id_invoices' : '') . '
                     GROUP BY MONTH(i.reference_month)
 
                     UNION ALL
 
-                    SELECT MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) AS month_number, SUM(r.amount) AS amount
+                    SELECT MONTH(r.competence_effective) AS month_number, SUM(r.amount) AS amount
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
-                      AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :year_reimbursement'
+                      AND r.competence_effective >= :year_start_reimbursement
+                      AND r.competence_effective < :year_end_reimbursement'
                     . ($organId > 0 ? ' AND pe.organ_id = :organ_id_reimbursement' : '') . '
-                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at)))
+                    GROUP BY MONTH(r.competence_effective)
                 ) src
                 GROUP BY src.month_number';
 
         $params = [
-            'year_invoices' => $year,
-            'year_reimbursement' => $year,
+            'year_start_invoices' => $range['start'],
+            'year_end_invoices' => $range['end_exclusive'],
+            'year_start_reimbursement' => $range['start'],
+            'year_end_reimbursement' => $range['end_exclusive'],
         ];
 
         if ($organId > 0) {
@@ -898,32 +919,38 @@ final class ReportRepository
     /** @return array<int, float> */
     private function paidByMonth(int $year, int $organId): array
     {
+        $range = $this->yearRange($year);
+
         $sql = 'SELECT src.month_number, SUM(src.amount) AS total
                 FROM (
                     SELECT MONTH(pmt.payment_date) AS month_number, SUM(pmt.amount) AS amount
                     FROM payments pmt
                     INNER JOIN invoices i ON i.id = pmt.invoice_id AND i.deleted_at IS NULL
                     WHERE pmt.deleted_at IS NULL
-                      AND YEAR(pmt.payment_date) = :year_payments'
+                      AND pmt.payment_date >= :year_start_payments
+                      AND pmt.payment_date < :year_end_payments'
                     . ($organId > 0 ? ' AND i.organ_id = :organ_id_payments' : '') . '
                     GROUP BY MONTH(pmt.payment_date)
 
                     UNION ALL
 
-                    SELECT MONTH(COALESCE(DATE(r.paid_at), r.reference_month, DATE(r.created_at))) AS month_number, SUM(r.amount) AS amount
+                    SELECT MONTH(r.paid_competence_effective) AS month_number, SUM(r.amount) AS amount
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
                       AND r.status = "pago"
-                      AND YEAR(COALESCE(DATE(r.paid_at), r.reference_month, DATE(r.created_at))) = :year_reimbursement_paid'
+                      AND r.paid_competence_effective >= :year_start_reimbursement_paid
+                      AND r.paid_competence_effective < :year_end_reimbursement_paid'
                     . ($organId > 0 ? ' AND pe.organ_id = :organ_id_reimbursement_paid' : '') . '
-                    GROUP BY MONTH(COALESCE(DATE(r.paid_at), r.reference_month, DATE(r.created_at)))
+                    GROUP BY MONTH(r.paid_competence_effective)
                 ) src
                 GROUP BY src.month_number';
 
         $params = [
-            'year_payments' => $year,
-            'year_reimbursement_paid' => $year,
+            'year_start_payments' => $range['start'],
+            'year_end_payments' => $range['end_exclusive'],
+            'year_start_reimbursement_paid' => $range['start'],
+            'year_end_reimbursement_paid' => $range['end_exclusive'],
         ];
 
         if ($organId > 0) {
@@ -940,32 +967,38 @@ final class ReportRepository
     /** @return array<int, float> */
     private function payableByMonth(int $year, int $organId): array
     {
+        $range = $this->yearRange($year);
+
         $sql = 'SELECT src.month_number, SUM(src.amount) AS total
                 FROM (
                     SELECT MONTH(i.reference_month) AS month_number, SUM(GREATEST(i.total_amount - i.paid_amount, 0)) AS amount
                     FROM invoices i
                     WHERE i.deleted_at IS NULL
                       AND i.status <> "cancelado"
-                      AND YEAR(i.reference_month) = :year_invoices'
+                      AND i.reference_month >= :year_start_invoices
+                      AND i.reference_month < :year_end_invoices'
                     . ($organId > 0 ? ' AND i.organ_id = :organ_id_invoices' : '') . '
                     GROUP BY MONTH(i.reference_month)
 
                     UNION ALL
 
-                    SELECT MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) AS month_number, SUM(r.amount) AS amount
+                    SELECT MONTH(r.competence_effective) AS month_number, SUM(r.amount) AS amount
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
                       AND r.status <> "pago"
-                      AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :year_reimbursement'
+                      AND r.competence_effective >= :year_start_reimbursement
+                      AND r.competence_effective < :year_end_reimbursement'
                     . ($organId > 0 ? ' AND pe.organ_id = :organ_id_reimbursement' : '') . '
-                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at)))
+                    GROUP BY MONTH(r.competence_effective)
                 ) src
                 GROUP BY src.month_number';
 
         $params = [
-            'year_invoices' => $year,
-            'year_reimbursement' => $year,
+            'year_start_invoices' => $range['start'],
+            'year_end_invoices' => $range['end_exclusive'],
+            'year_start_reimbursement' => $range['start'],
+            'year_end_reimbursement' => $range['end_exclusive'],
         ];
 
         if ($organId > 0) {
@@ -982,6 +1015,8 @@ final class ReportRepository
     /** @return array<int, array{count: int, amount: float}> */
     private function openFinancialStatusByMonth(int $year, int $organId): array
     {
+        $range = $this->yearRange($year);
+
         $sql = 'SELECT src.month_number, SUM(src.item_count) AS total_count, SUM(src.amount_total) AS total_amount
                 FROM (
                     SELECT
@@ -992,14 +1027,15 @@ final class ReportRepository
                     WHERE i.deleted_at IS NULL
                       AND i.status IN ("aberto", "pago_parcial")
                       AND (i.due_date IS NULL OR i.due_date >= CURDATE())
-                      AND YEAR(i.reference_month) = :year_invoices'
+                      AND i.reference_month >= :year_start_invoices
+                      AND i.reference_month < :year_end_invoices'
                     . ($organId > 0 ? ' AND i.organ_id = :organ_id_invoices' : '') . '
                     GROUP BY MONTH(i.reference_month)
 
                     UNION ALL
 
                     SELECT
-                        MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) AS month_number,
+                        MONTH(r.competence_effective) AS month_number,
                         COUNT(*) AS item_count,
                         IFNULL(SUM(r.amount), 0) AS amount_total
                     FROM reimbursement_entries r
@@ -1007,15 +1043,18 @@ final class ReportRepository
                     WHERE r.deleted_at IS NULL
                       AND r.status = "pendente"
                       AND (r.due_date IS NULL OR r.due_date >= CURDATE())
-                      AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :year_reimbursement'
+                      AND r.competence_effective >= :year_start_reimbursement
+                      AND r.competence_effective < :year_end_reimbursement'
                     . ($organId > 0 ? ' AND pe.organ_id = :organ_id_reimbursement' : '') . '
-                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at)))
+                    GROUP BY MONTH(r.competence_effective)
                 ) src
                 GROUP BY src.month_number';
 
         $params = [
-            'year_invoices' => $year,
-            'year_reimbursement' => $year,
+            'year_start_invoices' => $range['start'],
+            'year_end_invoices' => $range['end_exclusive'],
+            'year_start_reimbursement' => $range['start'],
+            'year_end_reimbursement' => $range['end_exclusive'],
         ];
 
         if ($organId > 0) {
@@ -1032,6 +1071,8 @@ final class ReportRepository
     /** @return array<int, array{count: int, amount: float}> */
     private function overdueFinancialStatusByMonth(int $year, int $organId): array
     {
+        $range = $this->yearRange($year);
+
         $sql = 'SELECT src.month_number, SUM(src.item_count) AS total_count, SUM(src.amount_total) AS total_amount
                 FROM (
                     SELECT
@@ -1046,14 +1087,15 @@ final class ReportRepository
                         i.status = "vencido"
                         OR (i.due_date IS NOT NULL AND i.due_date < CURDATE())
                       )
-                      AND YEAR(i.reference_month) = :year_invoices'
+                      AND i.reference_month >= :year_start_invoices
+                      AND i.reference_month < :year_end_invoices'
                     . ($organId > 0 ? ' AND i.organ_id = :organ_id_invoices' : '') . '
                     GROUP BY MONTH(i.reference_month)
 
                     UNION ALL
 
                     SELECT
-                        MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) AS month_number,
+                        MONTH(r.competence_effective) AS month_number,
                         COUNT(*) AS item_count,
                         IFNULL(SUM(r.amount), 0) AS amount_total
                     FROM reimbursement_entries r
@@ -1062,15 +1104,18 @@ final class ReportRepository
                       AND r.status = "pendente"
                       AND r.due_date IS NOT NULL
                       AND r.due_date < CURDATE()
-                      AND YEAR(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at))) = :year_reimbursement'
+                      AND r.competence_effective >= :year_start_reimbursement
+                      AND r.competence_effective < :year_end_reimbursement'
                     . ($organId > 0 ? ' AND pe.organ_id = :organ_id_reimbursement' : '') . '
-                    GROUP BY MONTH(COALESCE(r.reference_month, DATE(r.due_date), DATE(r.created_at)))
+                    GROUP BY MONTH(r.competence_effective)
                 ) src
                 GROUP BY src.month_number';
 
         $params = [
-            'year_invoices' => $year,
-            'year_reimbursement' => $year,
+            'year_start_invoices' => $range['start'],
+            'year_end_invoices' => $range['end_exclusive'],
+            'year_start_reimbursement' => $range['start'],
+            'year_end_reimbursement' => $range['end_exclusive'],
         ];
 
         if ($organId > 0) {
@@ -1087,6 +1132,8 @@ final class ReportRepository
     /** @return array<int, array{count: int, amount: float}> */
     private function paidFinancialStatusByMonth(int $year, int $organId): array
     {
+        $range = $this->yearRange($year);
+
         $sql = 'SELECT src.month_number, SUM(src.item_count) AS total_count, SUM(src.amount_total) AS total_amount
                 FROM (
                     SELECT
@@ -1096,29 +1143,33 @@ final class ReportRepository
                     FROM invoices i
                     WHERE i.deleted_at IS NULL
                       AND i.status = "pago"
-                      AND YEAR(i.reference_month) = :year_invoices'
+                      AND i.reference_month >= :year_start_invoices
+                      AND i.reference_month < :year_end_invoices'
                     . ($organId > 0 ? ' AND i.organ_id = :organ_id_invoices' : '') . '
                     GROUP BY MONTH(i.reference_month)
 
                     UNION ALL
 
                     SELECT
-                        MONTH(COALESCE(DATE(r.paid_at), r.reference_month, DATE(r.created_at))) AS month_number,
+                        MONTH(r.paid_competence_effective) AS month_number,
                         COUNT(*) AS item_count,
                         IFNULL(SUM(r.amount), 0) AS amount_total
                     FROM reimbursement_entries r
                     INNER JOIN people pe ON pe.id = r.person_id AND pe.deleted_at IS NULL
                     WHERE r.deleted_at IS NULL
                       AND r.status = "pago"
-                      AND YEAR(COALESCE(DATE(r.paid_at), r.reference_month, DATE(r.created_at))) = :year_reimbursement'
+                      AND r.paid_competence_effective >= :year_start_reimbursement
+                      AND r.paid_competence_effective < :year_end_reimbursement'
                     . ($organId > 0 ? ' AND pe.organ_id = :organ_id_reimbursement' : '') . '
-                    GROUP BY MONTH(COALESCE(DATE(r.paid_at), r.reference_month, DATE(r.created_at)))
+                    GROUP BY MONTH(r.paid_competence_effective)
                 ) src
                 GROUP BY src.month_number';
 
         $params = [
-            'year_invoices' => $year,
-            'year_reimbursement' => $year,
+            'year_start_invoices' => $range['start'],
+            'year_end_invoices' => $range['end_exclusive'],
+            'year_start_reimbursement' => $range['start'],
+            'year_end_reimbursement' => $range['end_exclusive'],
         ];
 
         if ($organId > 0) {
@@ -1135,6 +1186,8 @@ final class ReportRepository
     /** @return array<int, array{count: int, amount: float}> */
     private function reconciledFinancialStatusByMonth(int $year, int $organId): array
     {
+        $range = $this->yearRange($year);
+
         $sql = 'SELECT
                     MONTH(r.reference_month) AS month_number,
                     COUNT(*) AS total_count,
@@ -1143,11 +1196,15 @@ final class ReportRepository
                 INNER JOIN cost_mirrors cm ON cm.id = r.cost_mirror_id AND cm.deleted_at IS NULL
                 WHERE r.deleted_at IS NULL
                   AND r.status = "aprovado"
-                  AND YEAR(r.reference_month) = :year'
+                  AND r.reference_month >= :year_start
+                  AND r.reference_month < :year_end'
                 . ($organId > 0 ? ' AND cm.organ_id = :organ_id' : '') . '
                 GROUP BY MONTH(r.reference_month)';
 
-        $params = ['year' => $year];
+        $params = [
+            'year_start' => $range['start'],
+            'year_end' => $range['end_exclusive'],
+        ];
         if ($organId > 0) {
             $params['organ_id'] = $organId;
         }
@@ -1197,6 +1254,251 @@ final class ReportRepository
         }
 
         return $totals;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function ensureFinancialSnapshotRows(int $year, int $organId): array
+    {
+        if (!$this->hasFinancialSnapshotTable()) {
+            return $this->liveFinancialSnapshotRowsByMonth($year, $organId);
+        }
+
+        $rowsByMonth = $this->snapshotRowsByMonth($year, $organId);
+        $refreshNeeded = count($rowsByMonth) < 12;
+
+        if (!$refreshNeeded) {
+            $staleLimit = strtotime('-6 hours');
+            if ($staleLimit !== false) {
+                foreach ($rowsByMonth as $row) {
+                    $refreshedAt = strtotime((string) ($row['refreshed_at'] ?? ''));
+                    if ($refreshedAt === false || $refreshedAt < $staleLimit) {
+                        $refreshNeeded = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if ($refreshNeeded) {
+            $this->refreshFinancialSnapshotRows($year, $organId);
+            $rowsByMonth = $this->snapshotRowsByMonth($year, $organId);
+        }
+
+        if ($rowsByMonth === []) {
+            return $this->liveFinancialSnapshotRowsByMonth($year, $organId);
+        }
+
+        return $rowsByMonth;
+    }
+
+    private function refreshFinancialSnapshotRows(int $year, int $organId): void
+    {
+        $forecastMap = $this->forecastByMonth($year, $organId);
+        $effectiveMap = $this->effectiveByMonth($year, $organId);
+        $paidMap = $this->paidByMonth($year, $organId);
+        $payableMap = $this->payableByMonth($year, $organId);
+        $openMap = $this->openFinancialStatusByMonth($year, $organId);
+        $overdueMap = $this->overdueFinancialStatusByMonth($year, $organId);
+        $paidStatusMap = $this->paidFinancialStatusByMonth($year, $organId);
+        $reconciledMap = $this->reconciledFinancialStatusByMonth($year, $organId);
+
+        $stmt = $this->db->prepare(
+            'INSERT INTO financial_monthly_snapshots (
+                snapshot_year,
+                snapshot_month,
+                organ_id,
+                financial_nature,
+                forecast_amount,
+                effective_amount,
+                paid_amount,
+                payable_amount,
+                open_count,
+                open_amount,
+                overdue_count,
+                overdue_amount,
+                paid_count,
+                paid_status_amount,
+                reconciled_count,
+                reconciled_amount,
+                refreshed_at,
+                created_at,
+                updated_at
+            ) VALUES (
+                :snapshot_year,
+                :snapshot_month,
+                :organ_id,
+                :financial_nature,
+                :forecast_amount,
+                :effective_amount,
+                :paid_amount,
+                :payable_amount,
+                :open_count,
+                :open_amount,
+                :overdue_count,
+                :overdue_amount,
+                :paid_count,
+                :paid_status_amount,
+                :reconciled_count,
+                :reconciled_amount,
+                NOW(),
+                NOW(),
+                NOW()
+            )
+            ON DUPLICATE KEY UPDATE
+                forecast_amount = VALUES(forecast_amount),
+                effective_amount = VALUES(effective_amount),
+                paid_amount = VALUES(paid_amount),
+                payable_amount = VALUES(payable_amount),
+                open_count = VALUES(open_count),
+                open_amount = VALUES(open_amount),
+                overdue_count = VALUES(overdue_count),
+                overdue_amount = VALUES(overdue_amount),
+                paid_count = VALUES(paid_count),
+                paid_status_amount = VALUES(paid_status_amount),
+                reconciled_count = VALUES(reconciled_count),
+                reconciled_amount = VALUES(reconciled_amount),
+                refreshed_at = VALUES(refreshed_at),
+                updated_at = NOW()'
+        );
+
+        for ($month = 1; $month <= 12; $month++) {
+            $open = $openMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+            $overdue = $overdueMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+            $paidStatus = $paidStatusMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+            $reconciled = $reconciledMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+
+            $stmt->execute([
+                'snapshot_year' => $year,
+                'snapshot_month' => $month,
+                'organ_id' => max(0, $organId),
+                'financial_nature' => 'despesa_reembolso',
+                'forecast_amount' => (float) ($forecastMap[$month] ?? 0.0),
+                'effective_amount' => (float) ($effectiveMap[$month] ?? 0.0),
+                'paid_amount' => (float) ($paidMap[$month] ?? 0.0),
+                'payable_amount' => (float) ($payableMap[$month] ?? 0.0),
+                'open_count' => max(0, (int) ($open['count'] ?? 0)),
+                'open_amount' => max(0.0, (float) ($open['amount'] ?? 0.0)),
+                'overdue_count' => max(0, (int) ($overdue['count'] ?? 0)),
+                'overdue_amount' => max(0.0, (float) ($overdue['amount'] ?? 0.0)),
+                'paid_count' => max(0, (int) ($paidStatus['count'] ?? 0)),
+                'paid_status_amount' => max(0.0, (float) ($paidStatus['amount'] ?? 0.0)),
+                'reconciled_count' => max(0, (int) ($reconciled['count'] ?? 0)),
+                'reconciled_amount' => max(0.0, (float) ($reconciled['amount'] ?? 0.0)),
+            ]);
+        }
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function snapshotRowsByMonth(int $year, int $organId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                snapshot_month,
+                forecast_amount,
+                effective_amount,
+                paid_amount,
+                payable_amount,
+                open_count,
+                open_amount,
+                overdue_count,
+                overdue_amount,
+                paid_count,
+                paid_status_amount,
+                reconciled_count,
+                reconciled_amount,
+                refreshed_at
+             FROM financial_monthly_snapshots
+             WHERE snapshot_year = :snapshot_year
+               AND organ_id = :organ_id
+               AND financial_nature = :financial_nature'
+        );
+        $stmt->execute([
+            'snapshot_year' => $year,
+            'organ_id' => max(0, $organId),
+            'financial_nature' => 'despesa_reembolso',
+        ]);
+
+        $rowsByMonth = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $month = (int) ($row['snapshot_month'] ?? 0);
+            if ($month < 1 || $month > 12) {
+                continue;
+            }
+
+            $rowsByMonth[$month] = $row;
+        }
+
+        return $rowsByMonth;
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function liveFinancialSnapshotRowsByMonth(int $year, int $organId): array
+    {
+        $forecastMap = $this->forecastByMonth($year, $organId);
+        $effectiveMap = $this->effectiveByMonth($year, $organId);
+        $paidMap = $this->paidByMonth($year, $organId);
+        $payableMap = $this->payableByMonth($year, $organId);
+        $openMap = $this->openFinancialStatusByMonth($year, $organId);
+        $overdueMap = $this->overdueFinancialStatusByMonth($year, $organId);
+        $paidStatusMap = $this->paidFinancialStatusByMonth($year, $organId);
+        $reconciledMap = $this->reconciledFinancialStatusByMonth($year, $organId);
+
+        $rowsByMonth = [];
+        for ($month = 1; $month <= 12; $month++) {
+            $open = $openMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+            $overdue = $overdueMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+            $paidStatus = $paidStatusMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+            $reconciled = $reconciledMap[$month] ?? ['count' => 0, 'amount' => 0.0];
+
+            $rowsByMonth[$month] = [
+                'snapshot_month' => $month,
+                'forecast_amount' => (float) ($forecastMap[$month] ?? 0.0),
+                'effective_amount' => (float) ($effectiveMap[$month] ?? 0.0),
+                'paid_amount' => (float) ($paidMap[$month] ?? 0.0),
+                'payable_amount' => (float) ($payableMap[$month] ?? 0.0),
+                'open_count' => max(0, (int) ($open['count'] ?? 0)),
+                'open_amount' => max(0.0, (float) ($open['amount'] ?? 0.0)),
+                'overdue_count' => max(0, (int) ($overdue['count'] ?? 0)),
+                'overdue_amount' => max(0.0, (float) ($overdue['amount'] ?? 0.0)),
+                'paid_count' => max(0, (int) ($paidStatus['count'] ?? 0)),
+                'paid_status_amount' => max(0.0, (float) ($paidStatus['amount'] ?? 0.0)),
+                'reconciled_count' => max(0, (int) ($reconciled['count'] ?? 0)),
+                'reconciled_amount' => max(0.0, (float) ($reconciled['amount'] ?? 0.0)),
+                'refreshed_at' => date('Y-m-d H:i:s'),
+            ];
+        }
+
+        return $rowsByMonth;
+    }
+
+    private function hasFinancialSnapshotTable(): bool
+    {
+        static $hasTable = null;
+        if ($hasTable !== null) {
+            return $hasTable;
+        }
+
+        $stmt = $this->db->query(
+            "SELECT COUNT(*)
+             FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'financial_monthly_snapshots'"
+        );
+        $hasTable = ((int) $stmt->fetchColumn()) > 0;
+
+        return $hasTable;
+    }
+
+    /** @return array{start: string, end_exclusive: string} */
+    private function yearRange(int $year): array
+    {
+        $normalizedYear = max(2000, min(2100, $year));
+        $start = sprintf('%04d-01-01', $normalizedYear);
+
+        return [
+            'start' => $start,
+            'end_exclusive' => sprintf('%04d-01-01', $normalizedYear + 1),
+        ];
     }
 
     private function daysInStatusExpression(): string
@@ -1354,6 +1656,13 @@ final class ReportRepository
     {
         $organ = max(0, $organId);
 
+        return '(' . $auditAlias . '.scope_organ_id = ' . $organ . '
+            OR (' . $auditAlias . '.scope_organ_id IS NULL AND ' . $this->auditScopeByOrganFallbackSql($auditAlias, $organ) . ')
+        )';
+    }
+
+    private function auditScopeByOrganFallbackSql(string $auditAlias, int $organ): string
+    {
         return '(
             (' . $auditAlias . '.entity = "organ" AND ' . $auditAlias . '.entity_id = ' . $organ . ')
             OR (' . $auditAlias . '.entity = "person" AND EXISTS (
