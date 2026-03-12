@@ -149,7 +149,7 @@ final class PeopleController extends Controller
         }
 
         $this->view('people/create', [
-            'title' => 'Nova Pessoa',
+            'title' => 'Registrar movimentação',
             'person' => $person,
             'assignment' => null,
             'statuses' => $this->service()->statuses(),
@@ -161,6 +161,50 @@ final class PeopleController extends Controller
             'movementDirectionOptions' => $this->pipelineService()->movementDirectionOptions(),
             'financialNatureOptions' => $this->pipelineService()->financialNatureOptions(),
         ]);
+    }
+
+    public function lookupByCpf(Request $request): void
+    {
+        $rawCpf = (string) $request->input('cpf', '');
+        $digits = preg_replace('/\D+/', '', $rawCpf);
+        if (!is_string($digits) || mb_strlen($digits) !== 11) {
+            http_response_code(422);
+            header('Content-Type: application/json; charset=utf-8');
+            header('X-Content-Type-Options: nosniff');
+            echo json_encode([
+                'ok' => false,
+                'found' => false,
+                'error' => 'CPF inválido para consulta.',
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            exit;
+        }
+
+        $formattedCpf = substr($digits, 0, 3)
+            . '.' . substr($digits, 3, 3)
+            . '.' . substr($digits, 6, 3)
+            . '-' . substr($digits, 9, 2);
+        $person = $this->service()->findByCpf($formattedCpf);
+
+        $payload = [
+            'ok' => true,
+            'found' => $person !== null,
+            'person' => $person === null ? null : [
+                'id' => (int) ($person['id'] ?? 0),
+                'name' => (string) ($person['name'] ?? ''),
+                'cpf' => (string) ($person['cpf'] ?? ''),
+                'matricula_siape' => (string) ($person['matricula_siape'] ?? ''),
+                'birth_date' => (string) ($person['birth_date'] ?? ''),
+                'gender' => (string) ($person['gender'] ?? ''),
+                'server_status_code' => (string) ($person['server_status_code'] ?? ''),
+                'email' => (string) ($person['email'] ?? ''),
+                'phone' => (string) ($person['phone'] ?? ''),
+            ],
+        ];
+
+        header('Content-Type: application/json; charset=utf-8');
+        header('X-Content-Type-Options: nosniff');
+        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
     }
 
     public function store(Request $request): void
@@ -261,7 +305,10 @@ final class PeopleController extends Controller
                     modalityId: isset($person['desired_modality_id']) ? (int) $person['desired_modality_id'] : null,
                     userId: (int) ($this->app->auth()->id() ?? 0),
                     ip: $request->ip(),
-                    userAgent: $request->userAgent()
+                    userAgent: $request->userAgent(),
+                    movementContext: is_array($person['movement_context'] ?? null) ? $person['movement_context'] : null,
+                    scheduleContext: is_array($person['schedule_context'] ?? null) ? $person['schedule_context'] : null,
+                    initialStatusCode: isset($person['initial_status_code']) ? (string) $person['initial_status_code'] : null
                 );
             }
         }
@@ -423,7 +470,7 @@ final class PeopleController extends Controller
         $organs = $this->service()->activeOrgans();
 
         $this->view('people/edit', [
-            'title' => 'Editar Pessoa',
+            'title' => 'Editar movimentação',
             'person' => $person,
             'assignment' => $this->pipelineService()->profileData($id, 1, 1)['assignment'] ?? null,
             'statuses' => $this->service()->statuses(),
@@ -1491,6 +1538,8 @@ final class PeopleController extends Controller
             'cpf' => '',
             'matricula_siape' => '',
             'birth_date' => '',
+            'gender' => '',
+            'server_status_code' => '',
             'email' => '',
             'phone' => '',
             'status' => 'interessado',

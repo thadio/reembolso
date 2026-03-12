@@ -13,15 +13,32 @@ use App\Services\OrganService;
 
 final class OrgansController extends Controller
 {
+    private const ALLOWED_ORGAN_TYPES = [
+        'administracao_direta',
+        'autarquia',
+        'autarquia_especial',
+        'fundacao_publica',
+        'empresa_publica',
+        'sociedade_economia_mista',
+    ];
+
+    private const ALLOWED_STATES = [
+        'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO',
+        'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI',
+        'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+    ];
+
     public function index(Request $request): void
     {
         $query = (string) $request->input('q', '');
         $sort = (string) $request->input('sort', 'name');
         $dir = (string) $request->input('dir', 'asc');
+        $type = $this->normalizeOrganTypeFilter((string) $request->input('type', ''));
+        $state = $this->normalizeStateFilter((string) $request->input('state', ''));
         $page = max(1, (int) $request->input('page', '1'));
-        $perPage = max(5, min(50, (int) $request->input('per_page', '10')));
+        $perPage = max(10, min(50, (int) $request->input('per_page', '25')));
 
-        $result = $this->service()->paginate($query, $sort, $dir, $page, $perPage);
+        $result = $this->service()->paginate($query, $sort, $dir, $page, $perPage, $type, $state);
 
         $this->view('organs/index', [
             'title' => 'Órgãos',
@@ -37,6 +54,8 @@ final class OrgansController extends Controller
                 'sort' => $sort,
                 'dir' => $dir,
                 'per_page' => $perPage,
+                'type' => $type,
+                'state' => $state,
             ],
             'canManage' => $this->app->auth()->hasPermission('organs.manage'),
         ]);
@@ -372,5 +391,19 @@ final class OrgansController extends Controller
         return new OrganAuditService(
             new OrganAuditRepository($this->app->db())
         );
+    }
+
+    private function normalizeOrganTypeFilter(string $type): string
+    {
+        $normalized = trim(mb_strtolower($type));
+
+        return in_array($normalized, self::ALLOWED_ORGAN_TYPES, true) ? $normalized : '';
+    }
+
+    private function normalizeStateFilter(string $state): string
+    {
+        $normalized = trim(mb_strtoupper($state));
+
+        return in_array($normalized, self::ALLOWED_STATES, true) ? $normalized : '';
     }
 }

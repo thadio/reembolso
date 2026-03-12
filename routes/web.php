@@ -143,6 +143,7 @@ $router->get('/reports/export/audit-zip', [ReportsController::class, 'exportAudi
 $router->get('/bulk-imports', [BulkImportsController::class, 'index'], ['auth', 'permission:bulk_import.view']);
 $router->get('/people', [PeopleController::class, 'index'], ['auth', 'permission:people.view']);
 $router->get('/people/create', [PeopleController::class, 'create'], ['auth', 'permission:people.manage']);
+$router->get('/people/lookup-cpf', [PeopleController::class, 'lookupByCpf'], ['auth', 'permission:people.manage']);
 $router->post('/people/store', [PeopleController::class, 'store'], ['auth', 'permission:people.manage', 'csrf']);
 $router->post('/people/import-csv', [PeopleController::class, 'importCsv'], ['auth', 'permission:people.manage', 'permission:people.import_bulk', 'csrf']);
 $router->get('/people/show', [PeopleController::class, 'show'], ['auth', 'permission:people.view']);

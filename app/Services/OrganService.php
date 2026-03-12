@@ -33,9 +33,17 @@ final class OrganService
     /**
      * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int, pages: int}
      */
-    public function paginate(string $query, string $sort, string $dir, int $page, int $perPage): array
+    public function paginate(
+        string $query,
+        string $sort,
+        string $dir,
+        int $page,
+        int $perPage,
+        string $type = '',
+        string $state = ''
+    ): array
     {
-        return $this->organs->paginate($query, $sort, $dir, $page, $perPage);
+        return $this->organs->paginate($query, $sort, $dir, $page, $perPage, $type, $state);
     }
 
     /** @return array<string, mixed>|null */
@@ -97,6 +105,7 @@ final class OrganService
         $warnings = [];
         $candidates = [];
         $seenCnpjs = [];
+        $seenSiapeCodes = [];
         $processedRows = 0;
         $lineNumber = 1;
 
@@ -113,6 +122,7 @@ final class OrganService
                 'name' => (string) ($mapped['name'] ?? ''),
                 'acronym' => (string) ($mapped['acronym'] ?? ''),
                 'cnpj' => (string) ($mapped['cnpj'] ?? ''),
+                'siape_code' => (string) ($mapped['siape_code'] ?? ''),
                 'company_nire' => (string) ($mapped['company_nire'] ?? ''),
                 'organ_type' => (string) ($mapped['organ_type'] ?? ''),
                 'company_dependency_type' => (string) ($mapped['company_dependency_type'] ?? ''),
@@ -152,6 +162,19 @@ final class OrganService
                 if ($this->organs->cnpjExists($normalizedCnpj)) {
                     $rowErrors[] = 'Ja existe orgao cadastrado com este CNPJ.';
                 }
+            }
+
+            $normalizedSiapeCode = (string) ($validation['data']['siape_code'] ?? '');
+            if ($normalizedSiapeCode !== '') {
+                if (isset($seenSiapeCodes[$normalizedSiapeCode])) {
+                    $rowErrors[] = 'Codigo SIAPE duplicado no CSV (linha ' . $seenSiapeCodes[$normalizedSiapeCode] . ').';
+                } else {
+                    $seenSiapeCodes[$normalizedSiapeCode] = $lineNumber;
+                }
+            }
+
+            if ($normalizedSiapeCode !== '' && $this->organs->siapeCodeExists($normalizedSiapeCode)) {
+                $rowErrors[] = 'Ja existe orgao cadastrado com este codigo SIAPE.';
             }
 
             if ($rowErrors !== []) {
@@ -262,6 +285,15 @@ final class OrganService
             ];
         }
 
+        $siapeCode = (string) ($validation['data']['siape_code'] ?? '');
+        if ($siapeCode !== '' && $this->organs->siapeCodeExists($siapeCode)) {
+            return [
+                'ok' => false,
+                'errors' => ['Já existe um órgão com este código SIAPE.'],
+                'data' => $validation['data'],
+            ];
+        }
+
         $id = $this->organs->create($validation['data']);
 
         $this->audit->log(
@@ -320,6 +352,15 @@ final class OrganService
             return [
                 'ok' => false,
                 'errors' => ['Já existe um órgão com este CNPJ.'],
+                'data' => $validation['data'],
+            ];
+        }
+
+        $siapeCode = (string) ($validation['data']['siape_code'] ?? '');
+        if ($siapeCode !== '' && $this->organs->siapeCodeExists($siapeCode, $id)) {
+            return [
+                'ok' => false,
+                'errors' => ['Já existe um órgão com este código SIAPE.'],
                 'data' => $validation['data'],
             ];
         }
@@ -394,6 +435,7 @@ final class OrganService
         $name = $this->clean($input['name'] ?? null);
         $acronym = $this->clean($input['acronym'] ?? null);
         $cnpj = $this->normalizeCnpj($this->clean($input['cnpj'] ?? null));
+        $siapeCode = $this->normalizeSiapeCode($this->clean($input['siape_code'] ?? null));
         $companyNire = $this->truncate($this->clean($input['company_nire'] ?? null), 40);
         $organType = $this->normalizeOrganType($this->clean($input['organ_type'] ?? null));
         $rawCompanyDependencyType = $this->clean($input['company_dependency_type'] ?? null);
@@ -435,6 +477,11 @@ final class OrganService
             $errors[] = 'CNPJ inválido. Informe 14 dígitos.';
         }
 
+        $rawSiapeCode = $this->clean($input['siape_code'] ?? null);
+        if ($rawSiapeCode !== null && $siapeCode === null) {
+            $errors[] = 'Código SIAPE inválido. Informe apenas números.';
+        }
+
         if ($state !== null) {
             $state = mb_strtoupper($state);
             if (mb_strlen($state) !== 2) {
@@ -466,6 +513,7 @@ final class OrganService
             'name' => $name,
             'acronym' => $acronym === null ? null : mb_strtoupper($acronym),
             'cnpj' => $cnpj,
+            'siape_code' => $siapeCode,
             'company_nire' => $companyNire,
             'organ_type' => $organType,
             'company_dependency_type' => $companyDependencyType,
@@ -643,6 +691,7 @@ final class OrganService
             'name' => ['name', 'nome', 'orgao', 'orgao_nome'],
             'acronym' => ['acronym', 'sigla'],
             'cnpj' => ['cnpj'],
+            'siape_code' => ['siape_code', 'codigo_siape', 'cod_siape', 'it_co_orgao_origem'],
             'company_nire' => ['company_nire', 'nire'],
             'organ_type' => ['organ_type', 'tipo_orgao', 'tipo', 'classificacao', 'natureza'],
             'company_dependency_type' => ['company_dependency_type', 'vinculacao_empresa', 'dependencia_empresa', 'status_empresa', 'tipo_vinculacao'],
@@ -789,6 +838,24 @@ final class OrganService
             . '.' . substr($digits, 5, 3)
             . '/' . substr($digits, 8, 4)
             . '-' . substr($digits, 12, 2);
+    }
+
+    private function normalizeSiapeCode(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', $value);
+        if (!is_string($digits) || $digits === '') {
+            return null;
+        }
+
+        if (mb_strlen($digits) > 20) {
+            return mb_substr($digits, 0, 20);
+        }
+
+        return $digits;
     }
 
     private function normalizeOrganType(?string $organType): ?string

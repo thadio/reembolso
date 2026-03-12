@@ -266,6 +266,8 @@ final class PeopleRepository
                 p.cpf,
                 p.matricula_siape,
                 p.birth_date,
+                p.gender,
+                p.server_status_code,
                 p.email,
                 p.phone,
                 p.status,
@@ -290,6 +292,31 @@ final class PeopleRepository
         return $person === false ? null : $person;
     }
 
+    /** @return array<string, mixed>|null */
+    public function findByCpf(string $cpf): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT
+                p.id,
+                p.name,
+                p.cpf,
+                p.matricula_siape,
+                p.birth_date,
+                p.gender,
+                p.server_status_code,
+                p.email,
+                p.phone
+             FROM people p
+             WHERE p.cpf = :cpf
+               AND p.deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['cpf' => $cpf]);
+        $person = $stmt->fetch();
+
+        return $person === false ? null : $person;
+    }
+
     /** @param array<string, mixed> $data */
     public function create(array $data): int
     {
@@ -302,6 +329,8 @@ final class PeopleRepository
                 cpf,
                 matricula_siape,
                 birth_date,
+                gender,
+                server_status_code,
                 email,
                 phone,
                 status,
@@ -318,6 +347,8 @@ final class PeopleRepository
                 :cpf,
                 :matricula_siape,
                 :birth_date,
+                :gender,
+                :server_status_code,
                 :email,
                 :phone,
                 :status,
@@ -337,6 +368,8 @@ final class PeopleRepository
             'cpf' => $data['cpf'],
             'matricula_siape' => $data['matricula_siape'],
             'birth_date' => $data['birth_date'],
+            'gender' => $data['gender'],
+            'server_status_code' => $data['server_status_code'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'status' => $data['status'],
@@ -361,6 +394,8 @@ final class PeopleRepository
                 cpf = :cpf,
                 matricula_siape = :matricula_siape,
                 birth_date = :birth_date,
+                gender = :gender,
+                server_status_code = :server_status_code,
                 email = :email,
                 phone = :phone,
                 status = :status,
@@ -380,6 +415,8 @@ final class PeopleRepository
             'cpf' => $data['cpf'],
             'matricula_siape' => $data['matricula_siape'],
             'birth_date' => $data['birth_date'],
+            'gender' => $data['gender'],
+            'server_status_code' => $data['server_status_code'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'status' => $data['status'],
@@ -465,6 +502,20 @@ final class PeopleRepository
     }
 
     /** @return array<int, array<string, mixed>> */
+    public function activeAssignmentFlows(): array
+    {
+        $stmt = $this->db->query(
+            'SELECT id, name
+             FROM assignment_flows
+             WHERE deleted_at IS NULL
+               AND is_active = 1
+             ORDER BY is_default DESC, name ASC, id ASC'
+        );
+
+        return $stmt->fetchAll();
+    }
+
+    /** @return array<int, array<string, mixed>> */
     public function activeMteDestinations(): array
     {
         $stmt = $this->db->query(
@@ -488,6 +539,42 @@ final class PeopleRepository
         $stmt->execute(['name' => $name]);
 
         return $stmt->fetch() !== false;
+    }
+
+    public function organSiapeCodeById(int $organId): ?string
+    {
+        $stmt = $this->db->prepare(
+            'SELECT siape_code
+             FROM organs
+             WHERE id = :id
+               AND deleted_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->execute(['id' => $organId]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+
+        $value = trim((string) ($row['siape_code'] ?? ''));
+
+        return $value === '' ? '' : $value;
+    }
+
+    public function updateOrganSiapeCode(int $organId, string $siapeCode): bool
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE organs
+             SET siape_code = :siape_code,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND deleted_at IS NULL'
+        );
+
+        return $stmt->execute([
+            'id' => $organId,
+            'siape_code' => $siapeCode,
+        ]);
     }
 
     public function assignmentFlowExists(int $flowId): bool

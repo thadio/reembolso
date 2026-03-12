@@ -145,6 +145,7 @@ $buildAuditExportUrl = static function () use ($organId, $auditFilters): string 
   <div class="details-grid">
     <div><strong>Sigla:</strong> <?= e((string) ($organ['acronym'] ?? '-')) ?></div>
     <div><strong>CNPJ:</strong> <?= e((string) ($organ['cnpj'] ?? '-')) ?></div>
+    <div><strong>Código SIAPE:</strong> <?= e((string) ($organ['siape_code'] ?? '-')) ?></div>
     <div><strong>NIRE:</strong> <?= e((string) ($organ['company_nire'] ?? '-')) ?></div>
     <div><strong>Tipo institucional:</strong> <?= e($formatDimension((string) ($organ['organ_type'] ?? ''))) ?></div>
     <div><strong>Vinculacao da empresa:</strong> <?= e($formatDimension((string) ($organ['company_dependency_type'] ?? ''))) ?></div>

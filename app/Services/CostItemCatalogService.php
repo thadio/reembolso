@@ -17,9 +17,8 @@ final class CostItemCatalogService
     ];
     private const SUBCATEGORY_VALUES = [
         'Remuneracao Base',
-        'Adicionais',
+        'Adicionais e Complementos',
         'Gratificacoes',
-        'Complementos',
         'Beneficios',
         'Encargos Sociais e Trabalhistas',
         'Provisoes Trabalhistas',
@@ -80,72 +79,56 @@ final class CostItemCatalogService
     {
         $rows = $this->items->activeList();
         $search = mb_strtolower(trim($query));
+        if ($rows === []) {
+            return [];
+        }
 
-        $categories = [];
+        $itemsById = [];
         $childrenByParent = [];
 
         foreach ($rows as $row) {
-            $isAggregator = (int) ($row['is_aggregator'] ?? 0) === 1;
-            if ($isAggregator) {
-                $categoryId = (int) ($row['id'] ?? 0);
-                if ($categoryId <= 0) {
-                    continue;
-                }
-
-                $categories[$categoryId] = [
-                    'category' => $row,
-                    'children' => [],
-                    'children_count' => 0,
-                ];
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) {
                 continue;
             }
+            $itemsById[$id] = $row;
+        }
 
+        foreach ($rows as $row) {
             $parentId = (int) ($row['parent_cost_item_id'] ?? 0);
-            if ($parentId > 0) {
+            if ($parentId > 0 && isset($itemsById[$parentId])) {
                 $childrenByParent[$parentId][] = $row;
             }
         }
 
-        foreach ($childrenByParent as $parentId => $children) {
-            if (!isset($categories[$parentId])) {
+        $rootItems = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) {
                 continue;
             }
 
-            usort($children, static function (array $left, array $right): int {
-                $leftSort = (int) ($left['hierarchy_sort'] ?? 0);
-                $rightSort = (int) ($right['hierarchy_sort'] ?? 0);
-                if ($leftSort !== $rightSort) {
-                    return $leftSort <=> $rightSort;
-                }
-
-                $leftCode = (int) ($left['cost_code'] ?? 0);
-                $rightCode = (int) ($right['cost_code'] ?? 0);
-                if ($leftCode !== $rightCode) {
-                    return $leftCode <=> $rightCode;
-                }
-
-                return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
-            });
-
-            $categories[$parentId]['children'] = $children;
-            $categories[$parentId]['children_count'] = count($children);
+            $parentId = (int) ($row['parent_cost_item_id'] ?? 0);
+            if ($parentId <= 0 || !isset($itemsById[$parentId])) {
+                $rootItems[] = $row;
+            }
         }
+        $this->sortHierarchyRows($rootItems);
 
-        usort($categories, static function (array $left, array $right): int {
-            $leftSort = (int) ($left['category']['hierarchy_sort'] ?? 0);
-            $rightSort = (int) ($right['category']['hierarchy_sort'] ?? 0);
-            if ($leftSort !== $rightSort) {
-                return $leftSort <=> $rightSort;
+        $categories = [];
+        foreach ($rootItems as $rootItem) {
+            $rootId = (int) ($rootItem['id'] ?? 0);
+            if ($rootId <= 0) {
+                continue;
             }
 
-            $leftCode = (int) ($left['category']['cost_code'] ?? 0);
-            $rightCode = (int) ($right['category']['cost_code'] ?? 0);
-            if ($leftCode !== $rightCode) {
-                return $leftCode <=> $rightCode;
-            }
-
-            return strcasecmp((string) ($left['category']['name'] ?? ''), (string) ($right['category']['name'] ?? ''));
-        });
+            $children = $this->collectHierarchyLeaves($rootId, $childrenByParent);
+            $categories[] = [
+                'category' => $rootItem,
+                'children' => $children,
+                'children_count' => count($children),
+            ];
+        }
 
         if ($search === '') {
             return $categories;
@@ -242,9 +225,8 @@ final class CostItemCatalogService
     {
         return [
             ['value' => 'Remuneracao Base', 'label' => 'Remuneracao Base'],
-            ['value' => 'Adicionais', 'label' => 'Adicionais'],
+            ['value' => 'Adicionais e Complementos', 'label' => 'Adicionais e Complementos'],
             ['value' => 'Gratificacoes', 'label' => 'Gratificacoes'],
-            ['value' => 'Complementos', 'label' => 'Complementos'],
             ['value' => 'Beneficios', 'label' => 'Beneficios'],
             ['value' => 'Encargos Sociais e Trabalhistas', 'label' => 'Encargos Sociais e Trabalhistas'],
             ['value' => 'Provisoes Trabalhistas', 'label' => 'Provisoes Trabalhistas'],
@@ -494,20 +476,11 @@ final class CostItemCatalogService
         $isAggregator = $itemKind === 'aggregator' ? 1 : 0;
 
         $parentCostItemId = (int) ($input['parent_cost_item_id'] ?? ($before['parent_cost_item_id'] ?? 0));
-        if ($isAggregator === 1) {
-            $parentCostItemId = 0;
-        }
 
-        $hierarchySort = (int) ($input['hierarchy_sort'] ?? ($before['hierarchy_sort'] ?? 0));
-        if ($hierarchySort <= 0) {
-            $hierarchySort = $isAggregator === 1 ? $this->nextAggregatorSort() : max(1, $costCode);
-        }
+        $rawHierarchySort = (int) ($input['hierarchy_sort'] ?? ($before['hierarchy_sort'] ?? 0));
+        $hierarchySort = $rawHierarchySort;
 
         $errors = [];
-
-        if ($costCode <= 0 || $costCode > 9999) {
-            $errors[] = 'Codigo do tipo de custo invalido (1 a 9999).';
-        }
 
         if ($name === null || mb_strlen($name) < 3) {
             $errors[] = 'Nome do tipo de custo e obrigatorio (minimo 3 caracteres).';
@@ -549,6 +522,30 @@ final class CostItemCatalogService
                 $errors[] = 'Limite de 10 categorias agregadoras atingido.';
             }
 
+            if ($parentCostItemId > 0) {
+                $parentAggregator = $this->items->findActiveAggregatorById($parentCostItemId);
+                if ($parentAggregator === null) {
+                    $errors[] = 'Categoria agregadora pai invalida.';
+                } else {
+                    $currentId = (int) ($before['id'] ?? 0);
+                    if ($currentId > 0 && $parentCostItemId === $currentId) {
+                        $errors[] = 'Uma categoria agregadora nao pode ser pai dela mesma.';
+                    } elseif ($currentId > 0 && $this->wouldCauseHierarchyCycle($currentId, $parentCostItemId)) {
+                        $errors[] = 'Hierarquia invalida: ciclo detectado entre categoria pai e categoria filha.';
+                    }
+
+                    $parentMacroCategory = (string) ($parentAggregator['macro_category'] ?? '');
+                    if (in_array($parentMacroCategory, self::MACRO_CATEGORY_VALUES, true)) {
+                        $macroCategory = $parentMacroCategory;
+                    }
+
+                    $parentLinkageCode = (int) ($parentAggregator['linkage_code'] ?? 0);
+                    if (in_array($parentLinkageCode, self::LINKAGE_CODES, true)) {
+                        $linkageCode = $parentLinkageCode;
+                    }
+                }
+            }
+
             $subcategory = $name ?? $subcategory;
         } else {
             if ($parentCostItemId <= 0) {
@@ -558,6 +555,13 @@ final class CostItemCatalogService
                 if ($parentAggregator === null) {
                     $errors[] = 'Categoria agregadora invalida.';
                 } else {
+                    if ($before === null) {
+                        $costCode = $this->items->nextAutoChildCostCode($parentCostItemId);
+                        if ($costCode <= 0 || $costCode > 9999) {
+                            $errors[] = 'Nao foi possivel gerar codigo automatico para o item filho.';
+                        }
+                    }
+
                     $subcategory = (string) ($parentAggregator['name'] ?? $subcategory);
                     $parentMacroCategory = (string) ($parentAggregator['macro_category'] ?? '');
                     if (in_array($parentMacroCategory, self::MACRO_CATEGORY_VALUES, true)) {
@@ -569,6 +573,16 @@ final class CostItemCatalogService
                     }
                 }
             }
+        }
+
+        if ($isAggregator === 1 || $before !== null) {
+            if ($costCode <= 0 || $costCode > 9999) {
+                $errors[] = 'Codigo do tipo de custo invalido (1 a 9999).';
+            }
+        }
+
+        if ($rawHierarchySort <= 0) {
+            $hierarchySort = $isAggregator === 1 ? $this->nextAggregatorSort() : max(1, $costCode);
         }
 
         if (!in_array($subcategory, self::SUBCATEGORY_VALUES, true) && $isAggregator === 0) {
@@ -612,6 +626,8 @@ final class CostItemCatalogService
     {
         $haystack = [
             (string) ($row['name'] ?? ''),
+            (string) ($row['display_name'] ?? ''),
+            (string) ($row['hierarchy_path'] ?? ''),
             (string) ($row['type_description'] ?? ''),
             (string) ($row['macro_category'] ?? ''),
             (string) ($row['subcategory'] ?? ''),
@@ -627,6 +643,122 @@ final class CostItemCatalogService
         $normalizedHaystack = mb_strtolower(implode(' ', $haystack));
 
         return str_contains($normalizedHaystack, $search);
+    }
+
+    /** @param array<int, array<string, mixed>> $rows */
+    private function sortHierarchyRows(array &$rows): void
+    {
+        usort($rows, static function (array $left, array $right): int {
+            $leftSort = (int) ($left['hierarchy_sort'] ?? 0);
+            $rightSort = (int) ($right['hierarchy_sort'] ?? 0);
+            if ($leftSort !== $rightSort) {
+                return $leftSort <=> $rightSort;
+            }
+
+            $leftCode = (int) ($left['cost_code'] ?? 0);
+            $rightCode = (int) ($right['cost_code'] ?? 0);
+            if ($leftCode !== $rightCode) {
+                return $leftCode <=> $rightCode;
+            }
+
+            return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+        });
+    }
+
+    /**
+     * @param array<int, array<int, array<string, mixed>>> $childrenByParent
+     * @param array<int, string> $breadcrumbs
+     * @param array<int, bool> $visiting
+     * @return array<int, array<string, mixed>>
+     */
+    private function collectHierarchyLeaves(
+        int $parentId,
+        array $childrenByParent,
+        array $breadcrumbs = [],
+        array &$visiting = []
+    ): array {
+        if ($parentId <= 0 || isset($visiting[$parentId])) {
+            return [];
+        }
+
+        $visiting[$parentId] = true;
+        $children = is_array($childrenByParent[$parentId] ?? null) ? $childrenByParent[$parentId] : [];
+        $this->sortHierarchyRows($children);
+
+        $leaves = [];
+        foreach ($children as $child) {
+            $childId = (int) ($child['id'] ?? 0);
+            if ($childId <= 0) {
+                continue;
+            }
+
+            $childName = trim((string) ($child['name'] ?? ''));
+            $nextBreadcrumbs = $breadcrumbs;
+            if ($childName !== '') {
+                $nextBreadcrumbs[] = $childName;
+            }
+
+            $descendantLeaves = $this->collectHierarchyLeaves($childId, $childrenByParent, $nextBreadcrumbs, $visiting);
+            $isAggregator = (int) ($child['is_aggregator'] ?? 0) === 1;
+            if ($isAggregator) {
+                foreach ($descendantLeaves as $descendantLeaf) {
+                    $leaves[] = $descendantLeaf;
+                }
+                continue;
+            }
+
+            $displayName = $childName !== '' ? $childName : ('Item #' . $childId);
+            if ($breadcrumbs !== []) {
+                $displayName = implode(' > ', $breadcrumbs) . ' > ' . $displayName;
+            }
+
+            $entry = $child;
+            $entry['display_name'] = $displayName;
+            $entry['hierarchy_path'] = implode(' > ', $breadcrumbs);
+            $leaves[] = $entry;
+
+            foreach ($descendantLeaves as $descendantLeaf) {
+                $leaves[] = $descendantLeaf;
+            }
+        }
+
+        unset($visiting[$parentId]);
+
+        return $leaves;
+    }
+
+    private function wouldCauseHierarchyCycle(int $itemId, int $candidateParentId): bool
+    {
+        if ($itemId <= 0 || $candidateParentId <= 0) {
+            return false;
+        }
+
+        $parentById = [];
+        foreach ($this->items->activeList() as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $parentById[$id] = (int) ($row['parent_cost_item_id'] ?? 0);
+        }
+
+        $visited = [];
+        $cursor = $candidateParentId;
+        while ($cursor > 0) {
+            if ($cursor === $itemId) {
+                return true;
+            }
+
+            if (isset($visited[$cursor])) {
+                return true;
+            }
+
+            $visited[$cursor] = true;
+            $cursor = (int) ($parentById[$cursor] ?? 0);
+        }
+
+        return false;
     }
 
     private function nextAggregatorSort(): int
@@ -682,8 +814,13 @@ final class CostItemCatalogService
             return '';
         }
 
+        $normalized = mb_strtolower($subcategory);
+        if (in_array($normalized, ['adicionais', 'complementos', 'adicionais e complementos'], true)) {
+            return 'Adicionais e Complementos';
+        }
+
         foreach (self::SUBCATEGORY_VALUES as $allowed) {
-            if (mb_strtolower($allowed) === mb_strtolower($subcategory)) {
+            if (mb_strtolower($allowed) === $normalized) {
                 return $allowed;
             }
         }

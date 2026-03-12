@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Repositories\PeopleRepository;
+use DateTimeImmutable;
 
 final class PeopleService
 {
@@ -42,6 +43,17 @@ final class PeopleService
         return $this->people->findById($id);
     }
 
+    /** @return array<string, mixed>|null */
+    public function findByCpf(string $cpf): ?array
+    {
+        $normalizedCpf = $this->normalizeCpf($this->clean($cpf));
+        if ($normalizedCpf === null || mb_strlen($normalizedCpf) !== 14) {
+            return null;
+        }
+
+        return $this->people->findByCpf($normalizedCpf);
+    }
+
     /** @return array<int, array<string, mixed>> */
     public function activeOrgans(): array
     {
@@ -75,7 +87,13 @@ final class PeopleService
      *   warnings: array<int, string>,
      *   processed_rows: int,
      *   created_count: int,
-     *   created_people: array<int, array{id: int, desired_modality_id: int|null}>
+     *   created_people: array<int, array{
+     *     id: int,
+     *     desired_modality_id: int|null,
+     *     movement_context: array<string, mixed>|null,
+     *     schedule_context: array{target_start_date: string|null, requested_end_date: string|null}|null,
+     *     initial_status_code: string|null
+     *   }>
      * }
      */
     public function importCsv(
@@ -89,7 +107,7 @@ final class PeopleService
         if (!$parsed['ok']) {
             return [
                 'ok' => false,
-                'message' => 'Nao foi possivel processar o CSV.',
+                'message' => 'Nao foi possivel processar o arquivo de importacao.',
                 'errors' => [$parsed['error']],
                 'warnings' => [],
                 'processed_rows' => 0,
@@ -120,6 +138,10 @@ final class PeopleService
 
         $organs = $this->activeOrgans();
         $modalities = $this->activeModalities();
+        $flows = $this->people->activeAssignmentFlows();
+        $statusCodes = $this->statuses();
+        $mteDestinations = $this->activeMteDestinations();
+
         $organsById = [];
         $organsByName = [];
         $organsByAcronym = [];
@@ -151,6 +173,50 @@ final class PeopleService
             $modalitiesByName[$this->normalizeLookupValue($name)] = $id;
         }
 
+        $flowsById = [];
+        $flowsByName = [];
+        foreach ($flows as $flow) {
+            $id = (int) ($flow['id'] ?? 0);
+            $name = trim((string) ($flow['name'] ?? ''));
+            if ($id <= 0 || $name === '') {
+                continue;
+            }
+
+            $flowsById[$id] = $id;
+            $flowsByName[$this->normalizeLookupValue($name)] = $id;
+        }
+
+        $statusByNormalized = [];
+        foreach ($statusCodes as $statusCode) {
+            $normalizedCode = $this->normalizeLookupValue($statusCode);
+            if ($normalizedCode === '') {
+                continue;
+            }
+            $statusByNormalized[$normalizedCode] = $statusCode;
+        }
+
+        $mteDestinationsById = [];
+        $mteDestinationsByCode = [];
+        $mteDestinationsByAcronym = [];
+        foreach ($mteDestinations as $destination) {
+            $id = (int) ($destination['id'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+
+            $mteDestinationsById[$id] = $id;
+
+            $code = trim((string) ($destination['code'] ?? ''));
+            if ($code !== '') {
+                $this->registerDestinationCodeVariants($mteDestinationsByCode, $code, $id);
+            }
+
+            $acronym = trim((string) ($destination['acronym'] ?? ''));
+            if ($acronym !== '') {
+                $mteDestinationsByAcronym[$this->normalizeLookupValue($acronym)] = $id;
+            }
+        }
+
         $errors = [];
         $warnings = [];
         $candidates = [];
@@ -168,26 +234,58 @@ final class PeopleService
 
             $processedRows++;
 
+            $rawOrgan = (string) ($mapped['organ'] ?? '');
+            $rawDesiredModality = (string) ($mapped['desired_modality'] ?? '');
+            $rawAssignmentFlow = (string) ($mapped['assignment_flow'] ?? '');
+            $rawMovementDirection = (string) ($mapped['movement_direction'] ?? '');
+            $rawStatus = (string) ($mapped['status'] ?? '');
+            $rawMteUorgCode = (string) ($mapped['mte_uorg_code'] ?? '');
+            $rawTargetStartDate = (string) ($mapped['target_start_date'] ?? '');
+            $rawOriginOrganSiapeCode = (string) ($mapped['origin_organ_siape_code'] ?? '');
+
             $resolvedOrganId = $this->resolveOrganId(
-                (string) ($mapped['organ'] ?? ''),
+                $rawOrgan,
                 $organsById,
                 $organsByName,
                 $organsByAcronym
             );
             $resolvedModalityId = $this->resolveModalityId(
-                (string) ($mapped['desired_modality'] ?? ''),
+                $rawDesiredModality,
                 $modalitiesById,
                 $modalitiesByName
             );
+            $resolvedFlowId = $this->resolveAssignmentFlowId(
+                $rawAssignmentFlow,
+                $flowsById,
+                $flowsByName
+            );
+            $resolvedMovementDirection = $this->resolveMovementDirection($rawMovementDirection);
+            $resolvedStatusCode = $this->resolveStatusCode(
+                $rawStatus,
+                $statusByNormalized
+            );
+            $resolvedMteDestinationId = $this->resolveMteDestinationId(
+                $rawMteUorgCode,
+                $mteDestinationsById,
+                $mteDestinationsByCode,
+                $mteDestinationsByAcronym
+            );
+            $normalizedTargetStartDate = $this->normalizeDate($rawTargetStartDate);
+            $normalizedOriginOrganSiapeCode = $this->normalizeNumericCode($rawOriginOrganSiapeCode);
+
             $input = [
                 'organ_id' => $resolvedOrganId ?? 0,
                 'desired_modality_id' => $resolvedModalityId ?? 0,
+                'assignment_flow_id' => $resolvedFlowId ?? 0,
                 'name' => (string) ($mapped['name'] ?? ''),
                 'cpf' => (string) ($mapped['cpf'] ?? ''),
                 'matricula_siape' => (string) ($mapped['matricula_siape'] ?? ''),
                 'birth_date' => (string) ($mapped['birth_date'] ?? ''),
+                'gender' => (string) ($mapped['gender'] ?? ''),
+                'server_status_code' => (string) ($mapped['server_status_code'] ?? ''),
                 'email' => (string) ($mapped['email'] ?? ''),
                 'phone' => (string) ($mapped['phone'] ?? ''),
+                'status' => $resolvedStatusCode ?? 'interessado',
                 'sei_process_number' => (string) ($mapped['sei_process_number'] ?? ''),
                 'tags' => (string) ($mapped['tags'] ?? ''),
                 'notes' => (string) ($mapped['notes'] ?? ''),
@@ -196,12 +294,39 @@ final class PeopleService
             $validation = $this->validate($input);
             $rowErrors = $validation['errors'];
 
-            if ((string) ($mapped['organ'] ?? '') !== '' && $resolvedOrganId === null) {
+            if (!$this->isImportPlaceholderValue($rawOrgan) && $resolvedOrganId === null) {
                 $rowErrors[] = 'Orgao invalido (use ID, nome ou sigla cadastrada).';
             }
 
-            if ((string) ($mapped['desired_modality'] ?? '') !== '' && $resolvedModalityId === null) {
+            if (
+                !$this->isImportPlaceholderValue($rawDesiredModality, ['outro'])
+                && $resolvedModalityId === null
+            ) {
                 $rowErrors[] = 'Modalidade invalida (use ID ou nome cadastrado).';
+            }
+
+            if (!$this->isImportPlaceholderValue($rawAssignmentFlow) && $resolvedFlowId === null) {
+                $rowErrors[] = 'Fluxo BPMN invalido (use ID ou nome cadastrado).';
+            }
+
+            if (!$this->isImportPlaceholderValue($rawMovementDirection) && $resolvedMovementDirection === null) {
+                $rowErrors[] = 'Direcao de movimento invalida (use ENTRADA/SAIDA no MTE).';
+            }
+
+            if (!$this->isImportPlaceholderValue($rawStatus) && $resolvedStatusCode === null) {
+                $rowErrors[] = 'Etapa/status invalida para o fluxo atual.';
+            }
+
+            if (!$this->isImportPlaceholderValue($rawMteUorgCode) && $resolvedMteDestinationId === null) {
+                $rowErrors[] = 'Codigo de lotacao MTE invalido (UORG nao encontrada).';
+            }
+
+            if (!$this->isImportPlaceholderValue($rawTargetStartDate) && $normalizedTargetStartDate === null) {
+                $rowErrors[] = 'Data de inicio invalida (use YYYY-MM-DD ou DD/MM/AAAA).';
+            }
+
+            if (!$this->isImportPlaceholderValue($rawOriginOrganSiapeCode) && $normalizedOriginOrganSiapeCode === null) {
+                $rowErrors[] = 'Codigo SIAPE do orgao de origem invalido.';
             }
 
             $normalizedCpf = (string) ($validation['data']['cpf'] ?? '');
@@ -230,9 +355,33 @@ final class PeopleService
                 $rowErrors[] = 'Ja existe pessoa cadastrada com esta matricula SIAPE.';
             }
 
+            if ($normalizedOriginOrganSiapeCode !== null && $resolvedOrganId === null) {
+                $rowErrors[] = 'Codigo SIAPE do orgao exige orgao de origem valido na mesma linha.';
+            }
+
             if ($rowErrors !== []) {
                 $errors[] = sprintf('Linha %d: %s', $lineNumber, implode(' ', array_values(array_unique($rowErrors))));
                 continue;
+            }
+
+            $movementContext = null;
+            if ($resolvedMovementDirection !== null || $resolvedMteDestinationId !== null) {
+                $direction = $resolvedMovementDirection ?? 'entrada_mte';
+                $movementContext = [
+                    'movement_direction' => $direction,
+                    'financial_nature' => $direction === 'saida_mte' ? 'receita_reembolso' : 'despesa_reembolso',
+                    'counterparty_organ_id' => $resolvedOrganId,
+                    'origin_mte_destination_id' => $direction === 'saida_mte' ? $resolvedMteDestinationId : null,
+                    'destination_mte_destination_id' => $direction === 'entrada_mte' ? $resolvedMteDestinationId : null,
+                ];
+            }
+
+            $scheduleContext = null;
+            if ($normalizedTargetStartDate !== null) {
+                $scheduleContext = [
+                    'target_start_date' => $normalizedTargetStartDate,
+                    'requested_end_date' => null,
+                ];
             }
 
             $candidates[] = [
@@ -241,6 +390,11 @@ final class PeopleService
                 'desired_modality_id' => isset($validation['data']['desired_modality_id'])
                     ? ((int) $validation['data']['desired_modality_id'] > 0 ? (int) $validation['data']['desired_modality_id'] : null)
                     : null,
+                'movement_context' => $movementContext,
+                'schedule_context' => $scheduleContext,
+                'initial_status_code' => $resolvedStatusCode,
+                'organ_id' => $resolvedOrganId,
+                'origin_organ_siape_code' => $normalizedOriginOrganSiapeCode,
             ];
         }
 
@@ -293,9 +447,40 @@ final class PeopleService
                     throw new \RuntimeException('Linha ' . $line . ': ' . implode(' ', $lineErrors));
                 }
 
+                $organId = (int) ($candidate['organ_id'] ?? 0);
+                $originOrganSiapeCode = trim((string) ($candidate['origin_organ_siape_code'] ?? ''));
+                if ($organId > 0 && $originOrganSiapeCode !== '') {
+                    $currentOrganSiapeCode = $this->people->organSiapeCodeById($organId);
+                    if ($currentOrganSiapeCode === null) {
+                        throw new \RuntimeException('Linha ' . (int) ($candidate['line'] ?? 0) . ': orgao de origem nao encontrado para gravar codigo SIAPE.');
+                    }
+
+                    if ($currentOrganSiapeCode === '') {
+                        try {
+                            $updated = $this->people->updateOrganSiapeCode($organId, $originOrganSiapeCode);
+                            if (!$updated) {
+                                $warnings[] = 'Linha ' . (int) ($candidate['line'] ?? 0)
+                                    . ': nao foi possivel atualizar o codigo SIAPE do orgao.';
+                            }
+                        } catch (\Throwable) {
+                            $warnings[] = 'Linha ' . (int) ($candidate['line'] ?? 0)
+                                . ': codigo SIAPE do orgao nao atualizado por restricao de unicidade.';
+                        }
+                    } elseif ($currentOrganSiapeCode !== $originOrganSiapeCode) {
+                        $warnings[] = 'Linha ' . (int) ($candidate['line'] ?? 0)
+                            . ': codigo SIAPE do orgao divergente, mantido o codigo ja cadastrado ('
+                            . $currentOrganSiapeCode . ').';
+                    }
+                }
+
                 $createdPeople[] = [
                     'id' => (int) $result['id'],
                     'desired_modality_id' => $candidate['desired_modality_id'],
+                    'movement_context' => is_array($candidate['movement_context'] ?? null) ? $candidate['movement_context'] : null,
+                    'schedule_context' => is_array($candidate['schedule_context'] ?? null) ? $candidate['schedule_context'] : null,
+                    'initial_status_code' => isset($candidate['initial_status_code']) && trim((string) $candidate['initial_status_code']) !== ''
+                        ? (string) $candidate['initial_status_code']
+                        : null,
                 ];
             }
 
@@ -307,7 +492,7 @@ final class PeopleService
                 'ok' => false,
                 'message' => 'Nao foi possivel concluir a importacao em massa.',
                 'errors' => ['Importacao cancelada com rollback completo. ' . $exception->getMessage()],
-                'warnings' => [],
+                'warnings' => $warnings,
                 'processed_rows' => $processedRows,
                 'created_count' => 0,
                 'created_people' => [],
@@ -318,7 +503,7 @@ final class PeopleService
             'ok' => true,
             'message' => sprintf('%d pessoa(s) importada(s) com sucesso.', count($createdPeople)),
             'errors' => [],
-            'warnings' => [],
+            'warnings' => $warnings,
             'processed_rows' => $processedRows,
             'created_count' => count($createdPeople),
             'created_people' => $createdPeople,
@@ -340,7 +525,8 @@ final class PeopleService
             ];
         }
 
-        $validation['data']['status'] = 'interessado';
+        $status = trim((string) ($validation['data']['status'] ?? ''));
+        $validation['data']['status'] = $status !== '' ? $status : 'interessado';
 
         if ($this->people->cpfExists((string) $validation['data']['cpf'])) {
             return [
@@ -512,8 +698,11 @@ final class PeopleService
         $cpf = $this->normalizeCpf($this->clean($input['cpf'] ?? null));
         $matriculaSiape = $this->clean($input['matricula_siape'] ?? null);
         $birthDate = $this->normalizeDate($this->clean($input['birth_date'] ?? null));
+        $gender = $this->normalizeGender($this->clean($input['gender'] ?? null));
+        $serverStatusCode = $this->normalizeServerStatusCode($this->clean($input['server_status_code'] ?? null));
         $email = $this->clean($input['email'] ?? null);
         $phone = $this->clean($input['phone'] ?? null);
+        $statusInput = $this->clean($input['status'] ?? null);
         $sei = $this->clean($input['sei_process_number'] ?? null);
         $tags = $this->normalizeTags($this->clean($input['tags'] ?? null));
         $notes = $this->clean($input['notes'] ?? null);
@@ -557,6 +746,21 @@ final class PeopleService
             $errors[] = 'E-mail inválido.';
         }
 
+        $statusByNormalized = [];
+        foreach ($this->people->activeStatusCodes() as $statusCode) {
+            $key = $this->normalizeLookupValue($statusCode);
+            if ($key !== '') {
+                $statusByNormalized[$key] = $statusCode;
+            }
+        }
+
+        $status = $statusInput !== null
+            ? $this->resolveStatusCode($statusInput, $statusByNormalized)
+            : null;
+        if ($statusInput !== null && $status === null) {
+            $errors[] = 'Status do pipeline invalido.';
+        }
+
         $data = [
             'organ_id' => $organId,
             'desired_modality_id' => $modalityId > 0 ? $modalityId : null,
@@ -565,9 +769,11 @@ final class PeopleService
             'cpf' => $cpf,
             'matricula_siape' => $matriculaSiape,
             'birth_date' => $birthDate,
+            'gender' => $gender,
+            'server_status_code' => $serverStatusCode,
             'email' => $email,
             'phone' => $phone,
-            'status' => 'interessado',
+            'status' => $status ?? 'interessado',
             'sei_process_number' => $sei,
             'tags' => $tags,
             'notes' => $notes,
@@ -613,7 +819,33 @@ final class PeopleService
             return null;
         }
 
-        $time = strtotime($date);
+        $trimmed = trim($date);
+        if ($trimmed === '' || $this->isImportPlaceholderValue($trimmed)) {
+            return null;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $trimmed) === 1) {
+            $parsed = DateTimeImmutable::createFromFormat('Y-m-d', $trimmed);
+            if ($parsed !== false && $parsed->format('Y-m-d') === $trimmed) {
+                return $parsed->format('Y-m-d');
+            }
+        }
+
+        if (preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $trimmed) === 1) {
+            $parsed = DateTimeImmutable::createFromFormat('d/m/Y', $trimmed);
+            if ($parsed !== false && $parsed->format('d/m/Y') === $trimmed) {
+                return $parsed->format('Y-m-d');
+            }
+        }
+
+        if (preg_match('/^\d{2}-\d{2}-\d{4}$/', $trimmed) === 1) {
+            $parsed = DateTimeImmutable::createFromFormat('d-m-Y', $trimmed);
+            if ($parsed !== false && $parsed->format('d-m-Y') === $trimmed) {
+                return $parsed->format('Y-m-d');
+            }
+        }
+
+        $time = strtotime($trimmed);
         if ($time === false) {
             return null;
         }
@@ -778,12 +1010,20 @@ final class PeopleService
     private function buildHeaderMap(array $headers): array
     {
         $aliases = [
-            'name' => ['name', 'nome', 'nome_completo', 'pessoa'],
-            'cpf' => ['cpf'],
-            'matricula_siape' => ['matricula_siape', 'siape', 'matricula', 'matricula_siape_numero', 'numero_siape'],
-            'organ' => ['organ', 'organ_id', 'orgao', 'orgao_id', 'orgao_origem'],
-            'desired_modality' => ['desired_modality', 'desired_modality_id', 'modalidade', 'modalidade_id', 'modalidade_pretendida'],
+            'name' => ['name', 'nome', 'nome_completo', 'pessoa', 'nome_do_servidor'],
+            'cpf' => ['cpf', 'cpf_compontuacao', 'cpf_com_pontuacao'],
+            'matricula_siape' => ['matricula_siape', 'siape', 'matricula', 'matricula_siape_numero', 'numero_siape', 'matricula_do_servidor'],
+            'organ' => ['organ', 'organ_id', 'orgao', 'orgao_id', 'orgao_origem', 'empresa_orgao_de_origem'],
+            'desired_modality' => ['desired_modality', 'desired_modality_id', 'modalidade', 'modalidade_id', 'modalidade_pretendida', 'motivo'],
+            'assignment_flow' => ['assignment_flow', 'assignment_flow_id', 'fluxo'],
+            'movement_direction' => ['movement_direction', 'direcao_movimento', 'entrada_saida'],
+            'status' => ['status', 'status_code', 'etapa_atual'],
+            'mte_uorg_code' => ['mte_uorg_code', 'uorg', 'uorg_lotacao', 'it_co_uorg_lotacao_servidor'],
+            'target_start_date' => ['target_start_date', 'data_inicio', 'data_inicio_efetivo', 'it_da_ocor_ingr_orgao_serv'],
+            'origin_organ_siape_code' => ['origin_organ_siape_code', 'siape_orgao_origem', 'it_co_orgao_origem'],
             'birth_date' => ['birth_date', 'data_nascimento', 'nascimento'],
+            'gender' => ['gender', 'sexo', 'it_co_sexo'],
+            'server_status_code' => ['server_status_code', 'situacao_servidor', 'it_co_situacao_servidor'],
             'email' => ['email', 'e_mail'],
             'phone' => ['phone', 'telefone', 'celular'],
             'sei_process_number' => ['sei_process_number', 'sei', 'processo_sei', 'numero_processo_sei'],
@@ -847,7 +1087,7 @@ final class PeopleService
     private function resolveOrganId(string $rawValue, array $organsById, array $organsByName, array $organsByAcronym): ?int
     {
         $value = trim($rawValue);
-        if ($value === '') {
+        if ($this->isImportPlaceholderValue($value)) {
             return null;
         }
 
@@ -858,18 +1098,55 @@ final class PeopleService
         }
 
         $key = $this->normalizeLookupValue($value);
+        if ($key === '') {
+            return null;
+        }
+
         if (isset($organsByName[$key])) {
             return $organsByName[$key];
         }
+        if (isset($organsByAcronym[$key])) {
+            return $organsByAcronym[$key];
+        }
 
-        return $organsByAcronym[$key] ?? null;
+        foreach ($organsByName as $candidateKey => $candidateId) {
+            if (str_contains($candidateKey, $key) || str_contains($key, $candidateKey)) {
+                return $candidateId;
+            }
+        }
+
+        $collapsed = str_replace('_', '', $key);
+        $bestDistance = PHP_INT_MAX;
+        $bestId = null;
+        foreach ($organsByName as $candidateKey => $candidateId) {
+            $distance = levenshtein($collapsed, str_replace('_', '', $candidateKey));
+            if ($distance < $bestDistance) {
+                $bestDistance = $distance;
+                $bestId = $candidateId;
+            }
+        }
+
+        if ($bestId !== null) {
+            $threshold = mb_strlen($collapsed) >= 12 ? 4 : 2;
+            if ($bestDistance <= $threshold) {
+                return $bestId;
+            }
+        }
+
+        foreach ($organsByAcronym as $candidateKey => $candidateId) {
+            if (str_contains($candidateKey, $key) || str_contains($key, $candidateKey)) {
+                return $candidateId;
+            }
+        }
+
+        return null;
     }
 
     /** @param array<int, int> $modalitiesById @param array<string, int> $modalitiesByName */
     private function resolveModalityId(string $rawValue, array $modalitiesById, array $modalitiesByName): ?int
     {
         $value = trim($rawValue);
-        if ($value === '') {
+        if ($this->isImportPlaceholderValue($value, ['outro'])) {
             return null;
         }
 
@@ -880,8 +1157,338 @@ final class PeopleService
         }
 
         $key = $this->normalizeLookupValue($value);
+        if ($key === '') {
+            return null;
+        }
 
-        return $modalitiesByName[$key] ?? null;
+        if (isset($modalitiesByName[$key])) {
+            return $modalitiesByName[$key];
+        }
+
+        if (str_contains($key, 'requisit')) {
+            foreach ($modalitiesByName as $candidateKey => $candidateId) {
+                if (str_contains($candidateKey, 'requis')) {
+                    return $candidateId;
+                }
+            }
+        }
+
+        if (str_contains($key, 'forca') || str_contains($key, 'cft') || str_contains($key, 'composicao')) {
+            foreach ($modalitiesByName as $candidateKey => $candidateId) {
+                if (str_contains($candidateKey, 'forca') || str_contains($candidateKey, 'cft')) {
+                    return $candidateId;
+                }
+            }
+        }
+
+        if (str_contains($key, 'cess')) {
+            foreach ($modalitiesByName as $candidateKey => $candidateId) {
+                if (str_contains($candidateKey, 'cess')) {
+                    return $candidateId;
+                }
+            }
+        }
+
+        foreach ($modalitiesByName as $candidateKey => $candidateId) {
+            if (str_contains($candidateKey, $key) || str_contains($key, $candidateKey)) {
+                return $candidateId;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param array<int, int> $flowsById @param array<string, int> $flowsByName */
+    private function resolveAssignmentFlowId(string $rawValue, array $flowsById, array $flowsByName): ?int
+    {
+        $value = trim($rawValue);
+        if ($this->isImportPlaceholderValue($value)) {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            $id = (int) $value;
+
+            return $flowsById[$id] ?? null;
+        }
+
+        $key = $this->normalizeLookupValue($value);
+        if ($key === '') {
+            return null;
+        }
+
+        if (isset($flowsByName[$key])) {
+            return $flowsByName[$key];
+        }
+
+        foreach ($flowsByName as $candidateKey => $candidateId) {
+            if (str_contains($candidateKey, $key) || str_contains($key, $candidateKey)) {
+                return $candidateId;
+            }
+        }
+
+        if (str_contains($key, 'padrao')) {
+            foreach ($flowsByName as $candidateKey => $candidateId) {
+                if (str_contains($candidateKey, 'padrao')) {
+                    return $candidateId;
+                }
+            }
+        }
+
+        if (str_contains($key, 'saida')) {
+            foreach ($flowsByName as $candidateKey => $candidateId) {
+                if (str_contains($candidateKey, 'saida')) {
+                    return $candidateId;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveMovementDirection(string $rawValue): ?string
+    {
+        $value = trim($rawValue);
+        if ($this->isImportPlaceholderValue($value)) {
+            return null;
+        }
+
+        $key = $this->normalizeLookupValue($value);
+        if ($key === '') {
+            return null;
+        }
+
+        if (
+            str_contains($key, 'entrada')
+            || str_contains($key, 'entrando')
+            || str_contains($key, 'ingresso')
+        ) {
+            return 'entrada_mte';
+        }
+
+        if (
+            str_contains($key, 'saida')
+            || str_contains($key, 'saindo')
+            || str_contains($key, 'egresso')
+        ) {
+            return 'saida_mte';
+        }
+
+        return null;
+    }
+
+    /** @param array<string, string> $statusByNormalized */
+    private function resolveStatusCode(string $rawValue, array $statusByNormalized): ?string
+    {
+        $value = trim($rawValue);
+        if ($this->isImportPlaceholderValue($value)) {
+            return null;
+        }
+
+        $key = $this->normalizeLookupValue($value);
+        if ($key === '') {
+            return null;
+        }
+
+        if (isset($statusByNormalized[$key])) {
+            return $statusByNormalized[$key];
+        }
+
+        $collapsedKey = str_replace('_', '', $key);
+        foreach ($statusByNormalized as $candidateKey => $candidateCode) {
+            if (str_replace('_', '', $candidateKey) === $collapsedKey) {
+                return $candidateCode;
+            }
+        }
+
+        if (str_contains($collapsedKey, 'ativo') && isset($statusByNormalized['ativo'])) {
+            return $statusByNormalized['ativo'];
+        }
+
+        if (str_contains($collapsedKey, 'interessado') && isset($statusByNormalized['interessado'])) {
+            return $statusByNormalized['interessado'];
+        }
+
+        foreach ($statusByNormalized as $candidateKey => $candidateCode) {
+            if (str_contains($candidateKey, $key) || str_contains($key, $candidateKey)) {
+                return $candidateCode;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<int, int> $mteDestinationsById
+     * @param array<string, int> $mteDestinationsByCode
+     * @param array<string, int> $mteDestinationsByAcronym
+     */
+    private function resolveMteDestinationId(
+        string $rawValue,
+        array $mteDestinationsById,
+        array $mteDestinationsByCode,
+        array $mteDestinationsByAcronym
+    ): ?int {
+        $value = trim($rawValue);
+        if ($this->isImportPlaceholderValue($value)) {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            $id = (int) $value;
+            if ($id > 0 && isset($mteDestinationsById[$id])) {
+                return $mteDestinationsById[$id];
+            }
+        }
+
+        $key = $this->normalizeLookupValue($value);
+        if ($key !== '') {
+            if (isset($mteDestinationsByCode[$key])) {
+                return $mteDestinationsByCode[$key];
+            }
+            if (isset($mteDestinationsByAcronym[$key])) {
+                return $mteDestinationsByAcronym[$key];
+            }
+        }
+
+        $numericCode = $this->normalizeNumericCode($value, allowZero: false, maxLength: 20);
+        if ($numericCode !== null) {
+            $variants = [$numericCode, ltrim($numericCode, '0')];
+            if (mb_strlen($numericCode) > 3) {
+                $variants[] = ltrim(substr($numericCode, 3), '0');
+            }
+
+            foreach (array_unique(array_filter($variants, static fn (string $item): bool => $item !== '')) as $variant) {
+                $variantKey = $this->normalizeLookupValue($variant);
+                if (isset($mteDestinationsByCode[$variantKey])) {
+                    return $mteDestinationsByCode[$variantKey];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /** @param array<string, int> $mteDestinationsByCode */
+    private function registerDestinationCodeVariants(array &$mteDestinationsByCode, string $code, int $destinationId): void
+    {
+        $variants = [];
+        $normalizedCode = $this->normalizeLookupValue($code);
+        if ($normalizedCode !== '') {
+            $variants[] = $normalizedCode;
+        }
+
+        $numericCode = $this->normalizeNumericCode($code, allowZero: false, maxLength: 20);
+        if ($numericCode !== null) {
+            $variants[] = $this->normalizeLookupValue($numericCode);
+            $variants[] = $this->normalizeLookupValue(ltrim($numericCode, '0'));
+            if (mb_strlen($numericCode) > 3) {
+                $variants[] = $this->normalizeLookupValue(ltrim(substr($numericCode, 3), '0'));
+            }
+        }
+
+        foreach (array_unique(array_filter($variants, static fn (string $item): bool => $item !== '')) as $variant) {
+            if (!isset($mteDestinationsByCode[$variant])) {
+                $mteDestinationsByCode[$variant] = $destinationId;
+            }
+        }
+    }
+
+    private function normalizeNumericCode(string $value, bool $allowZero = false, int $maxLength = 20): ?string
+    {
+        $trimmed = trim($value);
+        if ($this->isImportPlaceholderValue($trimmed)) {
+            return null;
+        }
+
+        if (preg_match('/^\d+\.0+$/', $trimmed) === 1) {
+            $trimmed = strstr($trimmed, '.', true) ?: $trimmed;
+        }
+
+        $digits = preg_replace('/\D+/', '', $trimmed);
+        if (!is_string($digits) || $digits === '') {
+            return null;
+        }
+
+        if ($allowZero === false && preg_match('/^0+$/', $digits) === 1) {
+            return null;
+        }
+
+        if (mb_strlen($digits) > $maxLength) {
+            return null;
+        }
+
+        return $digits;
+    }
+
+    private function normalizeServerStatusCode(?string $value): ?string
+    {
+        if ($value === null || $this->isImportPlaceholderValue($value)) {
+            return null;
+        }
+
+        $numeric = $this->normalizeNumericCode($value, allowZero: false, maxLength: 30);
+        if ($numeric !== null) {
+            return $numeric;
+        }
+
+        $normalized = mb_strtoupper(trim($value));
+        if ($normalized === '') {
+            return null;
+        }
+
+        return mb_substr($normalized, 0, 30);
+    }
+
+    private function normalizeGender(?string $value): ?string
+    {
+        if ($value === null || $this->isImportPlaceholderValue($value)) {
+            return null;
+        }
+
+        $key = $this->normalizeLookupValue($value);
+        if ($key === '') {
+            return null;
+        }
+
+        return match ($key) {
+            'm', 'masculino', 'masc' => 'M',
+            'f', 'feminino', 'fem' => 'F',
+            default => mb_substr(mb_strtoupper(trim($value)), 0, 20),
+        };
+    }
+
+    /**
+     * @param array<int, string> $additionalPlaceholders
+     */
+    private function isImportPlaceholderValue(string $value, array $additionalPlaceholders = []): bool
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return true;
+        }
+
+        $normalized = $this->normalizeLookupValue($trimmed);
+        if ($normalized === '') {
+            return true;
+        }
+
+        $placeholders = array_merge([
+            'na',
+            'n_a',
+            'n_d',
+            'nd',
+            'null',
+            'none',
+            'nao_informado',
+            'nao_aplicavel',
+            'sem_informacao',
+            'sem_dados',
+            '#n_a',
+            '0',
+        ], array_map(fn (string $item): string => $this->normalizeLookupValue($item), $additionalPlaceholders));
+
+        return in_array($normalized, array_values(array_filter($placeholders, static fn (string $item): bool => $item !== '')), true);
     }
 
     private function detectCsvDelimiter(string $sample): string
@@ -914,6 +1521,22 @@ final class PeopleService
         if ($header === '') {
             return '';
         }
+
+        $header = strtr($header, [
+            'ã' => 'a',
+            'á' => 'a',
+            'à' => 'a',
+            'â' => 'a',
+            'é' => 'e',
+            'ê' => 'e',
+            'í' => 'i',
+            'õ' => 'o',
+            'ó' => 'o',
+            'ô' => 'o',
+            'ú' => 'u',
+            'ü' => 'u',
+            'ç' => 'c',
+        ]);
 
         $ascii = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $header);
         if (is_string($ascii) && trim($ascii) !== '') {

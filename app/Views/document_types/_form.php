@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 $type = is_array($type ?? null) ? $type : [];
-$old = static fn (string $key, mixed $default = '') => old($key, $type[$key] ?? $default);
+$old = static fn (string $key, string $default = ''): string => old($key, (string) ($type[$key] ?? $default));
 $activeValue = (string) $old('is_active', '1');
 $isActive = in_array(mb_strtolower($activeValue), ['1', 'true', 'on', 'yes', 'sim'], true);
 ?>

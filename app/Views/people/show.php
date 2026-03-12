@@ -138,49 +138,116 @@ foreach ($costItems as $costItemRow) {
     $costActiveRowsByCatalog[$catalogId][] = $costItemRow;
 }
 
-$costCatalogAggregators = [];
+$costCatalogById = [];
 $costCatalogChildrenByParent = [];
-$costCatalogStandalone = [];
 foreach ($costItemCatalog as $catalogItem) {
     $catalogId = (int) ($catalogItem['id'] ?? 0);
     if ($catalogId <= 0) {
         continue;
     }
 
-    $isAggregator = (int) ($catalogItem['is_aggregator'] ?? 0) === 1;
-    if ($isAggregator) {
-        $costCatalogAggregators[$catalogId] = $catalogItem;
-        continue;
-    }
+    $costCatalogById[$catalogId] = $catalogItem;
+}
 
+foreach ($costCatalogById as $catalogItem) {
     $parentId = (int) ($catalogItem['parent_cost_item_id'] ?? 0);
-    if ($parentId > 0) {
+    if ($parentId > 0 && isset($costCatalogById[$parentId])) {
         if (!isset($costCatalogChildrenByParent[$parentId])) {
             $costCatalogChildrenByParent[$parentId] = [];
         }
         $costCatalogChildrenByParent[$parentId][] = $catalogItem;
+    }
+}
+
+$costSortItems = static function (array &$items): void {
+    usort($items, static function (array $left, array $right): int {
+        $leftSort = (int) ($left['hierarchy_sort'] ?? 0);
+        $rightSort = (int) ($right['hierarchy_sort'] ?? 0);
+        if ($leftSort !== $rightSort) {
+            return $leftSort <=> $rightSort;
+        }
+
+        $leftCode = (int) ($left['cost_code'] ?? 0);
+        $rightCode = (int) ($right['cost_code'] ?? 0);
+        if ($leftCode !== $rightCode) {
+            return $leftCode <=> $rightCode;
+        }
+
+        return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+    });
+};
+
+$collectCatalogLeaves = null;
+$collectCatalogLeaves = static function (int $parentId, array $breadcrumbs = [], array $visiting = []) use (&$collectCatalogLeaves, $costCatalogChildrenByParent, $costSortItems): array {
+    if ($parentId <= 0 || isset($visiting[$parentId])) {
+        return [];
+    }
+
+    $visiting[$parentId] = true;
+    $children = is_array($costCatalogChildrenByParent[$parentId] ?? null) ? $costCatalogChildrenByParent[$parentId] : [];
+    $costSortItems($children);
+
+    $leaves = [];
+    foreach ($children as $childItem) {
+        $childId = (int) ($childItem['id'] ?? 0);
+        if ($childId <= 0) {
+            continue;
+        }
+
+        $childName = trim((string) ($childItem['name'] ?? ''));
+        $nextBreadcrumbs = $breadcrumbs;
+        if ($childName !== '') {
+            $nextBreadcrumbs[] = $childName;
+        }
+
+        $descendantLeaves = $collectCatalogLeaves($childId, $nextBreadcrumbs, $visiting);
+        $isAggregator = (int) ($childItem['is_aggregator'] ?? 0) === 1;
+        if ($isAggregator) {
+            foreach ($descendantLeaves as $descendantLeaf) {
+                $leaves[] = $descendantLeaf;
+            }
+            continue;
+        }
+
+        $displayName = $childName !== '' ? $childName : ('Item #' . $childId);
+        if ($breadcrumbs !== []) {
+            $displayName = implode(' > ', $breadcrumbs) . ' > ' . $displayName;
+        }
+
+        $entry = $childItem;
+        $entry['display_name'] = $displayName;
+        $entry['hierarchy_path'] = implode(' > ', $breadcrumbs);
+        $leaves[] = $entry;
+
+        foreach ($descendantLeaves as $descendantLeaf) {
+            $leaves[] = $descendantLeaf;
+        }
+    }
+
+    return $leaves;
+};
+
+$costCatalogRootItems = [];
+foreach ($costCatalogById as $catalogItem) {
+    $parentId = (int) ($catalogItem['parent_cost_item_id'] ?? 0);
+    if ($parentId <= 0 || !isset($costCatalogById[$parentId])) {
+        $costCatalogRootItems[] = $catalogItem;
+    }
+}
+$costSortItems($costCatalogRootItems);
+
+$costCatalogHierarchy = [];
+foreach ($costCatalogRootItems as $rootItem) {
+    $rootId = (int) ($rootItem['id'] ?? 0);
+    if ($rootId <= 0) {
         continue;
     }
 
-    $costCatalogStandalone[] = $catalogItem;
-}
-
-$costCatalogHierarchy = [];
-foreach ($costCatalogAggregators as $aggregatorId => $aggregatorItem) {
-    $children = $costCatalogChildrenByParent[$aggregatorId] ?? [];
+    $children = $collectCatalogLeaves($rootId);
     $costCatalogHierarchy[] = [
-        'category' => $aggregatorItem,
+        'category' => $rootItem,
         'children' => $children,
     ];
-}
-
-if ($costCatalogStandalone !== []) {
-    foreach ($costCatalogStandalone as $standaloneItem) {
-        $costCatalogHierarchy[] = [
-            'category' => $standaloneItem,
-            'children' => [],
-        ];
-    }
 }
 
 $costProjectionStartDate = trim((string) ($assignment['effective_start_date'] ?? ''));
@@ -943,6 +1010,8 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
     </div>
     <div><strong>Matrícula SIAPE:</strong> <?= e((string) ($person['matricula_siape'] ?? '-')) ?></div>
     <div><strong>Nascimento:</strong> <?= e((string) ($person['birth_date'] ?? '-')) ?></div>
+    <div><strong>Sexo:</strong> <?= e((string) ($person['gender'] ?? '-')) ?></div>
+    <div><strong>Situação do servidor (cód.):</strong> <?= e((string) ($person['server_status_code'] ?? '-')) ?></div>
     <div><strong>E-mail:</strong> <?= e((string) ($person['email'] ?? '-')) ?></div>
     <div><strong>Telefone:</strong> <?= e((string) ($person['phone'] ?? '-')) ?></div>
     <div><strong>Nº processo SEI:</strong> <?= e((string) ($person['sei_process_number'] ?? '-')) ?></div>
@@ -2668,7 +2737,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                             if ($childId <= 0) {
                                 continue;
                             }
-                            $childName = trim((string) ($childItem['name'] ?? ('Item #' . $childId)));
+                            $childName = trim((string) ($childItem['display_name'] ?? ($childItem['name'] ?? ('Item #' . $childId))));
                             $childRows = is_array($costActiveRowsByCatalog[$childId] ?? null) ? $costActiveRowsByCatalog[$childId] : [];
                             $childRow = is_array($childRows[0] ?? null) ? $childRows[0] : [];
                             $childAmount = is_numeric((string) ($childRow['amount'] ?? null))
@@ -2878,7 +2947,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                                 if ($childId <= 0) {
                                     continue;
                                 }
-                                $childName = trim((string) ($childItem['name'] ?? ('Item #' . $childId)));
+                                $childName = trim((string) ($childItem['display_name'] ?? ($childItem['name'] ?? ('Item #' . $childId))));
                                 $childRows = is_array($costActiveRowsByCatalog[$childId] ?? null) ? $costActiveRowsByCatalog[$childId] : [];
                                 $childRow = is_array($childRows[0] ?? null) ? $childRows[0] : [];
                                 $childRawAmount = $childRow['amount'] ?? null;
@@ -3426,7 +3495,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                                 if ($childId <= 0) {
                                     continue;
                                 }
-                                $childName = trim((string) ($childItem['name'] ?? ('Item #' . $childId)));
+                                $childName = trim((string) ($childItem['display_name'] ?? ($childItem['name'] ?? ('Item #' . $childId))));
                               ?>
                               <tr data-reimbursement-row data-level="child" data-id="<?= e((string) $childId) ?>" data-parent-id="<?= e((string) $categoryId) ?>">
                                 <td>
@@ -3525,7 +3594,7 @@ $buildDossierExportUrl = static fn (): string => url('/people/dossier/export?per
                   <?php $childId = (int) ($childItem['id'] ?? 0); ?>
                   <?php if ($childId > 0): ?>
                     <option value="<?= e((string) $childId) ?>">
-                      &nbsp;&nbsp;[FILHO] <?= e((string) ((int) ($childItem['cost_code'] ?? 0))) ?> - <?= e((string) ($childItem['name'] ?? 'Item')) ?>
+                      &nbsp;&nbsp;[FILHO] <?= e((string) ((int) ($childItem['cost_code'] ?? 0))) ?> - <?= e((string) ($childItem['display_name'] ?? ($childItem['name'] ?? 'Item'))) ?>
                     </option>
                   <?php endif; ?>
                 <?php endforeach; ?>

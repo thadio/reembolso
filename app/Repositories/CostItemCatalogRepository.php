@@ -277,6 +277,7 @@ final class CostItemCatalogRepository
             'SELECT COUNT(*) AS total
              FROM cost_item_catalog
              WHERE is_aggregator = 1
+               AND parent_cost_item_id IS NULL
                AND deleted_at IS NULL'
         );
 
@@ -289,12 +290,57 @@ final class CostItemCatalogRepository
             'SELECT COUNT(*) AS total
              FROM cost_item_catalog
              WHERE parent_cost_item_id = :parent_id
-               AND is_aggregator = 0
                AND deleted_at IS NULL'
         );
         $stmt->execute(['parent_id' => $parentId]);
 
         return (int) ($stmt->fetch()['total'] ?? 0);
+    }
+
+    public function nextAutoChildCostCode(int $parentId): int
+    {
+        $stmt = $this->db->query(
+            'SELECT cost_code, parent_cost_item_id, is_aggregator
+             FROM cost_item_catalog
+             WHERE cost_code IS NOT NULL
+               AND cost_code > 0
+               AND cost_code <= 9999
+             ORDER BY cost_code ASC'
+        );
+
+        $usedCodes = [];
+        $maxChildCode = 0;
+        $maxChildCodeByParent = 0;
+
+        foreach ($stmt->fetchAll() as $row) {
+            $costCode = (int) ($row['cost_code'] ?? 0);
+            if ($costCode <= 0) {
+                continue;
+            }
+
+            $usedCodes[$costCode] = true;
+
+            $isAggregator = (int) ($row['is_aggregator'] ?? 0) === 1;
+            if ($isAggregator) {
+                continue;
+            }
+
+            $maxChildCode = max($maxChildCode, $costCode);
+            if ((int) ($row['parent_cost_item_id'] ?? 0) === $parentId) {
+                $maxChildCodeByParent = max($maxChildCodeByParent, $costCode);
+            }
+        }
+
+        $nextCode = $maxChildCodeByParent > 0 ? ($maxChildCodeByParent + 1) : ($maxChildCode + 1);
+        if ($nextCode <= 0) {
+            $nextCode = 1;
+        }
+
+        while ($nextCode <= 9999 && isset($usedCodes[$nextCode])) {
+            $nextCode++;
+        }
+
+        return $nextCode <= 9999 ? $nextCode : 0;
     }
 
     public function combinationExists(

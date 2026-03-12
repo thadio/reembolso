@@ -36,13 +36,23 @@ final class OrganRepository
     /**
      * @return array{items: array<int, array<string, mixed>>, total: int, page: int, per_page: int, pages: int}
      */
-    public function paginate(string $query, string $sort, string $dir, int $page, int $perPage): array
+    public function paginate(
+        string $query,
+        string $sort,
+        string $dir,
+        int $page,
+        int $perPage,
+        string $type = '',
+        string $state = ''
+    ): array
     {
         $sortMap = [
             'name' => 'name',
             'acronym' => 'acronym',
             'cnpj' => 'cnpj',
+            'siape_code' => 'siape_code',
             'organ_type' => 'organ_type',
+            'state' => 'state',
             'company_dependency_type' => 'company_dependency_type',
             'federative_entity' => 'federative_entity',
             'government_level' => 'government_level',
@@ -61,6 +71,7 @@ final class OrganRepository
                 name LIKE :query_name
                 OR acronym LIKE :query_acronym
                 OR cnpj LIKE :query_cnpj
+                OR siape_code LIKE :query_siape_code
                 OR organ_type LIKE :query_organ_type
                 OR company_nire LIKE :query_company_nire
                 OR company_dependency_type LIKE :query_company_dependency_type
@@ -73,6 +84,7 @@ final class OrganRepository
             $params['query_name'] = $search;
             $params['query_acronym'] = $search;
             $params['query_cnpj'] = $search;
+            $params['query_siape_code'] = $search;
             $params['query_organ_type'] = $search;
             $params['query_company_nire'] = $search;
             $params['query_company_dependency_type'] = $search;
@@ -80,6 +92,16 @@ final class OrganRepository
             $params['query_government_level'] = $search;
             $params['query_government_branch'] = $search;
             $params['query_supervising_organ'] = $search;
+        }
+
+        if ($type !== '') {
+            $where .= ' AND organ_type = :filter_type';
+            $params['filter_type'] = $type;
+        }
+
+        if ($state !== '') {
+            $where .= ' AND UPPER(state) = :filter_state';
+            $params['filter_state'] = $state;
         }
 
         $countSql = "SELECT COUNT(*) AS total FROM organs {$where}";
@@ -97,6 +119,7 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                siape_code,
                 organ_type,
                 company_dependency_type,
                 government_level,
@@ -140,6 +163,7 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                siape_code,
                 company_nire,
                 organ_type,
                 company_dependency_type,
@@ -183,6 +207,7 @@ final class OrganRepository
                 name,
                 acronym,
                 cnpj,
+                siape_code,
                 company_nire,
                 organ_type,
                 company_dependency_type,
@@ -212,6 +237,7 @@ final class OrganRepository
                 :name,
                 :acronym,
                 :cnpj,
+                :siape_code,
                 :company_nire,
                 :organ_type,
                 :company_dependency_type,
@@ -244,6 +270,7 @@ final class OrganRepository
             'name' => $data['name'],
             'acronym' => $data['acronym'],
             'cnpj' => $data['cnpj'],
+            'siape_code' => $data['siape_code'],
             'company_nire' => $data['company_nire'],
             'organ_type' => $data['organ_type'],
             'company_dependency_type' => $data['company_dependency_type'],
@@ -281,6 +308,7 @@ final class OrganRepository
                 name = :name,
                 acronym = :acronym,
                 cnpj = :cnpj,
+                siape_code = :siape_code,
                 company_nire = :company_nire,
                 organ_type = :organ_type,
                 company_dependency_type = :company_dependency_type,
@@ -313,6 +341,7 @@ final class OrganRepository
             'name' => $data['name'],
             'acronym' => $data['acronym'],
             'cnpj' => $data['cnpj'],
+            'siape_code' => $data['siape_code'],
             'company_nire' => $data['company_nire'],
             'organ_type' => $data['organ_type'],
             'company_dependency_type' => $data['company_dependency_type'],
@@ -350,6 +379,24 @@ final class OrganRepository
     {
         $sql = 'SELECT id FROM organs WHERE cnpj = :cnpj AND deleted_at IS NULL';
         $params = ['cnpj' => $cnpj];
+
+        if ($ignoreId !== null) {
+            $sql .= ' AND id <> :id';
+            $params['id'] = $ignoreId;
+        }
+
+        $sql .= ' LIMIT 1';
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return $stmt->fetch() !== false;
+    }
+
+    public function siapeCodeExists(string $siapeCode, ?int $ignoreId = null): bool
+    {
+        $sql = 'SELECT id FROM organs WHERE siape_code = :siape_code AND deleted_at IS NULL';
+        $params = ['siape_code' => $siapeCode];
 
         if ($ignoreId !== null) {
             $sql .= ' AND id <> :id';

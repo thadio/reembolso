@@ -27,6 +27,20 @@ $organ = $organ ?? [];
     </div>
 
     <div class="field">
+      <label for="siape_code">Código SIAPE do órgão</label>
+      <input
+        id="siape_code"
+        name="siape_code"
+        type="text"
+        value="<?= e(old('siape_code', (string) ($organ['siape_code'] ?? ''))) ?>"
+        inputmode="numeric"
+        maxlength="20"
+        pattern="[0-9]+"
+        placeholder="Somente números"
+      >
+    </div>
+
+    <div class="field">
       <label for="company_nire">NIRE</label>
       <input id="company_nire" name="company_nire" type="text" value="<?= e(old('company_nire', (string) ($organ['company_nire'] ?? ''))) ?>">
     </div>

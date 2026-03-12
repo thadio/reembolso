@@ -579,9 +579,6 @@ final class CostPlanService
     {
         $rowsInput = is_array($input['items'] ?? null) ? $input['items'] : [];
         $catalogItems = $this->catalogItems->activeList();
-        $errors = [];
-        $warnings = [];
-        $rows = [];
 
         if ($catalogItems === []) {
             return [
@@ -591,101 +588,73 @@ final class CostPlanService
             ];
         }
 
-        $aggregators = [];
-        $aggregatorIds = [];
+        $itemsById = [];
         $childrenByParent = [];
-
         foreach ($catalogItems as $catalogItem) {
             $catalogId = (int) ($catalogItem['id'] ?? 0);
             if ($catalogId <= 0) {
                 continue;
             }
+            $itemsById[$catalogId] = $catalogItem;
+        }
 
-            $isAggregator = (int) ($catalogItem['is_aggregator'] ?? 0) === 1;
-            if ($isAggregator) {
-                $aggregators[] = $catalogItem;
-                $aggregatorIds[$catalogId] = true;
+        foreach ($itemsById as $catalogItem) {
+            $catalogId = (int) ($catalogItem['id'] ?? 0);
+            if ($catalogId <= 0) {
                 continue;
             }
 
             $parentId = (int) ($catalogItem['parent_cost_item_id'] ?? 0);
-            if ($parentId > 0) {
+            if ($parentId > 0 && isset($itemsById[$parentId])) {
                 $childrenByParent[$parentId][] = $catalogItem;
-                continue;
             }
+        }
+        foreach ($childrenByParent as &$children) {
+            $this->sortCatalogItemsByHierarchy($children);
+        }
+        unset($children);
 
-            $parsedStandalone = $this->parseCatalogTableRow($catalogItem, $rowsInput);
-            if ($parsedStandalone['errors'] !== []) {
-                foreach ($parsedStandalone['errors'] as $error) {
-                    $errors[] = $error;
-                }
+        $rootItems = [];
+        foreach ($itemsById as $catalogItem) {
+            $parentId = (int) ($catalogItem['parent_cost_item_id'] ?? 0);
+            if ($parentId <= 0 || !isset($itemsById[$parentId])) {
+                $rootItems[] = $catalogItem;
             }
-            if (is_array($parsedStandalone['row'])) {
-                $rows[] = $parsedStandalone['row'];
+        }
+        $this->sortCatalogItemsByHierarchy($rootItems);
+
+        $errors = [];
+        $warnings = [];
+        $rows = [];
+        $processedIds = [];
+
+        foreach ($rootItems as $rootItem) {
+            $parsedBranch = $this->parseCatalogBranch($rootItem, $childrenByParent, $rowsInput, $processedIds);
+            foreach ($parsedBranch['errors'] as $error) {
+                $errors[] = $error;
+            }
+            foreach ($parsedBranch['warnings'] as $warning) {
+                $warnings[] = $warning;
+            }
+            foreach ($parsedBranch['rows'] as $row) {
+                $rows[] = $row;
             }
         }
 
-        foreach ($aggregators as $aggregator) {
-            $aggregatorId = (int) ($aggregator['id'] ?? 0);
-            if ($aggregatorId <= 0) {
+        foreach ($itemsById as $catalogId => $catalogItem) {
+            if (isset($processedIds[$catalogId])) {
                 continue;
             }
 
-            $parsedAggregator = $this->parseCatalogTableRow($aggregator, $rowsInput);
-            if ($parsedAggregator['errors'] !== []) {
-                foreach ($parsedAggregator['errors'] as $error) {
-                    $errors[] = $error;
-                }
+            $parsedBranch = $this->parseCatalogBranch($catalogItem, $childrenByParent, $rowsInput, $processedIds);
+            foreach ($parsedBranch['errors'] as $error) {
+                $errors[] = $error;
             }
-
-            $children = is_array($childrenByParent[$aggregatorId] ?? null) ? $childrenByParent[$aggregatorId] : [];
-            $parsedChildRows = [];
-
-            foreach ($children as $child) {
-                $parsedChild = $this->parseCatalogTableRow($child, $rowsInput);
-                if ($parsedChild['errors'] !== []) {
-                    foreach ($parsedChild['errors'] as $error) {
-                        $errors[] = $error;
-                    }
-                }
-                if (is_array($parsedChild['row'])) {
-                    $parsedChildRows[] = $parsedChild['row'];
-                }
+            foreach ($parsedBranch['warnings'] as $warning) {
+                $warnings[] = $warning;
             }
-
-            if ($parsedChildRows !== []) {
-                foreach ($parsedChildRows as $parsedChildRow) {
-                    $rows[] = $parsedChildRow;
-                }
-
-                if (is_array($parsedAggregator['row'])) {
-                    $warnings[] = 'Valor informado na categoria "'
-                        . (string) ($aggregator['name'] ?? 'Categoria')
-                        . '" foi ignorado porque existem itens filhos detalhados.';
-                }
-                continue;
-            }
-
-            if (is_array($parsedAggregator['row'])) {
-                $rows[] = $parsedAggregator['row'];
-            }
-        }
-
-        foreach ($childrenByParent as $parentId => $orphans) {
-            if ($parentId <= 0 || isset($aggregatorIds[$parentId])) {
-                continue;
-            }
-
-            foreach ($orphans as $orphan) {
-                $parsedOrphan = $this->parseCatalogTableRow($orphan, $rowsInput);
-                if ($parsedOrphan['errors'] !== []) {
-                    foreach ($parsedOrphan['errors'] as $error) {
-                        $errors[] = $error;
-                    }
-                }
-                if (is_array($parsedOrphan['row'])) {
-                    $rows[] = $parsedOrphan['row'];
-                }
+            foreach ($parsedBranch['rows'] as $row) {
+                $rows[] = $row;
             }
         }
 
@@ -694,6 +663,111 @@ final class CostPlanService
             'warnings' => array_values(array_unique($warnings)),
             'rows' => $rows,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $catalogItem
+     * @param array<int, array<int, array<string, mixed>>> $childrenByParent
+     * @param array<string|int, mixed> $rowsInput
+     * @param array<int, bool> $processedIds
+     * @param array<int, bool> $stack
+     * @return array{errors: array<int, string>, warnings: array<int, string>, rows: array<int, array<string, mixed>>}
+     */
+    private function parseCatalogBranch(
+        array $catalogItem,
+        array $childrenByParent,
+        array $rowsInput,
+        array &$processedIds,
+        array $stack = []
+    ): array {
+        $catalogId = (int) ($catalogItem['id'] ?? 0);
+        if ($catalogId <= 0) {
+            return [
+                'errors' => [],
+                'warnings' => [],
+                'rows' => [],
+            ];
+        }
+
+        if (isset($stack[$catalogId])) {
+            return [
+                'errors' => ['Hierarquia de itens de custo invalida: ciclo detectado no catalogo.'],
+                'warnings' => [],
+                'rows' => [],
+            ];
+        }
+
+        if (isset($processedIds[$catalogId])) {
+            return [
+                'errors' => [],
+                'warnings' => [],
+                'rows' => [],
+            ];
+        }
+
+        $processedIds[$catalogId] = true;
+        $stack[$catalogId] = true;
+
+        $parsedCurrent = $this->parseCatalogTableRow($catalogItem, $rowsInput);
+        $errors = $parsedCurrent['errors'];
+        $warnings = [];
+        $rows = [];
+
+        $descendantRows = [];
+        $children = is_array($childrenByParent[$catalogId] ?? null) ? $childrenByParent[$catalogId] : [];
+        foreach ($children as $childItem) {
+            $parsedChildBranch = $this->parseCatalogBranch($childItem, $childrenByParent, $rowsInput, $processedIds, $stack);
+            foreach ($parsedChildBranch['errors'] as $error) {
+                $errors[] = $error;
+            }
+            foreach ($parsedChildBranch['warnings'] as $warning) {
+                $warnings[] = $warning;
+            }
+            foreach ($parsedChildBranch['rows'] as $parsedChildRow) {
+                $descendantRows[] = $parsedChildRow;
+            }
+        }
+
+        if ($descendantRows !== []) {
+            foreach ($descendantRows as $descendantRow) {
+                $rows[] = $descendantRow;
+            }
+
+            if (is_array($parsedCurrent['row'])) {
+                $itemLabel = (int) ($catalogItem['is_aggregator'] ?? 0) === 1 ? 'categoria' : 'item';
+                $warnings[] = 'Valor informado no ' . $itemLabel . ' "'
+                    . (string) ($catalogItem['name'] ?? 'Categoria')
+                    . '" foi ignorado porque existem itens filhos detalhados.';
+            }
+        } elseif (is_array($parsedCurrent['row'])) {
+            $rows[] = $parsedCurrent['row'];
+        }
+
+        return [
+            'errors' => $errors,
+            'warnings' => $warnings,
+            'rows' => $rows,
+        ];
+    }
+
+    /** @param array<int, array<string, mixed>> $items */
+    private function sortCatalogItemsByHierarchy(array &$items): void
+    {
+        usort($items, static function (array $left, array $right): int {
+            $leftSort = (int) ($left['hierarchy_sort'] ?? 0);
+            $rightSort = (int) ($right['hierarchy_sort'] ?? 0);
+            if ($leftSort !== $rightSort) {
+                return $leftSort <=> $rightSort;
+            }
+
+            $leftCode = (int) ($left['cost_code'] ?? 0);
+            $rightCode = (int) ($right['cost_code'] ?? 0);
+            if ($leftCode !== $rightCode) {
+                return $leftCode <=> $rightCode;
+            }
+
+            return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+        });
     }
 
     /**

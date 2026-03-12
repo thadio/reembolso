@@ -182,7 +182,7 @@ foreach ($hierarchy as $group) {
                   <?php foreach ($children as $child): ?>
                     <?php
                       $childId = (int) ($child['id'] ?? 0);
-                      $childName = trim((string) ($child['name'] ?? 'Item'));
+                      $childName = trim((string) ($child['display_name'] ?? ($child['name'] ?? 'Item')));
                       $childDescription = trim((string) ($child['type_description'] ?? ''));
                     ?>
                     <tr>

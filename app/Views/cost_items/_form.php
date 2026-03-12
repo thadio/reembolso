@@ -12,8 +12,10 @@ $macroCategoryOptions = is_array($macroCategoryOptions ?? null) ? $macroCategory
 $expenseNatureOptions = is_array($expenseNatureOptions ?? null) ? $expenseNatureOptions : [];
 $calculationBaseOptions = is_array($calculationBaseOptions ?? null) ? $calculationBaseOptions : [];
 $predictabilityOptions = is_array($predictabilityOptions ?? null) ? $predictabilityOptions : [];
+$itemId = (int) ($item['id'] ?? 0);
+$isEditMode = ($isEdit ?? false) === true;
 
-$old = static fn (string $key, mixed $default = '') => old($key, $item[$key] ?? $default);
+$old = static fn (string $key, string $default = ''): string => old($key, (string) ($item[$key] ?? $default));
 $resolvedItemKind = (string) old(
     'item_kind',
     ((int) ($item['is_aggregator'] ?? 0) === 1 ? 'aggregator' : (string) ($_GET['item_kind'] ?? 'child'))
@@ -21,13 +23,17 @@ $resolvedItemKind = (string) old(
 if (!in_array($resolvedItemKind, ['aggregator', 'child'], true)) {
     $resolvedItemKind = 'child';
 }
-$resolvedParentCostItemId = (int) old('parent_cost_item_id', (int) ($item['parent_cost_item_id'] ?? ($_GET['parent_cost_item_id'] ?? 0)));
+$isAutoChildCreate = !$isEditMode && $resolvedItemKind === 'child';
+$resolvedParentCostItemId = (int) old(
+    'parent_cost_item_id',
+    (string) ((int) ($item['parent_cost_item_id'] ?? ($_GET['parent_cost_item_id'] ?? 0)))
+);
 ?>
 <div class="card">
-  <form method="post" action="<?= e($action ?? '#') ?>" class="form-grid" data-cost-item-form>
+  <form method="post" action="<?= e($action ?? '#') ?>" class="form-grid" data-cost-item-form data-is-edit="<?= $isEditMode ? '1' : '0' ?>">
     <?= csrf_field() ?>
-    <?php if (($isEdit ?? false) === true): ?>
-      <input type="hidden" name="id" value="<?= e((string) ((int) ($item['id'] ?? 0))) ?>">
+    <?php if ($isEditMode): ?>
+      <input type="hidden" name="id" value="<?= e((string) $itemId) ?>">
     <?php endif; ?>
 
     <input type="hidden" name="subcategory" value="<?= e((string) $old('subcategory', (string) ($item['subcategory'] ?? ''))) ?>">
@@ -71,7 +77,7 @@ $resolvedParentCostItemId = (int) old('parent_cost_item_id', (int) ($item['paren
       >
     </div>
 
-    <div class="field">
+    <div class="field" data-cost-code-field>
       <label for="cost_item_cost_code">Codigo *</label>
       <input
         id="cost_item_cost_code"
@@ -79,10 +85,12 @@ $resolvedParentCostItemId = (int) old('parent_cost_item_id', (int) ($item['paren
         type="number"
         min="1"
         max="9999"
-        required
-        value="<?= e((string) $old('cost_code', '')) ?>"
-        placeholder="Ex.: 40"
+        <?= $isAutoChildCreate ? 'readonly' : 'required' ?>
+        value="<?= e((string) ($isAutoChildCreate ? '' : $old('cost_code', ''))) ?>"
+        placeholder="<?= e($isAutoChildCreate ? 'Gerado automaticamente ao salvar' : 'Ex.: 40') ?>"
+        data-cost-code-input
       >
+      <small class="muted" data-cost-code-auto-note style="<?= $isAutoChildCreate ? '' : 'display:none;' ?>">Para item filho, o codigo e gerado automaticamente ao salvar.</small>
     </div>
 
     <div class="field field-wide">
@@ -214,6 +222,17 @@ $resolvedParentCostItemId = (int) old('parent_cost_item_id', (int) ($item['paren
     <div class="form-actions field-wide">
       <button type="submit" class="btn btn-primary"><?= e($submitLabel ?? 'Salvar') ?></button>
       <a class="btn btn-outline" href="<?= e(url('/cost-items')) ?>">Cancelar</a>
+      <?php if (($isEdit ?? false) === true && $itemId > 0): ?>
+        <button
+          type="submit"
+          class="btn btn-danger"
+          formaction="<?= e(url('/cost-items/delete')) ?>"
+          formnovalidate
+          onclick="return confirm('Confirmar remocao deste tipo de custo?');"
+        >
+          Excluir tipo
+        </button>
+      <?php endif; ?>
     </div>
   </form>
 </div>
@@ -228,9 +247,15 @@ $resolvedParentCostItemId = (int) old('parent_cost_item_id', (int) ($item['paren
     var itemKind = form.querySelector('[data-item-kind]');
     var parentField = form.querySelector('[data-parent-field]');
     var parentSelect = form.querySelector('[data-parent-select]');
+    var costCodeInput = form.querySelector('[data-cost-code-input]');
+    var costCodeAutoNote = form.querySelector('[data-cost-code-auto-note]');
+    var isEdit = form.getAttribute('data-is-edit') === '1';
+    var manualCodePlaceholder = 'Ex.: 40';
+    var automaticCodePlaceholder = 'Gerado automaticamente ao salvar';
 
     var sync = function () {
       var isChild = itemKind && String(itemKind.value || '') === 'child';
+      var autoChildCode = !isEdit && isChild;
 
       if (parentField) {
         parentField.style.display = isChild ? '' : 'none';
@@ -241,6 +266,20 @@ $resolvedParentCostItemId = (int) old('parent_cost_item_id', (int) ($item['paren
         if (!isChild) {
           parentSelect.value = '0';
         }
+      }
+
+      if (costCodeInput) {
+        costCodeInput.readOnly = autoChildCode;
+        costCodeInput.required = !autoChildCode;
+        costCodeInput.placeholder = autoChildCode ? automaticCodePlaceholder : manualCodePlaceholder;
+
+        if (autoChildCode) {
+          costCodeInput.value = '';
+        }
+      }
+
+      if (costCodeAutoNote) {
+        costCodeAutoNote.style.display = autoChildCode ? '' : 'none';
       }
     };
 

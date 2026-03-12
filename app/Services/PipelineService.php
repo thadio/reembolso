@@ -43,7 +43,8 @@ final class PipelineService
         string $ip,
         string $userAgent,
         ?array $movementContext = null,
-        ?array $scheduleContext = null
+        ?array $scheduleContext = null,
+        ?string $initialStatusCode = null
     ): ?array
     {
         $movementResolved = $this->resolveMovementContext($personId, is_array($movementContext) ? $movementContext : [], false);
@@ -154,6 +155,20 @@ final class PipelineService
         $initial = $this->pipeline->initialStatus($flowId > 0 ? $flowId : null);
         if ($initial === null) {
             return null;
+        }
+
+        $preferredStatusCode = $this->normalizeStatusCodeToken($initialStatusCode);
+        if ($preferredStatusCode !== null && $flowId > 0) {
+            $flowStatuses = $this->pipeline->statusesForFlow($flowId);
+            foreach ($flowStatuses as $candidateStatus) {
+                $candidateCode = $this->normalizeStatusCodeToken((string) ($candidateStatus['code'] ?? ''));
+                if ($candidateCode === null || $candidateCode !== $preferredStatusCode) {
+                    continue;
+                }
+
+                $initial = $candidateStatus;
+                break;
+            }
         }
 
         $assignmentId = $this->pipeline->createAssignment(
@@ -2107,6 +2122,20 @@ final class PipelineService
         }
 
         return $defaultFlowId;
+    }
+
+    private function normalizeStatusCodeToken(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $normalized = mb_strtolower(trim($value));
+        if ($normalized === '') {
+            return null;
+        }
+
+        return preg_replace('/[^a-z0-9_]+/', '_', $normalized) ?? $normalized;
     }
 
     private function normalizeQueuePriority(string $priority): ?string

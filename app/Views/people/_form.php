@@ -5,7 +5,6 @@ declare(strict_types=1);
 $person = $person ?? [];
 $assignment = is_array($assignment ?? null) ? $assignment : [];
 $movementDirectionOptions = is_array($movementDirectionOptions ?? null) ? $movementDirectionOptions : [];
-$financialNatureOptions = is_array($financialNatureOptions ?? null) ? $financialNatureOptions : [];
 $mteOrganId = max(0, (int) ($mteOrganId ?? 0));
 
 $selectedMovementDirection = (string) old(
@@ -23,27 +22,14 @@ if ($selectedMovementDirection === 'saida_mte') {
     $selectedFinancialNature = 'despesa_reembolso';
 }
 
-$financialNatureLabels = [];
-foreach ($financialNatureOptions as $option) {
-    $value = trim((string) ($option['value'] ?? ''));
-    $label = trim((string) ($option['label'] ?? $value));
-    if ($value === '') {
-        continue;
-    }
-
-    $financialNatureLabels[$value] = $label;
-}
-
 $isEntryDirection = $selectedMovementDirection === 'entrada_mte';
 $isExitDirection = $selectedMovementDirection === 'saida_mte';
 $organFieldLabel = $isExitDirection
     ? 'Órgão de destino *'
     : ($isEntryDirection ? 'Órgão de origem *' : 'Órgão de origem/destino *');
-$organHelpText = $isExitDirection
-    ? 'Obrigatório para informar o órgão de destino da pessoa.'
-    : ($isEntryDirection
-        ? 'Obrigatório. Para entrada no MTE, selecione um órgão de origem diferente do MTE.'
-        : 'Selecione primeiro a direção do movimento para definir se o órgão é de origem ou destino.');
+$organSearchPlaceholder = $isExitDirection
+    ? 'Digite para buscar órgão de destino'
+    : ($isEntryDirection ? 'Digite para buscar órgão de origem' : 'Selecione primeiro a direção');
 
 $normalizeLookup = static function (string $value): string {
     $normalized = mb_strtolower(trim($value));
@@ -89,377 +75,494 @@ $movementReasonType = static function (string $modalityName) use ($normalizeLook
 };
 
 $isEditMode = ($isEdit ?? false) === true;
+$selectedOrgan = (int) old('organ_id', (string) ($person['organ_id'] ?? '0'));
+$selectedOriginDestination = (int) old(
+    'origin_mte_destination_id',
+    (string) ($assignment['origin_mte_destination_id'] ?? $person['origin_mte_destination_id'] ?? '0')
+);
+$selectedDestination = (int) old(
+    'destination_mte_destination_id',
+    (string) ($assignment['destination_mte_destination_id'] ?? $person['destination_mte_destination_id'] ?? '0')
+);
+$selectedModality = (int) old('desired_modality_id', (string) ($person['desired_modality_id'] ?? '0'));
+$selectedFlow = (int) old('assignment_flow_id', (string) ($person['assignment_flow_id'] ?? '0'));
+$targetStartDate = (string) old(
+    'target_start_date',
+    (string) ($assignment['target_start_date'] ?? $person['target_start_date'] ?? '')
+);
+$requestedEndDate = (string) old(
+    'requested_end_date',
+    (string) ($assignment['requested_end_date'] ?? $person['requested_end_date'] ?? '')
+);
+$wizardInitialStep = max(1, min(3, (int) old('wizard_step', '1')));
+$cancelUrl = (string) ($cancelUrl ?? url('/people'));
+
+$additionalInfoHasValues = trim((string) old('sei_process_number', (string) ($person['sei_process_number'] ?? ''))) !== ''
+    || trim((string) old('tags', (string) ($person['tags'] ?? ''))) !== ''
+    || trim((string) old('notes', (string) ($person['notes'] ?? ''))) !== '';
+
+$directionCardMeta = [
+    'entrada_mte' => [
+        'title' => 'Entrada no MTE',
+        'description' => 'Recebe pessoa de outro órgão',
+    ],
+    'saida_mte' => [
+        'title' => 'Saída do MTE',
+        'description' => 'Pessoa segue para outro órgão',
+    ],
+];
 ?>
-<div class="card">
-  <form method="post" action="<?= e($action) ?>" class="form-grid people-form-grid">
+<div class="card people-wizard-card">
+  <form
+    method="post"
+    action="<?= e($action) ?>"
+    class="form-grid people-form-grid people-wizard-form"
+    data-cpf-lookup-url="<?= e(url('/people/lookup-cpf')) ?>"
+  >
     <?= csrf_field() ?>
-    <?php if (($isEdit ?? false) === true): ?>
+    <?php if ($isEditMode): ?>
       <input type="hidden" name="id" value="<?= e((string) ($person['id'] ?? '')) ?>">
     <?php endif; ?>
 
-    <?php if (!$isEditMode): ?>
-      <div class="field field-wide people-create-section-heading">
-        <h3>1. Movimentação e enquadramento</h3>
-        <p class="muted">Defina direção, órgão de contraparte, natureza financeira automática, lotação MTE e período previsto.</p>
-      </div>
-    <?php endif; ?>
-
-    <?php $selectedOrgan = (int) old('organ_id', (string) ($person['organ_id'] ?? '0')); ?>
-    <?php
-      $selectedOriginDestination = (int) old(
-          'origin_mte_destination_id',
-          (string) ($assignment['origin_mte_destination_id'] ?? $person['origin_mte_destination_id'] ?? '0')
-      );
-    ?>
-    <?php
-      $selectedDestination = (int) old(
-          'destination_mte_destination_id',
-          (string) ($assignment['destination_mte_destination_id'] ?? $person['destination_mte_destination_id'] ?? '0')
-      );
-    ?>
+    <input type="hidden" id="wizard_step" name="wizard_step" value="<?= e((string) $wizardInitialStep) ?>">
+    <input type="hidden" id="financial_nature" name="financial_nature" value="<?= e($selectedFinancialNature) ?>">
 
     <div class="field field-wide">
-      <label>Direção do movimento *</label>
-      <div class="chips-row movement-direction-group" id="movement_direction_group">
-        <?php $directionIndex = 0; ?>
-        <?php foreach ($movementDirectionOptions as $option): ?>
-          <?php
-            $value = trim((string) ($option['value'] ?? ''));
-            $label = trim((string) ($option['label'] ?? $value));
-            if ($value === '') {
-                continue;
-            }
-          ?>
-          <label>
+      <ol class="people-wizard-progress" aria-label="Etapas do cadastro">
+        <li class="people-wizard-progress-item" data-step-indicator="1">
+          <span class="step-number">1</span>
+          <span class="step-label">Movimentação</span>
+        </li>
+        <li class="people-wizard-progress-item" data-step-indicator="2">
+          <span class="step-number">2</span>
+          <span class="step-label">Dados da pessoa</span>
+        </li>
+        <li class="people-wizard-progress-item" data-step-indicator="3">
+          <span class="step-number">3</span>
+          <span class="step-label">Complementares</span>
+        </li>
+      </ol>
+    </div>
+
+    <section class="people-wizard-step field-wide" data-step="1">
+      <div class="people-step-header">
+        <h3>Etapa 1: Tipo de movimentação</h3>
+        <p class="muted">Defina direção, motivo, fluxo e origem/destino.</p>
+      </div>
+
+      <div class="people-step-grid">
+        <div class="field field-wide">
+          <label>Direção do movimento *</label>
+          <div class="movement-direction-grid" id="movement_direction_group">
+            <?php $directionIndex = 0; ?>
+            <?php foreach ($movementDirectionOptions as $option): ?>
+              <?php
+                $value = trim((string) ($option['value'] ?? ''));
+                $label = trim((string) ($option['label'] ?? $value));
+                if ($value === '') {
+                    continue;
+                }
+
+                $cardMeta = $directionCardMeta[$value] ?? [
+                    'title' => $label,
+                    'description' => 'Selecione para continuar o cadastro.',
+                ];
+              ?>
+              <label class="movement-direction-card">
+                <input
+                  type="radio"
+                  name="movement_direction"
+                  value="<?= e($value) ?>"
+                  <?= $selectedMovementDirection === $value ? 'checked' : '' ?>
+                  <?= $directionIndex === 0 ? 'required' : '' ?>
+                >
+                <span class="movement-direction-title"><?= e((string) ($cardMeta['title'] ?? $label)) ?></span>
+                <span class="movement-direction-description"><?= e((string) ($cardMeta['description'] ?? '')) ?></span>
+              </label>
+              <?php $directionIndex++; ?>
+            <?php endforeach; ?>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="desired_modality_id">Motivo *</label>
+          <select id="desired_modality_id" name="desired_modality_id" required>
+            <option value="0">Selecione</option>
+            <?php foreach (($modalities ?? []) as $modality): ?>
+              <?php
+                $modalityName = (string) ($modality['name'] ?? '');
+                $reasonType = $movementReasonType($modalityName);
+                if ($reasonType === '') {
+                    continue;
+                }
+
+                $allowedDirections = $reasonType === 'requisicao'
+                    ? 'saida_mte'
+                    : 'entrada_mte,saida_mte';
+              ?>
+              <option
+                value="<?= e((string) $modality['id']) ?>"
+                data-reason-type="<?= e($reasonType) ?>"
+                data-allowed-directions="<?= e($allowedDirections) ?>"
+                <?= $selectedModality === (int) $modality['id'] ? 'selected' : '' ?>
+              >
+                <?= e($modalityName) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="assignment_flow_id">Fluxo BPMN *</label>
+          <select id="assignment_flow_id" name="assignment_flow_id" required>
+            <option value="0">Selecione</option>
+            <?php foreach (($assignmentFlows ?? []) as $flow): ?>
+              <?php $flowId = (int) ($flow['id'] ?? 0); ?>
+              <option value="<?= e((string) $flowId) ?>" <?= $selectedFlow === $flowId ? 'selected' : '' ?>>
+                <?= e((string) ($flow['name'] ?? ('Fluxo #' . $flowId))) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+
+        <div class="field" id="mte_origin_fixed_field" <?= $isExitDirection ? '' : 'style="display: none;"' ?>>
+          <label for="mte_origin_name">Órgão de origem (fixo)</label>
+          <input id="mte_origin_name" type="text" value="MTE - Ministério do Trabalho e Emprego" readonly>
+        </div>
+
+        <div class="field" id="organ_id_field">
+          <label id="organ_id_label" for="organ_id_search"><?= e($organFieldLabel) ?></label>
+          <div class="lookup-shell" id="organ_id_lookup_shell">
             <input
-              type="radio"
-              name="movement_direction"
-              value="<?= e($value) ?>"
-              <?= $selectedMovementDirection === $value ? 'checked' : '' ?>
-              <?= $directionIndex === 0 ? 'required' : '' ?>
+              id="organ_id_search"
+              type="search"
+              placeholder="<?= e($organSearchPlaceholder) ?>"
+              autocomplete="off"
+              spellcheck="false"
             >
-            <?= e($label) ?>
-          </label>
-          <?php $directionIndex++; ?>
-        <?php endforeach; ?>
-      </div>
-      <p class="muted">Selecione a direção para liberar os campos aplicáveis no cadastro.</p>
-    </div>
+            <div
+              id="organ_id_suggestions"
+              class="lookup-suggestions"
+              role="listbox"
+              aria-label="Sugestões de órgão"
+              aria-live="polite"
+            ></div>
+            <select
+              id="organ_id"
+              name="organ_id"
+              class="lookup-fallback-select"
+              <?= ($isExitDirection || $isEntryDirection) ? 'required' : '' ?>
+            >
+              <option value="0">Selecione</option>
+              <?php foreach (($organs ?? []) as $organ): ?>
+                <?php
+                  $organId = (int) ($organ['id'] ?? 0);
+                  $isMteOption = $mteOrganId > 0 && $organId === $mteOrganId;
+                  $organAcronym = trim((string) ($organ['acronym'] ?? ''));
+                  $organName = trim((string) ($organ['name'] ?? ''));
+                  $organLabel = $organName;
+                  if ($organAcronym !== '') {
+                      $organLabel .= ' (' . $organAcronym . ')';
+                  }
+                ?>
+                <option
+                  value="<?= e((string) $organId) ?>"
+                  data-is-mte="<?= $isMteOption ? '1' : '0' ?>"
+                  <?= $selectedOrgan === $organId ? 'selected' : '' ?>
+                >
+                  <?= e($organLabel) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
 
-    <div class="field" id="mte_origin_fixed_field" <?= $isExitDirection ? '' : 'style="display: none;"' ?>>
-      <label for="mte_origin_name">Órgão de origem</label>
-      <input id="mte_origin_name" type="text" value="MTE - Ministério do Trabalho e Emprego" readonly>
-    </div>
-
-    <div class="field" id="organ_id_field">
-      <label id="organ_id_label" for="organ_id"><?= e($organFieldLabel) ?></label>
-      <select id="organ_id" name="organ_id">
-        <option value="0">Selecione</option>
-        <?php foreach (($organs ?? []) as $organ): ?>
-          <?php
-            $organId = (int) ($organ['id'] ?? 0);
-            $isMteOption = $mteOrganId > 0 && $organId === $mteOrganId;
-            $organAcronym = trim((string) ($organ['acronym'] ?? ''));
-            $organName = trim((string) ($organ['name'] ?? ''));
-            $organLabel = $organName;
-            if ($organAcronym !== '') {
-                $organLabel .= ' (' . $organAcronym . ')';
-            }
-          ?>
-          <option
-            value="<?= e((string) $organId) ?>"
-            data-is-mte="<?= $isMteOption ? '1' : '0' ?>"
-            <?= $selectedOrgan === $organId ? 'selected' : '' ?>
+        <div class="field" id="origin_mte_destination_wrapper" <?= $isExitDirection ? '' : 'style="display: none;"' ?>>
+          <label for="origin_mte_destination_id">Lotação de origem no MTE *</label>
+          <select
+            id="origin_mte_destination_id"
+            name="origin_mte_destination_id"
+            <?= $isExitDirection ? 'required' : '' ?>
+            <?= $isExitDirection ? '' : 'disabled' ?>
           >
-            <?= e($organLabel) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <p class="muted" id="organ_id_help"><?= e($organHelpText) ?></p>
-    </div>
+            <option value="0">Selecione</option>
+            <?php foreach (($mteDestinations ?? []) as $destination): ?>
+              <?php
+                $destinationId = (int) ($destination['id'] ?? 0);
+                $destinationName = trim((string) ($destination['name'] ?? ''));
+                if ($destinationName === '') {
+                    continue;
+                }
 
-    <div class="field">
-      <label for="financial_nature_label">Natureza financeira *</label>
-      <input type="hidden" id="financial_nature" name="financial_nature" value="<?= e($selectedFinancialNature) ?>">
-      <input
-        id="financial_nature_label"
-        type="text"
-        value="<?= e((string) ($financialNatureLabels[$selectedFinancialNature] ?? '')) ?>"
-        readonly
-        disabled
-      >
-      <p class="muted">A natureza financeira é definida automaticamente pela direção do movimento.</p>
-    </div>
+                $destinationCode = trim((string) ($destination['code'] ?? ''));
+                $destinationAcronym = trim((string) ($destination['acronym'] ?? ''));
+                $destinationUf = trim((string) ($destination['uf'] ?? ''));
 
-    <div class="field" id="origin_mte_destination_wrapper" <?= $isExitDirection ? '' : 'style="display: none;"' ?>>
-      <label for="origin_mte_destination_id">Lotação de origem no MTE</label>
-      <select id="origin_mte_destination_id" name="origin_mte_destination_id">
-        <option value="0">Selecione</option>
-        <?php foreach (($mteDestinations ?? []) as $destination): ?>
-          <?php
-            $destinationId = (int) ($destination['id'] ?? 0);
-            $destinationName = trim((string) ($destination['name'] ?? ''));
-            if ($destinationName === '') {
-                continue;
-            }
+                $prefix = $destinationAcronym !== '' ? $destinationAcronym : $destinationCode;
+                if ($destinationUf !== '') {
+                    $prefix = $prefix === '' ? $destinationUf : ($prefix . '/' . $destinationUf);
+                }
+                if ($destinationCode !== '' && $destinationAcronym !== '' && $destinationCode !== $destinationAcronym) {
+                    $prefix .= ' [' . $destinationCode . ']';
+                }
 
-            $destinationCode = trim((string) ($destination['code'] ?? ''));
-            $destinationAcronym = trim((string) ($destination['acronym'] ?? ''));
-            $destinationUf = trim((string) ($destination['uf'] ?? ''));
+                $destinationLabel = $prefix === '' ? $destinationName : ($prefix . ' - ' . $destinationName);
+              ?>
+              <option value="<?= e((string) $destinationId) ?>" <?= $selectedOriginDestination === $destinationId ? 'selected' : '' ?>>
+                <?= e($destinationLabel) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
 
-            $prefix = $destinationAcronym !== '' ? $destinationAcronym : $destinationCode;
-            if ($destinationUf !== '') {
-                $prefix = $prefix === '' ? $destinationUf : ($prefix . '/' . $destinationUf);
-            }
-            if ($destinationCode !== '' && $destinationAcronym !== '' && $destinationCode !== $destinationAcronym) {
-                $prefix .= ' [' . $destinationCode . ']';
-            }
+        <div class="field" id="destination_mte_destination_wrapper" <?= $isEntryDirection ? '' : 'style="display: none;"' ?>>
+          <label for="destination_mte_destination_search">Lotação de destino no MTE *</label>
+          <div class="lookup-shell" id="destination_lookup_shell">
+            <input
+              id="destination_mte_destination_search"
+              type="search"
+              placeholder="Digite para buscar lotação de destino"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <div
+              id="destination_mte_destination_suggestions"
+              class="lookup-suggestions"
+              role="listbox"
+              aria-label="Sugestões de lotação de destino no MTE"
+              aria-live="polite"
+            ></div>
+            <select
+              id="destination_mte_destination_id"
+              name="destination_mte_destination_id"
+              class="lookup-fallback-select"
+              <?= $isEntryDirection ? 'required' : '' ?>
+              <?= $isEntryDirection ? '' : 'disabled' ?>
+            >
+              <option value="0">Selecione</option>
+              <?php foreach (($mteDestinations ?? []) as $destination): ?>
+                <?php
+                  $destinationId = (int) ($destination['id'] ?? 0);
+                  $destinationName = trim((string) ($destination['name'] ?? ''));
+                  if ($destinationName === '') {
+                      continue;
+                  }
 
-            $destinationLabel = $prefix === '' ? $destinationName : ($prefix . ' - ' . $destinationName);
-          ?>
-          <option value="<?= e((string) $destinationId) ?>" <?= $selectedOriginDestination === $destinationId ? 'selected' : '' ?>>
-            <?= e($destinationLabel) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <p class="muted">Obrigatória quando a direção for "Pessoa saindo do MTE".</p>
-    </div>
+                  $destinationCode = trim((string) ($destination['code'] ?? ''));
+                  $destinationAcronym = trim((string) ($destination['acronym'] ?? ''));
+                  $destinationUf = trim((string) ($destination['uf'] ?? ''));
 
-    <div class="field" id="destination_mte_destination_wrapper" <?= $isEntryDirection ? '' : 'style="display: none;"' ?>>
-      <label for="destination_mte_destination_search">Lotação de destino no MTE</label>
-      <div class="destination-search-shell">
-        <input
-          id="destination_mte_destination_search"
-          type="search"
-          placeholder="Digite para buscar lotação de destino"
-          autocomplete="off"
-          spellcheck="false"
-        >
-        <div
-          id="destination_mte_destination_suggestions"
-          class="destination-suggestions"
-          role="listbox"
-          aria-label="Sugestões de lotação de destino no MTE"
-          aria-live="polite"
-        ></div>
+                  $prefix = $destinationAcronym !== '' ? $destinationAcronym : $destinationCode;
+                  if ($destinationUf !== '') {
+                      $prefix = $prefix === '' ? $destinationUf : ($prefix . '/' . $destinationUf);
+                  }
+                  if ($destinationCode !== '' && $destinationAcronym !== '' && $destinationCode !== $destinationAcronym) {
+                      $prefix .= ' [' . $destinationCode . ']';
+                  }
+
+                  $destinationLabel = $prefix === '' ? $destinationName : ($prefix . ' - ' . $destinationName);
+                ?>
+                <option value="<?= e((string) $destinationId) ?>" <?= $selectedDestination === $destinationId ? 'selected' : '' ?>>
+                  <?= e($destinationLabel) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+        </div>
       </div>
-      <select id="destination_mte_destination_id" name="destination_mte_destination_id">
-        <option value="0">Selecione</option>
-        <?php foreach (($mteDestinations ?? []) as $destination): ?>
-          <?php
-            $destinationId = (int) ($destination['id'] ?? 0);
-            $destinationName = trim((string) ($destination['name'] ?? ''));
-            if ($destinationName === '') {
-                continue;
-            }
 
-            $destinationCode = trim((string) ($destination['code'] ?? ''));
-            $destinationAcronym = trim((string) ($destination['acronym'] ?? ''));
-            $destinationUf = trim((string) ($destination['uf'] ?? ''));
-
-            $prefix = $destinationAcronym !== '' ? $destinationAcronym : $destinationCode;
-            if ($destinationUf !== '') {
-                $prefix = $prefix === '' ? $destinationUf : ($prefix . '/' . $destinationUf);
-            }
-            if ($destinationCode !== '' && $destinationAcronym !== '' && $destinationCode !== $destinationAcronym) {
-                $prefix .= ' [' . $destinationCode . ']';
-            }
-
-            $destinationLabel = $prefix === '' ? $destinationName : ($prefix . ' - ' . $destinationName);
-          ?>
-          <option value="<?= e((string) $destinationId) ?>" <?= $selectedDestination === $destinationId ? 'selected' : '' ?>>
-            <?= e($destinationLabel) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <p class="muted">Digite ao menos 2 caracteres para busca incremental com sugestões. Obrigatória quando a direção for "Pessoa entrando no MTE".</p>
-    </div>
-
-    <?php
-      $targetStartDate = (string) old(
-          'target_start_date',
-          (string) ($assignment['target_start_date'] ?? $person['target_start_date'] ?? '')
-      );
-      $requestedEndDate = (string) old(
-          'requested_end_date',
-          (string) ($assignment['requested_end_date'] ?? $person['requested_end_date'] ?? '')
-      );
-    ?>
-
-    <div class="field">
-      <label for="target_start_date">Data prevista de início efetivo</label>
-      <input id="target_start_date" name="target_start_date" type="date" value="<?= e($targetStartDate) ?>">
-      <p class="muted">Usada nas projeções financeiras até o registro da data efetiva.</p>
-    </div>
-
-    <div class="field">
-      <label for="requested_end_date">Data prevista de término efetivo</label>
-      <input id="requested_end_date" name="requested_end_date" type="date" value="<?= e($requestedEndDate) ?>">
-      <p class="muted">Para movimentações com término previsto, substituída automaticamente quando houver data efetiva.</p>
-    </div>
-
-    <?php if (!$isEditMode): ?>
-      <div class="field field-wide people-create-section-heading">
-        <h3>2. Dados pessoais e vínculo administrativo</h3>
-        <p class="muted">Preencha identificação da pessoa e os dados administrativos usados no pipeline, relatórios e filtros.</p>
+      <div class="form-actions field-wide people-step-actions">
+        <a class="btn btn-outline" href="<?= e($cancelUrl) ?>">Cancelar</a>
+        <button type="button" class="btn btn-primary" data-step-next="1">Continuar</button>
       </div>
-    <?php endif; ?>
+    </section>
 
-    <div class="field field-wide">
-      <label for="name">Nome completo *</label>
-      <input id="name" name="name" type="text" value="<?= e(old('name', (string) ($person['name'] ?? ''))) ?>" required>
-    </div>
+    <section class="people-wizard-step field-wide" data-step="2">
+      <div class="people-step-header">
+        <h3>Etapa 2: Dados da pessoa</h3>
+        <p class="muted">Cadastre identificação e contato.</p>
+      </div>
 
-    <div class="field">
-      <label for="cpf">CPF *</label>
-      <input id="cpf" name="cpf" type="text" value="<?= e(old('cpf', (string) ($person['cpf'] ?? ''))) ?>" required placeholder="000.000.000-00">
-    </div>
+      <div class="people-step-grid">
+        <div class="field">
+          <label for="cpf">CPF *</label>
+          <div class="inline-field">
+            <input
+              id="cpf"
+              name="cpf"
+              type="text"
+              value="<?= e(old('cpf', (string) ($person['cpf'] ?? ''))) ?>"
+              required
+              placeholder="000.000.000-00"
+              inputmode="numeric"
+              autocomplete="off"
+            >
+            <button type="button" class="btn btn-ghost" id="cpf_lookup_button">Buscar</button>
+          </div>
+          <p class="form-feedback" id="cpf_feedback" aria-live="polite"></p>
+        </div>
 
-    <div class="field">
-      <label for="matricula_siape">Matrícula SIAPE</label>
-      <input
-        id="matricula_siape"
-        name="matricula_siape"
-        type="text"
-        value="<?= e(old('matricula_siape', (string) ($person['matricula_siape'] ?? ''))) ?>"
-        inputmode="numeric"
-        maxlength="20"
-        pattern="[0-9]+"
-        placeholder="Somente números"
-      >
-      <p class="muted">Quando informada, deve ser numérica e única por pessoa.</p>
-    </div>
+        <div class="field field-wide">
+          <label for="name">Nome completo *</label>
+          <input id="name" name="name" type="text" value="<?= e(old('name', (string) ($person['name'] ?? ''))) ?>" required>
+        </div>
 
-    <div class="field">
-      <label for="birth_date">Data de nascimento</label>
-      <input id="birth_date" name="birth_date" type="date" value="<?= e(old('birth_date', (string) ($person['birth_date'] ?? ''))) ?>">
-    </div>
-
-    <div class="field">
-      <label for="email">E-mail</label>
-      <input id="email" name="email" type="email" value="<?= e(old('email', (string) ($person['email'] ?? ''))) ?>">
-    </div>
-
-    <div class="field">
-      <label for="phone">Telefone</label>
-      <input id="phone" name="phone" type="text" value="<?= e(old('phone', (string) ($person['phone'] ?? ''))) ?>">
-    </div>
-
-    <div class="field">
-      <label for="desired_modality_id">Motivo do movimento *</label>
-      <?php $selectedModality = (int) old('desired_modality_id', (string) ($person['desired_modality_id'] ?? '0')); ?>
-      <select id="desired_modality_id" name="desired_modality_id" required>
-        <option value="0">Selecione</option>
-        <?php foreach (($modalities ?? []) as $modality): ?>
-          <?php
-            $modalityName = (string) ($modality['name'] ?? '');
-            $reasonType = $movementReasonType($modalityName);
-            if ($reasonType === '') {
-                continue;
-            }
-
-            $allowedDirections = $reasonType === 'requisicao'
-                ? 'saida_mte'
-                : 'entrada_mte,saida_mte';
-          ?>
-          <option
-            value="<?= e((string) $modality['id']) ?>"
-            data-reason-type="<?= e($reasonType) ?>"
-            data-allowed-directions="<?= e($allowedDirections) ?>"
-            <?= $selectedModality === (int) $modality['id'] ? 'selected' : '' ?>
+        <div class="field">
+          <label for="matricula_siape">Matrícula SIAPE</label>
+          <input
+            id="matricula_siape"
+            name="matricula_siape"
+            type="text"
+            value="<?= e(old('matricula_siape', (string) ($person['matricula_siape'] ?? ''))) ?>"
+            inputmode="numeric"
+            maxlength="20"
+            pattern="[0-9]+"
+            placeholder="Somente números"
           >
-            <?= e($modalityName) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-      <p class="muted">Entrada: Cessão ou Composição de Força de Trabalho. Saída: Cessão, Requisição ou Composição de Força de Trabalho.</p>
-    </div>
+        </div>
 
-    <div class="field">
-      <label for="assignment_flow_id">Fluxo BPMN *</label>
-      <?php $selectedFlow = (int) old('assignment_flow_id', (string) ($person['assignment_flow_id'] ?? '0')); ?>
-      <select id="assignment_flow_id" name="assignment_flow_id" required>
-        <option value="0">Selecione</option>
-        <?php foreach (($assignmentFlows ?? []) as $flow): ?>
-          <?php $flowId = (int) ($flow['id'] ?? 0); ?>
-          <option value="<?= e((string) $flowId) ?>" <?= $selectedFlow === $flowId ? 'selected' : '' ?>>
-            <?= e((string) ($flow['name'] ?? ('Fluxo #' . $flowId))) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-    </div>
+        <div class="field">
+          <label for="birth_date">Data de nascimento</label>
+          <input id="birth_date" name="birth_date" type="date" value="<?= e(old('birth_date', (string) ($person['birth_date'] ?? ''))) ?>">
+        </div>
 
-    <?php if (!$isEditMode): ?>
-      <div class="field field-wide people-create-section-heading">
-        <h3>3. Complementos e observações</h3>
-        <p class="muted">Esses campos são opcionais, mas ajudam na busca global, acompanhamento e priorização operacional.</p>
+        <div class="field">
+          <label for="gender">Sexo</label>
+          <?php $selectedGender = strtoupper(trim((string) old('gender', (string) ($person['gender'] ?? '')))); ?>
+          <select id="gender" name="gender">
+            <option value="">Selecione</option>
+            <option value="F" <?= $selectedGender === 'F' ? 'selected' : '' ?>>Feminino (F)</option>
+            <option value="M" <?= $selectedGender === 'M' ? 'selected' : '' ?>>Masculino (M)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="server_status_code">Situação do servidor (código)</label>
+          <input
+            id="server_status_code"
+            name="server_status_code"
+            type="text"
+            value="<?= e(old('server_status_code', (string) ($person['server_status_code'] ?? ''))) ?>"
+            maxlength="30"
+            placeholder="Ex.: 44"
+          >
+        </div>
+
+        <div class="field">
+          <label for="email">E-mail</label>
+          <input id="email" name="email" type="email" value="<?= e(old('email', (string) ($person['email'] ?? ''))) ?>">
+        </div>
+
+        <div class="field">
+          <label for="phone">Telefone</label>
+          <input id="phone" name="phone" type="text" value="<?= e(old('phone', (string) ($person['phone'] ?? ''))) ?>">
+        </div>
       </div>
-    <?php endif; ?>
 
-    <div class="field">
-      <label for="sei_process_number">Nº processo SEI</label>
-      <input id="sei_process_number" name="sei_process_number" type="text" value="<?= e(old('sei_process_number', (string) ($person['sei_process_number'] ?? ''))) ?>">
-    </div>
+      <div class="form-actions field-wide people-step-actions">
+        <button type="button" class="btn btn-outline" data-step-prev="2">Voltar</button>
+        <button type="button" class="btn btn-primary" data-step-next="2">Continuar</button>
+      </div>
+    </section>
 
+    <section class="people-wizard-step field-wide" data-step="3">
+      <div class="people-step-header">
+        <h3>Etapa 3: Informações complementares</h3>
+        <p class="muted">Defina período e adicione dados opcionais.</p>
+      </div>
 
-    <div class="field">
-      <label for="tags">Tags (separadas por vírgula)</label>
-      <input id="tags" name="tags" type="text" value="<?= e(old('tags', (string) ($person['tags'] ?? ''))) ?>" placeholder="prioritario, ti, juridico">
-    </div>
+      <div class="people-step-grid">
+        <div class="field field-wide">
+          <label>Período da movimentação</label>
+          <div class="people-date-range">
+            <div class="field">
+              <label for="target_start_date">Início</label>
+              <input id="target_start_date" name="target_start_date" type="date" value="<?= e($targetStartDate) ?>">
+            </div>
+            <div class="field">
+              <label for="sei_process_number">Processo SEI</label>
+              <input id="sei_process_number" name="sei_process_number" type="text" value="<?= e(old('sei_process_number', (string) ($person['sei_process_number'] ?? ''))) ?>">
+            </div>
+          </div>
+        </div>
 
-    <div class="field field-wide">
-      <label for="notes">Observações</label>
-      <textarea id="notes" name="notes" rows="4"><?= e(old('notes', (string) ($person['notes'] ?? ''))) ?></textarea>
-    </div>
+        <details class="people-optional-details field-wide" <?= $additionalInfoHasValues ? 'open' : '' ?>>
+          <summary>Informações adicionais (opcional)</summary>
+          <div class="people-optional-grid">
+            <div class="field">
+              <label for="requested_end_date">Data Fim - De Encerramento da Movimentação (Apenas se aplicável)</label>
+              <input id="requested_end_date" name="requested_end_date" type="date" value="<?= e($requestedEndDate) ?>">
+            </div>
+            <div class="field">
+              <label for="tags">Tags</label>
+              <input id="tags" name="tags" type="text" value="<?= e(old('tags', (string) ($person['tags'] ?? ''))) ?>" placeholder="prioritario, ti, juridico">
+            </div>
 
-    <div class="form-actions field-wide people-form-actions">
-      <a class="btn btn-outline" href="<?= e(url('/people')) ?>">Cancelar</a>
-      <button type="submit" class="btn btn-primary"><?= e($submitLabel ?? 'Salvar') ?></button>
-      <?php if (!$isEditMode): ?>
-        <p class="muted people-create-submit-note">Antes de salvar, valide direção do movimento, órgão de contraparte, motivo e fluxo BPMN.</p>
-      <?php endif; ?>
-    </div>
+            <div class="field field-wide">
+              <label for="notes">Observações</label>
+              <textarea id="notes" name="notes" rows="4"><?= e(old('notes', (string) ($person['notes'] ?? ''))) ?></textarea>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="form-actions field-wide people-form-actions">
+        <button type="button" class="btn btn-outline" data-step-prev="3">Voltar</button>
+        <button type="submit" class="btn btn-primary"><?= e($submitLabel ?? 'Salvar') ?></button>
+      </div>
+    </section>
   </form>
 </div>
 <script>
   (function () {
-    var directionRadios = document.querySelectorAll('input[name="movement_direction"]');
+    var form = document.querySelector('.people-wizard-form');
+    if (!form) {
+      return;
+    }
+
+    var directionRadios = form.querySelectorAll('input[name="movement_direction"]');
     var organField = document.getElementById('organ_id');
     var organLabel = document.getElementById('organ_id_label');
-    var organHelp = document.getElementById('organ_id_help');
+    var organSearchField = document.getElementById('organ_id_search');
+    var organSuggestions = document.getElementById('organ_id_suggestions');
+    var organLookupShell = document.getElementById('organ_id_lookup_shell');
     var mteOriginField = document.getElementById('mte_origin_fixed_field');
     var financialNatureInput = document.getElementById('financial_nature');
-    var financialNatureLabel = document.getElementById('financial_nature_label');
     var reasonField = document.getElementById('desired_modality_id');
     var originField = document.getElementById('origin_mte_destination_id');
     var destinationField = document.getElementById('destination_mte_destination_id');
     var destinationSearchField = document.getElementById('destination_mte_destination_search');
     var destinationSuggestions = document.getElementById('destination_mte_destination_suggestions');
+    var destinationLookupShell = document.getElementById('destination_lookup_shell');
     var originWrapper = document.getElementById('origin_mte_destination_wrapper');
     var destinationWrapper = document.getElementById('destination_mte_destination_wrapper');
+    var cpfField = document.getElementById('cpf');
+    var cpfFeedback = document.getElementById('cpf_feedback');
+    var cpfLookupButton = document.getElementById('cpf_lookup_button');
+    var wizardStepField = document.getElementById('wizard_step');
+    var stepPanels = form.querySelectorAll('[data-step]');
+    var stepIndicators = form.querySelectorAll('[data-step-indicator]');
+    var nextButtons = form.querySelectorAll('[data-step-next]');
+    var prevButtons = form.querySelectorAll('[data-step-prev]');
+    var totalSteps = stepPanels.length;
+    var currentStep = parseInt((wizardStepField && wizardStepField.value) || '1', 10);
+
+    if (!currentStep || currentStep < 1 || currentStep > totalSteps) {
+      currentStep = 1;
+    }
+
     if (
       !directionRadios.length ||
       !organField ||
-      !financialNatureInput ||
-      !financialNatureLabel ||
       !reasonField ||
       !originField ||
       !destinationField ||
-      !destinationSearchField ||
-      !destinationSuggestions ||
       !originWrapper ||
-      !destinationWrapper
+      !destinationWrapper ||
+      !financialNatureInput
     ) {
       return;
     }
-
-    var financialNatureLabels = {
-      despesa_reembolso: 'Despesa de reembolso (a pagar)',
-      receita_reembolso: 'Receita de reembolso (a receber)'
-    };
-    var destinationSearchDebounce = null;
-    var destinationSuggestionLimit = 8;
-    var destinationCatalog = [];
 
     function normalizeLookup(value) {
       if (typeof value !== 'string') {
@@ -496,140 +599,191 @@ $isEditMode = ($isEdit ?? false) === true;
       return true;
     }
 
-    function rebuildDestinationCatalog() {
-      destinationCatalog = [];
-      Array.prototype.forEach.call(destinationField.options, function (option) {
-        var value = option.value || '';
-        if (value === '0') {
-          return;
-        }
+    function initLookup(selectField, searchField, suggestionsNode, shellNode, minChars) {
+      if (!selectField || !searchField || !suggestionsNode || !shellNode) {
+        return null;
+      }
 
-        var label = (option.textContent || '').trim();
-        destinationCatalog.push({
-          value: value,
-          label: label,
-          normalized: normalizeLookup(label)
+      var catalog = [];
+      var debounce = null;
+      shellNode.classList.add('is-enhanced');
+
+      function rebuildCatalog() {
+        catalog = [];
+        Array.prototype.forEach.call(selectField.options, function (option) {
+          var value = option.value || '';
+          if (value === '0' || option.disabled || option.hidden) {
+            return;
+          }
+
+          var label = (option.textContent || '').trim();
+          if (label === '') {
+            return;
+          }
+
+          catalog.push({
+            value: value,
+            label: label,
+            normalized: normalizeLookup(label)
+          });
         });
-      });
-    }
-
-    function findDestinationLabelByValue(value) {
-      for (var i = 0; i < destinationCatalog.length; i += 1) {
-        if (destinationCatalog[i].value === value) {
-          return destinationCatalog[i].label;
-        }
       }
 
-      return '';
-    }
+      function findLabelByValue(value) {
+        for (var i = 0; i < catalog.length; i += 1) {
+          if (catalog[i].value === value) {
+            return catalog[i].label;
+          }
+        }
 
-    function hideDestinationSuggestions() {
-      destinationSuggestions.innerHTML = '';
-      destinationSuggestions.classList.remove('is-open');
-    }
+        return '';
+      }
 
-    function filterDestinationOptions(searchValue) {
-      var normalizedQuery = normalizeLookup(searchValue);
-      var selectedValue = destinationField.value || '';
+      function hideSuggestions() {
+        suggestionsNode.innerHTML = '';
+        suggestionsNode.classList.remove('is-open');
+      }
 
-      Array.prototype.forEach.call(destinationField.options, function (option) {
-        var value = option.value || '';
-        if (value === '0') {
-          option.hidden = false;
-          option.disabled = false;
+      function renderSuggestions(searchValue) {
+        hideSuggestions();
+        if (searchField.disabled) {
           return;
         }
 
-        var label = (option.textContent || '').trim();
-        var isMatch = matchesLookup(normalizeLookup(label), normalizedQuery);
-        var isSelected = value === selectedValue;
-        var enabled = normalizedQuery === '' || isMatch || isSelected;
+        var normalizedQuery = normalizeLookup(searchValue);
+        if (normalizedQuery.length < minChars) {
+          return;
+        }
 
-        option.hidden = !enabled;
-        option.disabled = !enabled;
+        var matches = [];
+        for (var i = 0; i < catalog.length; i += 1) {
+          if (!matchesLookup(catalog[i].normalized, normalizedQuery)) {
+            continue;
+          }
+
+          matches.push(catalog[i]);
+          if (matches.length >= 8) {
+            break;
+          }
+        }
+
+        if (matches.length === 0) {
+          var emptyMessage = document.createElement('div');
+          emptyMessage.className = 'lookup-suggestion-empty';
+          emptyMessage.textContent = 'Nenhum resultado encontrado.';
+          suggestionsNode.appendChild(emptyMessage);
+          suggestionsNode.classList.add('is-open');
+          return;
+        }
+
+        for (var index = 0; index < matches.length; index += 1) {
+          var match = matches[index];
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'lookup-suggestion-btn';
+          button.setAttribute('data-value', match.value);
+          button.setAttribute('data-label', match.label);
+          button.textContent = match.label;
+          suggestionsNode.appendChild(button);
+        }
+
+        suggestionsNode.classList.add('is-open');
+      }
+
+      function syncSearchFromSelect() {
+        var value = selectField.value || '';
+        if (value === '' || value === '0') {
+          if (document.activeElement !== searchField) {
+            searchField.value = '';
+          }
+          return;
+        }
+
+        searchField.value = findLabelByValue(value);
+      }
+
+      function scheduleRender() {
+        if (debounce !== null) {
+          window.clearTimeout(debounce);
+        }
+
+        debounce = window.setTimeout(function () {
+          renderSuggestions(searchField.value || '');
+        }, 200);
+      }
+
+      searchField.addEventListener('input', function () {
+        var currentQuery = searchField.value || '';
+        var selectedLabel = findLabelByValue(selectField.value || '');
+
+        if (normalizeLookup(currentQuery) !== '' && normalizeLookup(currentQuery) !== normalizeLookup(selectedLabel)) {
+          selectField.value = '0';
+        }
+
+        scheduleRender();
       });
-    }
 
-    function renderDestinationSuggestions(searchValue) {
-      hideDestinationSuggestions();
+      searchField.addEventListener('focus', function () {
+        renderSuggestions(searchField.value || '');
+      });
 
-      if (destinationField.disabled) {
-        return;
-      }
+      searchField.addEventListener('blur', function () {
+        window.setTimeout(function () {
+          hideSuggestions();
+        }, 120);
+      });
 
-      var normalizedQuery = normalizeLookup(searchValue);
-      if (normalizedQuery.length < 2) {
-        return;
-      }
+      selectField.addEventListener('change', function () {
+        syncSearchFromSelect();
+      });
 
-      var matches = [];
-      for (var i = 0; i < destinationCatalog.length; i += 1) {
-        var candidate = destinationCatalog[i];
-        if (!matchesLookup(candidate.normalized, normalizedQuery)) {
-          continue;
+      suggestionsNode.addEventListener('mousedown', function (event) {
+        var node = event.target;
+        var selectedButton = null;
+
+        while (node && node !== suggestionsNode) {
+          if (node.tagName === 'BUTTON' && node.getAttribute('data-value')) {
+            selectedButton = node;
+            break;
+          }
+
+          node = node.parentNode;
         }
 
-        matches.push(candidate);
-        if (matches.length >= destinationSuggestionLimit) {
-          break;
+        if (!selectedButton) {
+          return;
         }
-      }
 
-      if (matches.length === 0) {
-        var emptyMessage = document.createElement('div');
-        emptyMessage.className = 'destination-suggestion-empty';
-        emptyMessage.textContent = 'Nenhuma lotação encontrada.';
-        destinationSuggestions.appendChild(emptyMessage);
-        destinationSuggestions.classList.add('is-open');
-        return;
-      }
+        event.preventDefault();
+        selectField.value = selectedButton.getAttribute('data-value') || '0';
+        searchField.value = selectedButton.getAttribute('data-label') || '';
+        hideSuggestions();
 
-      for (var matchIndex = 0; matchIndex < matches.length; matchIndex += 1) {
-        var match = matches[matchIndex];
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'destination-suggestion-btn';
-        button.setAttribute('data-value', match.value);
-        button.setAttribute('data-label', match.label);
-        button.textContent = match.label;
-        destinationSuggestions.appendChild(button);
-      }
-
-      destinationSuggestions.classList.add('is-open');
-    }
-
-    function applyDestinationSearch(searchValue) {
-      filterDestinationOptions(searchValue);
-      renderDestinationSuggestions(searchValue);
-    }
-
-    function scheduleDestinationSearch() {
-      if (destinationSearchDebounce !== null) {
-        window.clearTimeout(destinationSearchDebounce);
-      }
-
-      destinationSearchDebounce = window.setTimeout(function () {
-        applyDestinationSearch(destinationSearchField.value || '');
-      }, 250);
-    }
-
-    function syncDestinationSearchFromSelect() {
-      var value = destinationField.value || '';
-      if (value === '' || value === '0') {
-        if (document.activeElement !== destinationSearchField) {
-          destinationSearchField.value = '';
+        if (typeof Event === 'function') {
+          selectField.dispatchEvent(new Event('change'));
+        } else {
+          var changeEvent = document.createEvent('Event');
+          changeEvent.initEvent('change', true, true);
+          selectField.dispatchEvent(changeEvent);
         }
-        return;
-      }
+      });
 
-      destinationSearchField.value = findDestinationLabelByValue(value);
+      rebuildCatalog();
+      syncSearchFromSelect();
+
+      return {
+        rebuildCatalog: rebuildCatalog,
+        hideSuggestions: hideSuggestions,
+        syncSearchFromSelect: syncSearchFromSelect,
+        clear: function () {
+          searchField.value = '';
+          hideSuggestions();
+        }
+      };
     }
 
-    function resetDestinationSearch() {
-      destinationSearchField.value = '';
-      filterDestinationOptions('');
-      hideDestinationSuggestions();
-    }
+    var organLookup = initLookup(organField, organSearchField, organSuggestions, organLookupShell, 2);
+    var destinationLookup = initLookup(destinationField, destinationSearchField, destinationSuggestions, destinationLookupShell, 2);
 
     function selectedDirection() {
       var selected = '';
@@ -699,15 +853,17 @@ $isEditMode = ($isEdit ?? false) === true;
     }
 
     function syncFinancialNature(directionValue) {
-      var financialNature = '';
       if (directionValue === 'saida_mte') {
-        financialNature = 'receita_reembolso';
-      } else if (directionValue === 'entrada_mte') {
-        financialNature = 'despesa_reembolso';
+        financialNatureInput.value = 'receita_reembolso';
+        return;
       }
 
-      financialNatureInput.value = financialNature;
-      financialNatureLabel.value = financialNatureLabels[financialNature] || '';
+      if (directionValue === 'entrada_mte') {
+        financialNatureInput.value = 'despesa_reembolso';
+        return;
+      }
+
+      financialNatureInput.value = '';
     }
 
     function syncByDirection() {
@@ -729,12 +885,11 @@ $isEditMode = ($isEdit ?? false) === true;
           : (isEntrada ? 'Órgão de origem *' : 'Órgão de origem/destino *');
       }
 
-      if (organHelp) {
-        organHelp.textContent = isSaida
-          ? 'Obrigatório para informar o órgão de destino da pessoa.'
-          : (isEntrada
-            ? 'Obrigatório. Para entrada no MTE, selecione um órgão de origem diferente do MTE.'
-            : 'Selecione primeiro a direção do movimento para definir se o órgão é de origem ou destino.');
+      if (organSearchField) {
+        organSearchField.placeholder = isSaida
+          ? 'Digite para buscar órgão de destino'
+          : (isEntrada ? 'Digite para buscar órgão de origem' : 'Selecione primeiro a direção');
+        organSearchField.disabled = !(isSaida || isEntrada);
       }
 
       organField.required = isSaida || isEntrada;
@@ -743,7 +898,11 @@ $isEditMode = ($isEdit ?? false) === true;
       destinationWrapper.style.display = isEntrada ? '' : 'none';
       originField.disabled = !isSaida;
       destinationField.disabled = !isEntrada;
-      destinationSearchField.disabled = !isEntrada;
+
+      if (destinationSearchField) {
+        destinationSearchField.disabled = !isEntrada;
+      }
+
       originField.required = isSaida;
       destinationField.required = isEntrada;
 
@@ -753,97 +912,400 @@ $isEditMode = ($isEdit ?? false) === true;
 
       if (!isEntrada) {
         destinationField.value = '0';
-        resetDestinationSearch();
-      } else {
-        syncDestinationSearchFromSelect();
-        filterDestinationOptions(destinationSearchField.value || '');
+      }
+
+      if (organLookup) {
+        organLookup.rebuildCatalog();
+        organLookup.syncSearchFromSelect();
+        if (!(isSaida || isEntrada)) {
+          organLookup.clear();
+        }
+      }
+
+      if (destinationLookup) {
+        destinationLookup.rebuildCatalog();
+        destinationLookup.syncSearchFromSelect();
+        if (!isEntrada) {
+          destinationLookup.clear();
+        }
       }
     }
 
-    destinationSearchField.addEventListener('input', function () {
-      var currentQuery = destinationSearchField.value || '';
-      var normalizedQuery = normalizeLookup(currentQuery);
-      var selectedLabel = findDestinationLabelByValue(destinationField.value || '');
-
-      if (normalizedQuery !== '' && normalizedQuery !== normalizeLookup(selectedLabel)) {
-        destinationField.value = '0';
-      }
-
-      scheduleDestinationSearch();
-    });
-
-    destinationSearchField.addEventListener('focus', function () {
-      var query = destinationSearchField.value || '';
-      if (normalizeLookup(query).length >= 2) {
-        applyDestinationSearch(query);
-      }
-    });
-
-    destinationSearchField.addEventListener('blur', function () {
-      window.setTimeout(function () {
-        hideDestinationSuggestions();
-      }, 140);
-    });
-
-    destinationSuggestions.addEventListener('mousedown', function (event) {
-      var node = event.target;
-      var button = null;
-      while (node && node !== destinationSuggestions) {
-        if (
-          node.tagName === 'BUTTON'
-          && node.getAttribute('data-value')
-        ) {
-          button = node;
-          break;
+    function panelByStep(step) {
+      for (var i = 0; i < stepPanels.length; i += 1) {
+        if (parseInt(stepPanels[i].getAttribute('data-step') || '0', 10) === step) {
+          return stepPanels[i];
         }
-
-        node = node.parentNode;
       }
 
-      if (!button) {
+      return null;
+    }
+
+    function focusFirstField(step) {
+      var panel = panelByStep(step);
+      if (!panel) {
         return;
       }
 
-      event.preventDefault();
-      destinationField.value = button.getAttribute('data-value') || '0';
-      destinationSearchField.value = button.getAttribute('data-label') || '';
-      filterDestinationOptions('');
-      hideDestinationSuggestions();
-      if (typeof Event === 'function') {
-        destinationField.dispatchEvent(new Event('change'));
-      } else {
-        var changeEvent = document.createEvent('Event');
-        changeEvent.initEvent('change', true, true);
-        destinationField.dispatchEvent(changeEvent);
+      var field = panel.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])');
+      if (field && typeof field.focus === 'function') {
+        field.focus();
       }
-    });
+    }
 
-    destinationField.addEventListener('change', function () {
-      syncDestinationSearchFromSelect();
-      filterDestinationOptions('');
-    });
+    function showStep(step, shouldFocus) {
+      var clamped = step;
+      if (clamped < 1) {
+        clamped = 1;
+      }
+      if (clamped > totalSteps) {
+        clamped = totalSteps;
+      }
+
+      currentStep = clamped;
+      if (wizardStepField) {
+        wizardStepField.value = String(clamped);
+      }
+
+      for (var i = 0; i < stepPanels.length; i += 1) {
+        var panel = stepPanels[i];
+        var panelStep = parseInt(panel.getAttribute('data-step') || '0', 10);
+        var isActive = panelStep === clamped;
+        panel.hidden = !isActive;
+        panel.classList.toggle('is-active', isActive);
+      }
+
+      for (var index = 0; index < stepIndicators.length; index += 1) {
+        var indicator = stepIndicators[index];
+        var indicatorStep = parseInt(indicator.getAttribute('data-step-indicator') || '0', 10);
+        indicator.classList.toggle('is-active', indicatorStep === clamped);
+        indicator.classList.toggle('is-done', indicatorStep < clamped);
+      }
+
+      if (shouldFocus) {
+        focusFirstField(clamped);
+      }
+    }
+
+    function isFieldVisible(field) {
+      if (!field || field.disabled || field.type === 'hidden') {
+        return false;
+      }
+
+      var style = window.getComputedStyle(field);
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return false;
+      }
+
+      var parent = field.parentElement;
+      while (parent) {
+        if (parent.hidden) {
+          return false;
+        }
+
+        var parentStyle = window.getComputedStyle(parent);
+        if (parentStyle.display === 'none' || parentStyle.visibility === 'hidden') {
+          return false;
+        }
+
+        if (parent === form) {
+          break;
+        }
+
+        parent = parent.parentElement;
+      }
+
+      return true;
+    }
+
+    function validateStep(step) {
+      var panel = panelByStep(step);
+      if (!panel) {
+        return true;
+      }
+
+      var fields = panel.querySelectorAll('input, select, textarea');
+      for (var i = 0; i < fields.length; i += 1) {
+        var field = fields[i];
+        if (!isFieldVisible(field)) {
+          continue;
+        }
+
+        if (!field.checkValidity()) {
+          field.reportValidity();
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function validateCpfDigits(digits) {
+      if (digits.length !== 11 || /^([0-9])\1{10}$/.test(digits)) {
+        return false;
+      }
+
+      var sum = 0;
+      for (var i = 0; i < 9; i += 1) {
+        sum += parseInt(digits.charAt(i), 10) * (10 - i);
+      }
+      var firstCheck = (sum * 10) % 11;
+      if (firstCheck === 10) {
+        firstCheck = 0;
+      }
+
+      if (firstCheck !== parseInt(digits.charAt(9), 10)) {
+        return false;
+      }
+
+      sum = 0;
+      for (var j = 0; j < 10; j += 1) {
+        sum += parseInt(digits.charAt(j), 10) * (11 - j);
+      }
+      var secondCheck = (sum * 10) % 11;
+      if (secondCheck === 10) {
+        secondCheck = 0;
+      }
+
+      return secondCheck === parseInt(digits.charAt(10), 10);
+    }
+
+    function formatCpf(rawValue) {
+      var digits = (rawValue || '').replace(/\D+/g, '').slice(0, 11);
+      if (digits.length <= 3) {
+        return digits;
+      }
+
+      if (digits.length <= 6) {
+        return digits.slice(0, 3) + '.' + digits.slice(3);
+      }
+
+      if (digits.length <= 9) {
+        return digits.slice(0, 3) + '.' + digits.slice(3, 6) + '.' + digits.slice(6);
+      }
+
+      return digits.slice(0, 3) + '.' + digits.slice(3, 6) + '.' + digits.slice(6, 9) + '-' + digits.slice(9);
+    }
+
+    function setCpfFeedback(message, tone) {
+      if (!cpfFeedback) {
+        return;
+      }
+
+      cpfFeedback.textContent = message;
+      cpfFeedback.classList.remove('is-error', 'is-success', 'is-info');
+      if (tone) {
+        cpfFeedback.classList.add(tone);
+      }
+    }
+
+    function syncCpfValidity() {
+      if (!cpfField) {
+        return;
+      }
+
+      var formatted = formatCpf(cpfField.value || '');
+      if (formatted !== cpfField.value) {
+        cpfField.value = formatted;
+      }
+
+      var digits = formatted.replace(/\D+/g, '');
+      if (digits.length === 0) {
+        cpfField.setCustomValidity('');
+        setCpfFeedback('', '');
+      } else if (digits.length < 11) {
+        cpfField.setCustomValidity('CPF deve ter 11 dígitos.');
+        setCpfFeedback('Informe 11 dígitos para validar o CPF.', 'is-info');
+      } else if (!validateCpfDigits(digits)) {
+        cpfField.setCustomValidity('CPF inválido.');
+        setCpfFeedback('CPF inválido.', 'is-error');
+      } else {
+        cpfField.setCustomValidity('');
+        setCpfFeedback('CPF válido.', 'is-success');
+      }
+
+      if (cpfLookupButton) {
+        cpfLookupButton.disabled = digits.length !== 11;
+      }
+    }
+
+    function normalizeDateInput(value) {
+      if (typeof value !== 'string') {
+        return '';
+      }
+
+      var clean = value.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+        return clean;
+      }
+
+      return '';
+    }
+
+    function fillFieldIfEmpty(fieldId, value) {
+      var field = document.getElementById(fieldId);
+      if (!field || typeof value !== 'string' || value.trim() === '') {
+        return;
+      }
+
+      if ((field.value || '').trim() === '') {
+        field.value = value.trim();
+      }
+    }
+
+    function lookupCpf() {
+      if (!cpfField || !cpfLookupButton) {
+        return;
+      }
+
+      var endpoint = form.getAttribute('data-cpf-lookup-url') || '';
+      var digits = (cpfField.value || '').replace(/\D+/g, '');
+      if (endpoint === '' || digits.length !== 11) {
+        return;
+      }
+
+      cpfLookupButton.disabled = true;
+      cpfLookupButton.textContent = 'Buscando...';
+      setCpfFeedback('Consultando cadastro por CPF...', 'is-info');
+
+      var url = endpoint + '?cpf=' + encodeURIComponent(digits);
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json'
+        }
+      })
+        .then(function (response) {
+          return response.json().then(function (payload) {
+            return {
+              ok: response.ok,
+              status: response.status,
+              payload: payload
+            };
+          }).catch(function () {
+            return {
+              ok: false,
+              status: response.status,
+              payload: null
+            };
+          });
+        })
+        .then(function (result) {
+          var errorMessage = '';
+          if (result.payload && typeof result.payload.error === 'string') {
+            errorMessage = result.payload.error;
+          }
+
+          if (!result.ok || !result.payload || result.payload.ok !== true) {
+            setCpfFeedback(errorMessage !== '' ? errorMessage : 'Não foi possível consultar o CPF agora.', 'is-error');
+            return;
+          }
+
+          if (result.payload.found !== true) {
+            setCpfFeedback('Nenhum cadastro encontrado para este CPF.', 'is-info');
+            return;
+          }
+
+          var person = result.payload.person || {};
+          fillFieldIfEmpty('name', person.name || '');
+          fillFieldIfEmpty('matricula_siape', person.matricula_siape || '');
+          fillFieldIfEmpty('gender', (person.gender || '').toString().toUpperCase());
+          fillFieldIfEmpty('server_status_code', person.server_status_code || '');
+          fillFieldIfEmpty('email', person.email || '');
+          fillFieldIfEmpty('phone', person.phone || '');
+
+          var birthField = document.getElementById('birth_date');
+          var birthValue = normalizeDateInput(person.birth_date || '');
+          if (birthField && birthValue !== '' && (birthField.value || '').trim() === '') {
+            birthField.value = birthValue;
+          }
+
+          setCpfFeedback('Dados localizados e preenchidos automaticamente.', 'is-success');
+        })
+        .catch(function () {
+          setCpfFeedback('Falha de conexão ao consultar CPF.', 'is-error');
+        })
+        .finally(function () {
+          var currentDigits = (cpfField.value || '').replace(/\D+/g, '');
+          cpfLookupButton.disabled = currentDigits.length !== 11;
+          cpfLookupButton.textContent = 'Buscar';
+        });
+    }
 
     Array.prototype.forEach.call(directionRadios, function (radio) {
       radio.addEventListener('change', syncByDirection);
     });
-    rebuildDestinationCatalog();
-    syncDestinationSearchFromSelect();
-    filterDestinationOptions('');
-    syncByDirection();
-  })();
-</script>
-<script>
-  (function () {
-    var siapeField = document.getElementById('matricula_siape');
-    if (!siapeField) {
-      return;
-    }
 
-    siapeField.addEventListener('input', function () {
-      var digits = (siapeField.value || '').replace(/\D+/g, '');
-      if (digits !== siapeField.value) {
-        siapeField.value = digits;
+    Array.prototype.forEach.call(nextButtons, function (button) {
+      button.addEventListener('click', function () {
+        if (!validateStep(currentStep)) {
+          return;
+        }
+
+        showStep(currentStep + 1, true);
+      });
+    });
+
+    Array.prototype.forEach.call(prevButtons, function (button) {
+      button.addEventListener('click', function () {
+        showStep(currentStep - 1, true);
+      });
+    });
+
+    Array.prototype.forEach.call(stepIndicators, function (indicator) {
+      indicator.addEventListener('click', function () {
+        var targetStep = parseInt(indicator.getAttribute('data-step-indicator') || '1', 10);
+        if (!targetStep || targetStep === currentStep) {
+          return;
+        }
+
+        if (targetStep > currentStep && !validateStep(currentStep)) {
+          return;
+        }
+
+        showStep(targetStep, true);
+      });
+    });
+
+    form.addEventListener('submit', function (event) {
+      if (currentStep < totalSteps) {
+        event.preventDefault();
+        if (validateStep(currentStep)) {
+          showStep(currentStep + 1, true);
+        }
+        return;
+      }
+
+      for (var step = 1; step <= totalSteps; step += 1) {
+        if (!validateStep(step)) {
+          event.preventDefault();
+          showStep(step, true);
+          return;
+        }
       }
     });
+
+    if (cpfField) {
+      cpfField.addEventListener('input', syncCpfValidity);
+      cpfField.addEventListener('blur', syncCpfValidity);
+      syncCpfValidity();
+    }
+
+    if (cpfLookupButton) {
+      cpfLookupButton.addEventListener('click', lookupCpf);
+    }
+
+    var siapeField = document.getElementById('matricula_siape');
+    if (siapeField) {
+      siapeField.addEventListener('input', function () {
+        var digits = (siapeField.value || '').replace(/\D+/g, '');
+        if (digits !== siapeField.value) {
+          siapeField.value = digits;
+        }
+      });
+    }
+
+    syncByDirection();
+    showStep(currentStep, false);
   })();
 </script>
