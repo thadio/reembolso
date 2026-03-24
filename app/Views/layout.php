@@ -5,6 +5,10 @@ declare(strict_types=1);
 $isAuthenticated = isset($authUser) && is_array($authUser);
 $path = (string) ($currentPath ?? '');
 $authPermissions = is_array($authUser['permissions'] ?? null) ? $authUser['permissions'] : [];
+$availableModules = is_array($availableModules ?? null) ? $availableModules : [];
+$activeModule = is_array($activeModule ?? null) ? $activeModule : null;
+$activeModuleSlug = trim((string) ($activeModuleSlug ?? ''));
+$activeModuleName = trim((string) (($activeModule['name'] ?? '')));
 $canViewDashboard = in_array('dashboard.view', $authPermissions, true);
 $canViewUsers = in_array('users.view', $authPermissions, true);
 $canManageUsers = in_array('users.manage', $authPermissions, true);
@@ -192,6 +196,14 @@ $renderMenuIcon = static function (string $icon): string {
 $menuSections = [];
 
 $panelMenuItems = [];
+if ($isAuthenticated) {
+    $panelMenuItems[] = [
+        'label' => 'Inicio modulos',
+        'href' => '/home',
+        'icon' => 'dashboard',
+        'active' => $path === '/home',
+    ];
+}
 if ($canViewDashboard) {
     $panelMenuItems[] = [
         'label' => 'Dashboard',
@@ -228,6 +240,7 @@ if ($panelMenuItems !== []) {
     $menuSections[] = [
         'title' => 'Painel',
         'icon' => 'dashboard',
+        'module_slug' => 'reembolso',
         'items' => $panelMenuItems,
     ];
 }
@@ -283,6 +296,7 @@ if ($peopleMenuItems !== []) {
     $menuSections[] = [
         'title' => 'Pessoas e estrutura',
         'icon' => 'people',
+        'module_slug' => 'reembolso',
         'items' => $peopleMenuItems,
     ];
 }
@@ -354,6 +368,7 @@ if ($documentMenuItems !== []) {
     $menuSections[] = [
         'title' => 'Documentos e custos',
         'icon' => 'cdo',
+        'module_slug' => 'reembolso',
         'items' => $documentMenuItems,
     ];
 }
@@ -371,6 +386,7 @@ if ($bulkImportMenuItems !== []) {
     $menuSections[] = [
         'title' => 'Importacoes em lote',
         'icon' => 'import_batch',
+        'module_slug' => 'reembolso',
         'items' => $bulkImportMenuItems,
     ];
 }
@@ -404,6 +420,7 @@ if ($flowMenuItems !== []) {
     $menuSections[] = [
         'title' => 'Fluxos e controle',
         'icon' => 'workflow',
+        'module_slug' => 'bpmn',
         'items' => $flowMenuItems,
     ];
 }
@@ -467,6 +484,7 @@ if ($systemMenuItems !== []) {
     $menuSections[] = [
         'title' => 'Administração',
         'icon' => 'users_admin',
+        'module_slug' => 'usuarios',
         'items' => $systemMenuItems,
     ];
 }
@@ -490,6 +508,7 @@ $bodyClasses = [
     $isAuthenticated ? 'is-authenticated' : 'is-guest',
     'module-' . $moduleSlug,
     'page-' . $moduleSlug . '-' . $pageSlug,
+    'active-module-' . $sanitizeSlug($activeModuleSlug !== '' ? $activeModuleSlug : 'none', 'none'),
 ];
 ?>
 <!doctype html>
@@ -508,6 +527,27 @@ $bodyClasses = [
         <span class="brand-dot"></span>
         <strong><?= e($appName ?? 'Reembolso') ?></strong>
       </div>
+      <?php if ($availableModules !== []): ?>
+        <section class="module-switcher">
+          <p class="module-switcher-title">Modulos</p>
+          <p class="module-switcher-subtitle">
+            <?= $activeModuleName !== '' ? 'Ativo: ' . e($activeModuleName) : 'Selecione um modulo' ?>
+          </p>
+          <div class="module-switcher-items">
+            <?php foreach ($availableModules as $moduleOption): ?>
+              <?php
+                $moduleOptionSlug = trim((string) ($moduleOption['slug'] ?? ''));
+                $moduleOptionName = (string) ($moduleOption['name'] ?? 'Modulo');
+                $moduleOptionPath = (string) ($moduleOption['entry_path'] ?? '/home');
+                $moduleOptionActive = $activeModuleSlug !== '' && $moduleOptionSlug !== '' && $moduleOptionSlug === $activeModuleSlug;
+              ?>
+              <a class="module-switcher-item <?= $moduleOptionActive ? 'is-active' : '' ?>" href="<?= e(url($moduleOptionPath)) ?>">
+                <span><?= e($moduleOptionName) ?></span>
+              </a>
+            <?php endforeach; ?>
+          </div>
+        </section>
+      <?php endif; ?>
       <nav class="menu">
         <?php foreach ($menuSections as $section): ?>
           <?php
@@ -519,8 +559,18 @@ $bodyClasses = [
                     break;
                 }
             }
+            $sectionModuleSlug = trim((string) ($section['module_slug'] ?? ''));
+            $sectionIsModuleActive = $activeModuleSlug !== '' && $sectionModuleSlug !== '' && $sectionModuleSlug === $activeModuleSlug;
+            $sectionIsModuleDimmed = $activeModuleSlug !== '' && $sectionModuleSlug !== '' && $sectionModuleSlug !== $activeModuleSlug;
+            $sectionClasses = [
+                'menu-section',
+                $sectionIsActive ? 'is-active' : '',
+                $sectionIsModuleActive ? 'is-module-active' : '',
+                $sectionIsModuleDimmed ? 'is-module-dimmed' : '',
+            ];
+            $sectionClassAttr = implode(' ', array_values(array_filter($sectionClasses, static fn (string $class): bool => $class !== '')));
           ?>
-          <section class="menu-section <?= $sectionIsActive ? 'is-active' : '' ?>">
+          <section class="<?= e($sectionClassAttr) ?>">
             <p class="menu-section-title">
               <span class="menu-icon" aria-hidden="true"><?= $renderMenuIcon((string) ($section['icon'] ?? 'dashboard')) ?></span>
               <span><?= e((string) ($section['title'] ?? 'Seção')) ?></span>
@@ -547,7 +597,12 @@ $bodyClasses = [
       <header class="topbar">
         <div>
           <h1 class="topbar-title"><?= e($title ?? '') ?></h1>
-          <p class="topbar-subtitle">Usuário: <?= e($authUser['name'] ?? 'N/A') ?></p>
+          <p class="topbar-subtitle">
+            Usuário: <?= e($authUser['name'] ?? 'N/A') ?>
+            <?php if ($activeModuleName !== ''): ?>
+              · Módulo ativo: <?= e($activeModuleName) ?>
+            <?php endif; ?>
+          </p>
         </div>
       </header>
       <?php if (!empty($flash_success)): ?>

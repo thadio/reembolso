@@ -88,6 +88,55 @@ p:last-child {
   box-shadow: 0 0 0 4px rgba(245, 183, 0, 0.2);
 }
 
+.module-switcher {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(229, 241, 245, 0.16);
+  border-radius: 10px;
+  background: rgba(4, 36, 49, 0.42);
+}
+
+.module-switcher-title {
+  margin: 0;
+  color: rgba(229, 241, 245, 0.82);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.module-switcher-subtitle {
+  margin: 0;
+  color: rgba(229, 241, 245, 0.9);
+  font-size: 0.74rem;
+}
+
+.module-switcher-items {
+  display: grid;
+  gap: 4px;
+}
+
+.module-switcher-item {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 7px;
+  color: #e5f1f5;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.module-switcher-item:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  text-decoration: none;
+}
+
+.module-switcher-item.is-active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
 .menu {
   display: flex;
   flex-direction: column;
@@ -107,6 +156,15 @@ p:last-child {
 .menu-section.is-active {
   border-color: rgba(229, 241, 245, 0.24);
   background: rgba(229, 241, 245, 0.09);
+}
+
+.menu-section.is-module-active {
+  border-color: rgba(245, 183, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(245, 183, 0, 0.18);
+}
+
+.menu-section.is-module-dimmed {
+  opacity: 0.58;
 }
 
 .menu-section-title {
@@ -767,6 +825,11 @@ tbody tr:hover {
   display: block;
   margin-top: 4px;
   font-size: 0.82rem;
+}
+
+.role-option .badge {
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .chips-row {
@@ -1996,6 +2059,72 @@ tbody tr:hover {
   font-size: 0.78rem;
 }
 
+/* Ajuste fino: home/index */
+.page-home-index .home-modules-counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #bfd2e1;
+  background: #f2f8fd;
+  color: #20445f;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.page-home-index .home-modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.page-home-index .home-module-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 170px;
+  border-color: #c9d9e8;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.page-home-index .home-module-head {
+  display: grid;
+  gap: 2px;
+}
+
+.page-home-index .home-module-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-home-index .home-module-kicker {
+  margin: 0;
+  color: #5c6f83;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-home-index .home-module-card h3 {
+  font-size: 1.02rem;
+  color: #1b3248;
+}
+
+.page-home-index .home-module-card .actions-inline {
+  margin-top: auto;
+}
+
+.page-home-index .home-modules-empty {
+  border-style: dashed;
+  border-color: #c6d8e6;
+  background: #fbfdff;
+}
+
 /* Ajuste fino: dashboard/index */
 .page-dashboard-index .grid-kpi {
   gap: 12px;
@@ -2716,6 +2845,11 @@ tbody tr:hover {
 }
 
 @media (max-width: 640px) {
+  .page-home-index .home-modules-counter {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   :is(.page-people-create, .page-people-edit) .people-create-hero .header-row {
     gap: 6px;
   }

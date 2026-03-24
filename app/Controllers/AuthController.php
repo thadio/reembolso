@@ -47,7 +47,7 @@ final class AuthController extends Controller
         }
 
         flash('success', 'Login realizado com sucesso.');
-        $this->redirect('/dashboard');
+        $this->redirect('/home');
     }
 
     public function logout(Request $request): void

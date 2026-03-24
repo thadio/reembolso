@@ -62,6 +62,15 @@ final class Config
                 'health_panel_snapshot_dir' => Env::get('OPS_HEALTH_PANEL_SNAPSHOT_DIR', 'storage/ops/health-panel'),
                 'log_severity_snapshot_dir' => Env::get('OPS_LOG_SEVERITY_SNAPSHOT_DIR', 'storage/ops/log-severity'),
             ],
+            'modules' => [
+                'external' => [
+                    'auxilio_transporte_url' => Env::get('MODULE_AUXILIO_TRANSPORTE_URL', ''),
+                    'indenizacao_fronteirico_url' => Env::get('MODULE_INDENIZACAO_FRONTEIRICO_URL', ''),
+                    'recomposicao_erario_url' => Env::get('MODULE_RECOMPOSICAO_ERARIO_URL', ''),
+                    'handoff_secret' => Env::get('MODULE_EXTERNAL_HANDOFF_SECRET', ''),
+                    'handoff_ttl_seconds' => (int) Env::get('MODULE_EXTERNAL_HANDOFF_TTL_SECONDS', '120'),
+                ],
+            ],
             'seed' => [
                 'admin_name' => Env::get('SEED_ADMIN_NAME', 'Administrador Sistema'),
                 'admin_email' => Env::get('SEED_ADMIN_EMAIL', 'admin@reembolso.local'),

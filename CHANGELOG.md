@@ -1,5 +1,77 @@
 # Changelog
 
+## 2026-03-24 — Fase 4 da camada guardachuva concluida (modulos externos + handoff assinado + auditoria)
+- Suporte a modulos externos habilitado no catalogo de modulos:
+  - `Gestao de auxilio transporte`
+  - `Gestao de indenizacao fronteirica`
+  - `Gestao de recomposicao ao erario`
+- Novas rotas canonicas de entrada para modulos externos:
+  - `GET /modules/auxilio-transporte`
+  - `GET /modules/indenizacao-fronteirico`
+  - `GET /modules/recomposicao-erario`
+- `ModuleCatalogService` evoluido com:
+  - `entry_type` (`internal_route` | `external_url`)
+  - resolucao de URL externa por configuracao
+  - detecao de modulo ativo no layout e roteamento canonico `/modules/*`
+- Novo `ModuleHandoffService`:
+  - gera token curto assinado (HMAC) para handoff com modulo externo
+  - adiciona `source`, `module` e `handoff_token` na URL de redirecionamento externo
+- Auditoria e eventos de navegacao de modulos:
+  - visualizacao do portal (`portal.view` / `module_portal.viewed`)
+  - abertura de modulo (`module.open` / `module.opened`)
+  - saida de modulo (`module.exit` / `module.exited`) ao trocar de modulo ou retornar ao portal
+  - negacao de acesso (`module.open.denied` / `module.open_denied`)
+- Configuracao adicionada para externalizacao:
+  - URLs dos modulos externos e parametros de handoff (`MODULE_EXTERNAL_HANDOFF_*`)
+
+## 2026-03-24 — Fase 3 da camada guardachuva concluida (switcher + modulo ativo + home padrao)
+- Entradas padrao de modulo adicionadas:
+  - `GET /modules/reembolso`
+  - `GET /modules/bpmn`
+  - `GET /modules/usuarios`
+- `HomeController` evoluido para abrir cada modulo pela rota padrao e redirecionar para a melhor entrada permitida por permissao.
+- `ModuleCatalogService` evoluido para:
+  - mapear home padrao por modulo (`/modules/*`)
+  - resolver destino real por permissoes efetivas do usuario
+  - detectar modulo ativo por prefixo de rota para toda a navegacao
+- Navegacao lateral reorganizada:
+  - switcher de modulo no sidebar
+  - destaque visual do modulo ativo
+  - atenuacao dos blocos de menu fora do modulo ativo
+- Topbar atualizada com identificacao explicita do modulo ativo.
+
+## 2026-03-24 — Fase 2 da camada guardachuva concluida (gates `module.*.access` + fallback)
+- Criada migration `059_phase17_module_access_gates.sql` com:
+  - novas permissoes de acesso por modulo no portal guardachuva (`module.reembolso.access`, `module.bpmn.access`, `module.users.access` e gates previstos para modulos futuros)
+  - vinculacao inicial de gates para papeis padrao (`sist_admin`, `admin` e `user`)
+- `db/seed.php` atualizado para:
+  - incluir os gates `module.*.access` no catalogo de permissoes
+  - refletir atribuicoes padrao desses gates por papel
+- `ModuleCatalogService` evoluido para modo de transicao:
+  - permite acesso por gate de modulo
+  - mantem fallback por permissoes legadas para nao bloquear ambientes sem rollout completo
+  - resolve rota de entrada real por permissao para evitar cards que levam a 403
+- Tela `Papeis e Permissoes` aprimorada:
+  - novo destaque visual dos gates de modulo
+  - resumo dos gates guardachuva disponiveis no topo da tela
+
+## 2026-03-24 — Fase 1 da camada guardachuva concluida (home de modulos pos-login)
+- Entregue portal inicial de modulos com rota protegida:
+  - `GET /home`
+- Nova camada de catalogo de modulos para composicao da home:
+  - `ModuleCatalogService` com modulos iniciais `Reembolso`, `Desenho de processos (BPMN)` e `Gestao de usuarios`
+  - exibicao por permissoes ja existentes (fase de transicao sem `module.*.access` ainda)
+- Novo controller e view para a home guardachuva:
+  - `HomeController::index`
+  - `app/Views/home/index.php` com cards de modulo e estado vazio para usuario sem acesso
+- Fluxo de autenticacao ajustado para o novo ponto de entrada:
+  - `AuthController::login` redireciona para `/home`
+  - middleware `guest` redireciona usuario autenticado para `/home`
+  - troca de senha (`UsersController::updateOwnPassword`) redireciona para `/home`
+- Navegacao lateral atualizada com atalho persistente:
+  - novo item `Inicio modulos` no grupo de painel
+- Estilo visual da nova pagina adicionado em `public/assets/css/app.css` (`.page-home-index*`)
+
 ## 2026-03-05 — Ciclo 10.1 concluido (Pipeline BPMN configuravel por fluxo + triagem unificada)
 - Criada migration `042_phase10_pipeline_bpmn_flows.sql` com:
   - novas tabelas `assignment_flows`, `assignment_flow_steps` e `assignment_flow_transitions`

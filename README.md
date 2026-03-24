@@ -60,6 +60,13 @@ php scripts/import-mte-uorg-csv.php --csv /caminho/para/arquivo-uorg.csv
 - `GET /people/audit/export?person_id={personId}&audit_*={filtros}`
 
 ## Rotas de Dashboard (resumo)
+- `GET /home` (portal inicial de modulos apos login)
+- `GET /modules/reembolso` (entrada padrao do modulo Reembolso)
+- `GET /modules/bpmn` (entrada padrao do modulo BPMN)
+- `GET /modules/usuarios` (entrada padrao do modulo de Gestao de Usuarios)
+- `GET /modules/auxilio-transporte` (entrada padrao do modulo externo, depende de `MODULE_AUXILIO_TRANSPORTE_URL`)
+- `GET /modules/indenizacao-fronteirico` (entrada padrao do modulo externo, depende de `MODULE_INDENIZACAO_FRONTEIRICO_URL`)
+- `GET /modules/recomposicao-erario` (entrada padrao do modulo externo, depende de `MODULE_RECOMPOSICAO_ERARIO_URL`)
 - `GET /dashboard` (novo dashboard inicial executivo-orcamentario)
 - `GET /dashboard2` (dashboard operacional legado)
 
@@ -208,6 +215,7 @@ A documentacao oficial esta centralizada em `/docs`:
 - `docs/09-qa-regression.md`
 - `docs/14-lgpd-advanced.md`
 - `docs/15-security-hardening.md`
+- `docs/17-guardachuva-modulos.md`
 - `docs/changelog-docs.md`
 
 ## Deploy (resumo)

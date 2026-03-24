@@ -40,9 +40,11 @@ final class Router
     {
         $path = $this->normalizePath((string) parse_url($uri, PHP_URL_PATH));
         $method = strtoupper($method);
+        $isHeadRequest = $method === 'HEAD';
+        $routeMethod = $isHeadRequest ? 'GET' : $method;
 
         foreach ($this->routes as $route) {
-            if ($route['method'] !== $method || $route['path'] !== $path) {
+            if ($route['method'] !== $routeMethod || $route['path'] !== $path) {
                 continue;
             }
 
@@ -52,6 +54,16 @@ final class Router
 
             [$controllerClass, $controllerMethod] = $route['handler'];
             $controller = new $controllerClass($this->app);
+
+            if ($isHeadRequest) {
+                // HEAD must return the same headers as GET, but no body.
+                ob_start();
+                $controller->{$controllerMethod}($this->app->request());
+                ob_end_clean();
+
+                return;
+            }
+
             $controller->{$controllerMethod}($this->app->request());
 
             return;
@@ -94,7 +106,7 @@ final class Router
 
             if ($middleware === 'guest') {
                 if ($this->app->auth()->check()) {
-                    $this->redirect('/dashboard');
+                    $this->redirect('/home');
 
                     return false;
                 }

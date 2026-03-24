@@ -256,7 +256,7 @@ final class UsersController extends Controller
 
         $this->app->auth()->refresh();
         flash('success', 'Senha alterada com sucesso.');
-        $this->redirect('/dashboard');
+        $this->redirect('/home');
     }
 
     public function resetPassword(Request $request): void

@@ -1,5 +1,12 @@
 # Changelog da Documentacao
 
+## 2026-03-24
+- Adicionado `docs/17-guardachuva-modulos.md` com estudo tecnico para criacao da camada superior (portal guardachuva), incluindo arquitetura alvo, RBAC por modulo, roadmap de migracao sem big bang e preparacao para modulos futuros (internos e externos)
+- Atualizacao de `README.md` para incluir o novo estudo no portal de documentacao
+- Atualizacao de `README.md` com as rotas canonicas de entrada de modulo (`GET /modules/reembolso`, `GET /modules/bpmn` e `GET /modules/usuarios`)
+- Atualizacao de `README.md` com as rotas canonicas dos modulos externos (`/modules/auxilio-transporte`, `/modules/indenizacao-fronteirico`, `/modules/recomposicao-erario`)
+- Atualizacao de `docs/03-environment.md` com variaveis de configuracao para modulos externos e token de handoff assinado
+
 ## 2026-03-09
 - Adicionado `docs/16-chart-pattern.md` com padrao visual/interativo para novos graficos (responsividade, eixo Y com valores, tooltip e clique para detalhamento)
 - Atualizacao de `public/assets/css/app.css` com aliases genericos `chart-pattern-*` para reutilizacao do mesmo estilo fora do dashboard

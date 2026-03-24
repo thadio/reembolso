@@ -14,6 +14,12 @@ $roles = [
 
 $permissions = [
     ['name' => 'dashboard.view', 'description' => 'Visualizar dashboard'],
+    ['name' => 'module.reembolso.access', 'description' => 'Acessar modulo de Reembolso no portal guardachuva'],
+    ['name' => 'module.bpmn.access', 'description' => 'Acessar modulo de Desenho de processos (BPMN) no portal guardachuva'],
+    ['name' => 'module.users.access', 'description' => 'Acessar modulo de Gestao de usuarios no portal guardachuva'],
+    ['name' => 'module.auxilio_transporte.access', 'description' => 'Acessar modulo de Gestao de auxilio transporte no portal guardachuva'],
+    ['name' => 'module.indenizacao_fronteirico.access', 'description' => 'Acessar modulo de Gestao de indenizacao por trabalho fronteirico no portal guardachuva'],
+    ['name' => 'module.recomposicao_erario.access', 'description' => 'Acessar modulo de Gestao de recomposicao de valores ao erario no portal guardachuva'],
     ['name' => 'users.view', 'description' => 'Visualizar modulo administrativo de usuarios e acessos'],
     ['name' => 'users.manage', 'description' => 'Gerenciar usuarios, papeis/permissoes e reset de senha'],
     ['name' => 'security.view', 'description' => 'Visualizar politicas de seguranca e lockout'],
@@ -56,9 +62,9 @@ $permissions = [
 ];
 
 $rolePermissions = [
-    'sist_admin' => ['dashboard.view', 'users.view', 'users.manage', 'security.view', 'security.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'people.documents.sensitive', 'mte_destinations.view', 'mte_destinations.manage', 'cost_item.view', 'cost_item.manage', 'organs.view', 'organs.manage', 'bulk_import.view', 'people.import_bulk', 'organs.import_bulk', 'cost_mirror.import_bulk', 'audit.view', 'admin.manage'],
-    'admin' => ['dashboard.view', 'users.view', 'users.manage', 'security.view', 'security.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'people.documents.sensitive', 'mte_destinations.view', 'mte_destinations.manage', 'cost_item.view', 'cost_item.manage', 'organs.view', 'organs.manage', 'audit.view'],
-    'user' => ['dashboard.view', 'people.view', 'mte_destinations.view', 'organs.view'],
+    'sist_admin' => ['dashboard.view', 'module.reembolso.access', 'module.bpmn.access', 'module.users.access', 'module.auxilio_transporte.access', 'module.indenizacao_fronteirico.access', 'module.recomposicao_erario.access', 'users.view', 'users.manage', 'security.view', 'security.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'people.documents.sensitive', 'mte_destinations.view', 'mte_destinations.manage', 'cost_item.view', 'cost_item.manage', 'organs.view', 'organs.manage', 'bulk_import.view', 'people.import_bulk', 'organs.import_bulk', 'cost_mirror.import_bulk', 'audit.view', 'admin.manage'],
+    'admin' => ['dashboard.view', 'module.reembolso.access', 'module.bpmn.access', 'module.users.access', 'module.auxilio_transporte.access', 'module.indenizacao_fronteirico.access', 'module.recomposicao_erario.access', 'users.view', 'users.manage', 'security.view', 'security.manage', 'lgpd.view', 'lgpd.manage', 'budget.view', 'budget.manage', 'budget.simulate', 'budget.approve', 'cdo.view', 'cdo.manage', 'invoice.view', 'invoice.manage', 'cost_mirror.view', 'cost_mirror.manage', 'office_template.view', 'office_template.manage', 'process_meta.view', 'process_meta.manage', 'sla.view', 'sla.manage', 'report.view', 'people.view', 'people.manage', 'people.cpf.full', 'people.documents.sensitive', 'mte_destinations.view', 'mte_destinations.manage', 'cost_item.view', 'cost_item.manage', 'organs.view', 'organs.manage', 'audit.view'],
+    'user' => ['dashboard.view', 'module.reembolso.access', 'people.view', 'mte_destinations.view', 'organs.view'],
 ];
 
 $documentTypes = [

@@ -56,11 +56,37 @@ if (!function_exists('old')) {
 if (!function_exists('url')) {
     function url(string $path = ''): string
     {
-        $baseUrl = rtrim((string) app()->config()->get('app.base_url', ''), '/');
+        $configuredBase = rtrim((string) app()->config()->get('app.base_url', ''), '/');
         $path = '/' . ltrim($path, '/');
 
-        if ($baseUrl === '') {
-            return $path;
+        // Detect local development context and prefer request host in that case.
+        $serverHost = (string) ($_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? ($_SERVER['SERVER_ADDR'] ?? '')));
+        $remoteAddr = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+
+        $hostLooksLocal = $serverHost !== '' && (str_contains($serverHost, 'localhost') || str_starts_with($serverHost, '127.') || str_ends_with($serverHost, '.local'));
+        $addrLooksLocal = $remoteAddr !== '' && ($remoteAddr === '::1' || str_starts_with($remoteAddr, '127.'));
+
+        if ($hostLooksLocal || $addrLooksLocal || $configuredBase === '') {
+            // build base from current request
+            $isHttps = ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? '') === '443');
+            $scheme = $isHttps ? 'https' : 'http';
+            $rawHost = $serverHost !== '' ? $serverHost : (string) ($_SERVER['SERVER_NAME'] ?? 'localhost');
+            $parsed = parse_url($scheme . '://' . $rawHost);
+            $host = (string) ($parsed['host'] ?? $rawHost);
+            $port = (string) ($parsed['port'] ?? ($_SERVER['SERVER_PORT'] ?? ''));
+
+            if (str_contains($host, ':') && !str_starts_with($host, '[')) {
+                $host = '[' . $host . ']';
+            }
+
+            // Omit standard ports
+            if ($port !== '' && (($scheme === 'http' && $port !== '80') || ($scheme === 'https' && $port !== '443'))) {
+                $host = $host . ':' . $port;
+            }
+
+            $baseUrl = $scheme . '://' . $host;
+        } else {
+            $baseUrl = $configuredBase;
         }
 
         return $baseUrl . ($path === '/' ? '' : $path);

@@ -57,6 +57,13 @@ Arquivo de exemplo: `.env.example`
 - `OPS_HEALTH_PANEL_SNAPSHOT_DIR` (default: `storage/ops/health-panel`, usado pelo painel web de observabilidade)
 - `OPS_LOG_SEVERITY_SNAPSHOT_DIR` (default: `storage/ops/log-severity`, usado pelo painel web de observabilidade)
 
+### Opcionais para modulos externos (fase 4)
+- `MODULE_AUXILIO_TRANSPORTE_URL` (URL base do modulo externo de auxilio transporte)
+- `MODULE_INDENIZACAO_FRONTEIRICO_URL` (URL base do modulo externo de indenizacao fronteirica)
+- `MODULE_RECOMPOSICAO_ERARIO_URL` (URL base do modulo externo de recomposicao ao erario)
+- `MODULE_EXTERNAL_HANDOFF_SECRET` (segredo HMAC para token curto de handoff entre plataformas)
+- `MODULE_EXTERNAL_HANDOFF_TTL_SECONDS` (default: `120`, TTL do token de handoff)
+
 ### Opcionais para upload FTP
 - `FTP_HOST`
 - `FTP_PORT`
