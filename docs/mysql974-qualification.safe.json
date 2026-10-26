@@ -1,0 +1,21 @@
+{
+  "scope": "Synthetic fresh schema, canonical migrate twice; no production/env/seed",
+  "version": "9.7.4",
+  "image": "mysql:9.7.4@sha256:8fb11c38b3551e22d50adbb688f027f8ff4ea2d2445aa277c1cc97b4af85ec54",
+  "source": "24e41c55eadc4bdc50b18394b04475ca184b5758",
+  "owner": "eb55f9889b3064bbfa7ca7129f2c9cb0",
+  "reviewed_migrator_sha256": "ce859cf10ab2b7c470bf18381a459c692bcccc46a4801791be27f508e7b1c4da",
+  "first": {
+    "exit_code": 0,
+    "migrated": 60,
+    "skipped": 0
+  },
+  "repeat": {
+    "exit_code": 0,
+    "migrated": 0,
+    "skipped": 60
+  },
+  "passed": true,
+  "owned_container_removed": true,
+  "owned_credentials_removed": true
+}

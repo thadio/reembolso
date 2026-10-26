@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 $app = require dirname(__DIR__) . '/bootstrap.php';
 $db = $app->db();
+// Published schemas use this collation. User variables otherwise inherit the
+// connection default and migration058 fails on MySQL9.7.4 with mixed collations.
+// This is connection-local; no table, published SQL or server setting is rewritten.
+$db->exec("SET collation_connection = 'utf8mb4_unicode_ci'");
 
 $db->exec(
     'CREATE TABLE IF NOT EXISTS migrations (

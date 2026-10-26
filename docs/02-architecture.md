@@ -1,3 +1,5 @@
+> Atualizacao26/10/2026: o alvo eMySQL9.7.4 LTS; a qualificacao descartavel passou60migrations + repeticao. O banco HG ainda5.7 e exige corte separado; referencias5.7 abaixo descrevem o contrato anterior. Ver [migracao9.7.4](mysql974-migration.md).
+
 # 02 - Architecture
 
 ## Estilo

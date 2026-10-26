@@ -80,7 +80,7 @@ Arquivo de exemplo: `.env.example`
 ## Requisitos do servidor
 - Apache 2.4+
 - PHP 8.1+
-- MySQL/Percona 5.7+
+- MySQL 9.7.4 LTS como alvo qualificado. O banco produtivo HG observado em26/10/2026 ainda ePercona5.7.44-48; o corte nao foi executado. Ver `mysql974-migration.md`.
 - `DocumentRoot` apontando para `public/` (preferencial)
 
 ## Permissoes de runtime
